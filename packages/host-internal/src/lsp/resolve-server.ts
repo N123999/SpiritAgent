@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { constants } from 'node:fs';
+import { promisify } from 'node:util';
 
 import { TYPESCRIPT_LANGUAGE_SERVER_COMMAND } from '@spirit-agent/core';
 
@@ -9,6 +11,8 @@ import {
   splitWindowsPathEntries,
   splitWindowsPathExtEntries,
 } from './windows-path.js';
+
+const execFileAsync = promisify(execFile);
 
 export interface ResolvedLanguageServerCommand {
   command: string;
@@ -50,11 +54,100 @@ export function buildCommandCandidates(
   );
 }
 
+/** Detect rustup proxy loops when the rust-analyzer component is missing. */
+export function isRustAnalyzerVersionOutputHealthy(output: string): boolean {
+  if (/infinite recursion detected/i.test(output)) {
+    return false;
+  }
+  return /rust-analyzer/i.test(output);
+}
+
+async function runCommandForOutput(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  try {
+    const result = await execFileAsync(command, args, {
+      env: { ...process.env, ...env },
+      timeout: 5_000,
+      windowsHide: true,
+    });
+    return {
+      stdout: String(result.stdout ?? ''),
+      stderr: String(result.stderr ?? ''),
+      code: 0,
+    };
+  } catch (error) {
+    const execError = error as NodeJS.ErrnoException & {
+      stdout?: string | Buffer;
+      stderr?: string | Buffer;
+      code?: number | string;
+    };
+    return {
+      stdout: String(execError.stdout ?? ''),
+      stderr: String(execError.stderr ?? ''),
+      code: typeof execError.code === 'number' ? execError.code : 1,
+    };
+  }
+}
+
+async function resolveRustAnalyzerViaRustup(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): Promise<ResolvedLanguageServerCommand | undefined> {
+  const rustup = await resolveCommandOnPath('rustup', env, platform, []);
+  if (!rustup) {
+    return undefined;
+  }
+
+  const which = await runCommandForOutput(rustup.command, ['which', 'rust-analyzer'], env);
+  if (which.code !== 0) {
+    return undefined;
+  }
+
+  const resolvedPath = which.stdout.trim();
+  if (!resolvedPath) {
+    return undefined;
+  }
+
+  try {
+    await access(resolvedPath, constants.X_OK);
+  } catch {
+    return undefined;
+  }
+
+  return { command: resolvedPath, args: [] };
+}
+
+async function isRustAnalyzerHealthy(
+  command: string,
+  env: NodeJS.ProcessEnv,
+): Promise<boolean> {
+  const result = await runCommandForOutput(command, ['--version'], env);
+  const combined = `${result.stdout}\n${result.stderr}`.trim();
+  return result.code === 0 && isRustAnalyzerVersionOutputHealthy(combined);
+}
+
 export async function resolveRustAnalyzerOnPath(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ): Promise<ResolvedLanguageServerCommand | undefined> {
-  return resolveCommandOnPath('rust-analyzer', env, platform, []);
+  const fromRustup = await resolveRustAnalyzerViaRustup(env, platform);
+  if (fromRustup && (await isRustAnalyzerHealthy(fromRustup.command, env))) {
+    return fromRustup;
+  }
+
+  const fromPath = await resolveCommandOnPath('rust-analyzer', env, platform, []);
+  if (!fromPath) {
+    return undefined;
+  }
+
+  if (!(await isRustAnalyzerHealthy(fromPath.command, env))) {
+    return undefined;
+  }
+
+  return fromPath;
 }
 
 export async function resolveClangdOnPath(

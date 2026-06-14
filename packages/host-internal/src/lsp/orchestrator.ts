@@ -87,6 +87,11 @@ export class LspOrchestrator {
         if (!ready && provider.id === 'typescript-language-server') {
           console.error('[lsp] typescript-language-server not found on PATH; TypeScript diagnostics disabled');
         }
+        if (!ready && provider.id === 'rust-analyzer') {
+          console.error(
+            '[lsp] rust-analyzer is unavailable; run `rustup component add rust-analyzer` or install from settings',
+          );
+        }
       }),
     );
 
