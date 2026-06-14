@@ -1,5 +1,6 @@
 import { makeChipNode } from "@/lib/browser-element-chip-styles";
 import { makePrDiffChipNode } from "@/lib/github-pr-diff-chip-styles";
+import { makeFileSnippetChipNode } from "@/lib/file-snippet-chip-styles";
 import { makeTerminalChipNode } from "@/lib/terminal-chip-styles";
 import { makeFileChipNode } from "@/lib/workspace-file-chip-styles";
 import type { RichSegment } from "@/lib/composer-segment-model";
@@ -51,6 +52,7 @@ export { normalizeCaretForComposer } from "@/lib/composer-caret-normalize";
 
 export { makeChipNode } from "@/lib/browser-element-chip-styles";
 export { makePrDiffChipNode } from "@/lib/github-pr-diff-chip-styles";
+export { makeFileSnippetChipNode } from "@/lib/file-snippet-chip-styles";
 export { makeTerminalChipNode } from "@/lib/terminal-chip-styles";
 export { makeFileChipNode } from "@/lib/workspace-file-chip-styles";
 export {
@@ -194,6 +196,26 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
     }
     return;
   }
+  if (el.dataset.fileSnippetChip === "true" || el.getAttribute("data-file-snippet-chip") === "true") {
+    const id = el.dataset.fileSnippetId;
+    const filePath = el.dataset.fileSnippetPath ?? "";
+    const lineStart = Number(el.dataset.fileSnippetLineStart ?? "0");
+    const lineEnd = Number(el.dataset.fileSnippetLineEnd ?? "0");
+    const selectedText = el.dataset.fileSnippetText ?? "";
+    if (id && filePath) {
+      segs.push({
+        kind: "fileSnippet",
+        attachment: {
+          id,
+          filePath,
+          lineStart,
+          lineEnd,
+          selectedText,
+        },
+      });
+    }
+    return;
+  }
   if (el.dataset.skillChip === "true" || el.getAttribute("data-skill-chip") === "true") {
     const alias = el.dataset.skillAlias ?? el.getAttribute("data-skill-alias");
     if (alias) {
@@ -239,6 +261,8 @@ export function segmentsToDom(
       frag.appendChild(makePrDiffChipNode(seg.attachment, doc));
     } else if (seg.kind === "terminalSnippet") {
       frag.appendChild(makeTerminalChipNode(seg.attachment, doc));
+    } else if (seg.kind === "fileSnippet") {
+      frag.appendChild(makeFileSnippetChipNode(seg.attachment, doc));
     } else if (seg.kind === "skill") {
       frag.appendChild(makeSkillChipNode(seg.alias, doc));
     } else {

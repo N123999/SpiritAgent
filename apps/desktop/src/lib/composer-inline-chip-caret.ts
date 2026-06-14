@@ -5,12 +5,13 @@ function isInlineAttachmentChip(
   seg: RichSegment | undefined,
 ): seg is Extract<
   RichSegment,
-  { kind: "element" | "prDiff" | "terminalSnippet" | "workspaceFile" | "skill" }
+  { kind: "element" | "prDiff" | "terminalSnippet" | "fileSnippet" | "workspaceFile" | "skill" }
 > {
   return (
     seg?.kind === "element"
     || seg?.kind === "prDiff"
     || seg?.kind === "terminalSnippet"
+    || seg?.kind === "fileSnippet"
     || seg?.kind === "workspaceFile"
     || seg?.kind === "skill"
   );

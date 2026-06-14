@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool, Terminal } from "lucide-react";
+import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool, Terminal, FileText } from "lucide-react";
 
 import { BROWSER_ELEMENT_CHIP_CLASS } from "@/components/browser-element-card";
 import { ComposerLocalFileStrip } from "@/components/composer-local-file-strip";
@@ -21,6 +21,11 @@ import {
   formatPrDiffChipTitle,
   prDiffChipClassForStatus,
 } from "@/lib/github-pr-diff-chip-styles";
+import {
+  formatFileSnippetChipLabel,
+  formatFileSnippetChipTitle,
+  FILE_SNIPPET_CHIP_CLASS,
+} from "@/lib/file-snippet-chip-styles";
 import {
   formatTerminalChipLabel,
   formatTerminalChipTitle,
@@ -118,14 +123,37 @@ function TerminalCard({
   );
 }
 
+function FileSnippetCard({
+  part,
+}: {
+  part: Extract<MessageContentPart, { kind: "fileSnippet" }>;
+}) {
+  return (
+    <span
+      title={formatFileSnippetChipTitle({
+        id: "",
+        filePath: part.filePath,
+        lineStart: part.lineStart,
+        lineEnd: part.lineEnd,
+        selectedText: part.selectedText,
+      })}
+      className={FILE_SNIPPET_CHIP_CLASS}
+    >
+      <FileText className="size-[10px] shrink-0" aria-hidden />
+      {formatFileSnippetChipLabel(part.filePath, part.lineStart, part.lineEnd)}
+    </span>
+  );
+}
+
 function isInlineChipPart(
   part: MessageContentPart | null | undefined,
-): part is Extract<MessageContentPart, { kind: "element" | "workspaceFile" | "prDiff" | "terminalSnippet" }> {
+): part is Extract<MessageContentPart, { kind: "element" | "workspaceFile" | "prDiff" | "terminalSnippet" | "fileSnippet" }> {
   return (
     part?.kind === "element"
     || part?.kind === "workspaceFile"
     || part?.kind === "prDiff"
     || part?.kind === "terminalSnippet"
+    || part?.kind === "fileSnippet"
   );
 }
 
@@ -173,8 +201,9 @@ export function UserMessageBubble({
         (p) =>
           p.kind === "element"
           || p.kind === "workspaceFile"
-          || p.kind === "prDiff"
-          || p.kind === "terminalSnippet",
+          ||           p.kind === "prDiff"
+          || p.kind === "terminalSnippet"
+          || p.kind === "fileSnippet",
       )) &&
     !isAttachmentOnlyDisplayText(message.content, message.localFileAttachments);
   const hasAttachments = attachmentViews.length > 0;
@@ -221,6 +250,9 @@ export function UserMessageBubble({
               }
               if (part.kind === "terminalSnippet") {
                 return <TerminalCard key={i} part={part} />;
+              }
+              if (part.kind === "fileSnippet") {
+                return <FileSnippetCard key={i} part={part} />;
               }
               const prev = i > 0 ? contentParts[i - 1] : null;
               const next = i < contentParts.length - 1 ? contentParts[i + 1] : null;

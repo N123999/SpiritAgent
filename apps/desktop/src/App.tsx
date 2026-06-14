@@ -557,6 +557,7 @@ export default function App() {
               onBrowserElementPicked: composer.handleBrowserElementPicked,
               onPrDiffAddToSession: composer.handlePrDiffAddToSession,
               onTerminalAddToSession: composer.handleTerminalAddToSession,
+              onFileSnippetAddToSession: composer.handleFileSnippetAddToSession,
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
               prTabEnabled: workspaceTools.prTabEnabled,

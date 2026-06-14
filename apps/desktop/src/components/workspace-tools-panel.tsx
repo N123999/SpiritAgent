@@ -125,6 +125,9 @@ export type WorkspaceToolsDockProps = {
   onTerminalAddToSession?: (
     attachment: import("@/lib/terminal-snippet-attachment").TerminalSnippetAttachment,
   ) => void;
+  onFileSnippetAddToSession?: (
+    attachment: import("@/lib/file-snippet-attachment").FileSnippetAttachment,
+  ) => void;
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
   browserTabEnabled?: boolean;
@@ -207,6 +210,7 @@ function WorkspaceToolsDockInner({
   onBrowserElementPicked,
   onPrDiffAddToSession,
   onTerminalAddToSession,
+  onFileSnippetAddToSession,
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   prTabEnabled = false,

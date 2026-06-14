@@ -969,3 +969,64 @@ test("syncSegmentsFromExternalValue preserves terminalSnippet chip", () => {
   assert.equal(synced.some((s) => s.kind === "terminalSnippet"), true);
   assert.equal(synced.some((s) => s.kind === "text" && s.value === "follow up"), true);
 });
+
+const sampleFileSnippetAttachment = {
+  id: "file-1",
+  filePath: "apps/desktop/src/App.tsx",
+  lineStart: 10,
+  lineEnd: 12,
+  selectedText: "const App = () => null;",
+};
+
+test("composerShowsPlaceholder false when fileSnippet chip present", () => {
+  assert.equal(
+    composerShowsPlaceholder(
+      [{ kind: "fileSnippet", attachment: sampleFileSnippetAttachment }, { kind: "text", value: " " }],
+      { composing: false, attachmentCount: 0 },
+    ),
+    false,
+  );
+});
+
+test("normalizeCaretForInlineAttachmentChips snaps caret on fileSnippet chip", () => {
+  const segs = [
+    { kind: "fileSnippet", attachment: sampleFileSnippetAttachment },
+    { kind: "text", value: " tail" },
+  ];
+  const snapped = normalizeCaretForInlineAttachmentChips(segs, {
+    segmentIndex: 0,
+    offset: 0,
+  });
+  assert.equal(snapped.segmentIndex, 1);
+  assert.equal(snapped.offset, 1);
+});
+
+test("isCaretAtInlineChipRemovalPoint detects caret after fileSnippet chip", () => {
+  const segs = [
+    { kind: "fileSnippet", attachment: sampleFileSnippetAttachment },
+    { kind: "text", value: " " },
+  ];
+  assert.equal(
+    isCaretAtInlineChipRemovalPoint(segs, { segmentIndex: 1, offset: 0 }),
+    true,
+  );
+});
+
+test("removeInlineChipAtRemovalPoint removes fileSnippet chip on backspace", () => {
+  const segs = [
+    { kind: "fileSnippet", attachment: sampleFileSnippetAttachment },
+    { kind: "text", value: " " },
+  ];
+  const result = removeInlineChipAtRemovalPoint(segs, { segmentIndex: 1, offset: 0 });
+  assert.ok(result);
+  assert.equal(result.segments.some((s) => s.kind === "fileSnippet"), false);
+});
+
+test("syncSegmentsFromExternalValue preserves fileSnippet chip", () => {
+  const synced = syncSegmentsFromExternalValue(
+    [{ kind: "fileSnippet", attachment: sampleFileSnippetAttachment }, { kind: "text", value: " " }],
+    "follow up",
+  );
+  assert.equal(synced.some((s) => s.kind === "fileSnippet"), true);
+  assert.equal(synced.some((s) => s.kind === "text" && s.value === "follow up"), true);
+});
