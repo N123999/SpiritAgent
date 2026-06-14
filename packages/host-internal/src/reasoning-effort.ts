@@ -15,7 +15,7 @@ export {
   resolveModelReasoningEffort,
   resolveModelReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
-} from '../../agent-core/dist/reasoning-effort.js';
+} from '@spirit-agent/core/reasoning-effort';
 
 export type {
   AnthropicReasoningEffort,
@@ -27,4 +27,4 @@ export type {
   ModelReasoningProvider,
   ModelReasoningTransportKind,
   OpenAiCompatibleReasoningEffort,
-} from '../../agent-core/dist/reasoning-effort.js';
+} from '@spirit-agent/core/reasoning-effort';
