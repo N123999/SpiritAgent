@@ -183,11 +183,12 @@ export function ConversationList({
                 anchorMessage,
                 messages,
               );
-              const tightenAfterPreviousMeta = shouldTightenAfterPreviousRenderItem(
-                previousRenderItem,
-                anchorMessage,
-                messages,
-              );
+            const tightenAfterPreviousMeta = shouldTightenAfterPreviousRenderItem(
+              previousRenderItem,
+              anchorMessage,
+              messages,
+              renderItem.messageIndices[0],
+            );
               const showProcessGroupContinue = shouldShowContinueToolbarOnProcessGroup(
                 renderItem.messageIndices,
                 messages,
@@ -284,6 +285,7 @@ export function ConversationList({
               previousRenderItem,
               message,
               messages,
+              index,
             );
             const queuedBeforeCount = messages
               .slice(0, index)

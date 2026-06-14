@@ -263,6 +263,35 @@ test('shouldShowAssistantThinkingCollapsible keeps substantive standalone thinki
   assert.equal(hasAssistantToolLaterInTurn(messages, 1), true);
 });
 
+test('shouldShowAssistantThinkingCollapsible keeps aborted Thought visible during continue streaming', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'nih', pending: false },
+    {
+      id: 2,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      aux: { thinking: 'Interrupted reasoning from the first attempt.' },
+    },
+    {
+      id: 3,
+      role: 'assistant',
+      content: '',
+      pending: true,
+      aux: { thinking: 'Continued reasoning after abort.' },
+    },
+  ];
+
+  assert.equal(
+    shouldShowAssistantThinkingCollapsible(messages[1], undefined, messages, 1),
+    true,
+  );
+  assert.equal(
+    shouldShowAssistantThinkingCollapsible(messages[2], undefined, messages, 2),
+    true,
+  );
+});
+
 test('shouldShowAssistantThinkingCollapsible keeps Thought visible when thinking + body share one row', () => {
   const messages = [
     { id: 1, role: 'user', content: 'hi', pending: false },

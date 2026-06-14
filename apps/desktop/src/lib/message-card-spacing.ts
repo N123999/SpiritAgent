@@ -1,6 +1,7 @@
 import type { ConversationMessageSnapshot } from '../types.js';
 import type { ConversationRenderItem } from './conversation-process-groups.js';
 import { resolveMessageForRenderSpacing } from './conversation-process-groups.js';
+import { hasAssistantToolInCurrentTurn } from './conversation-thinking-ui.js';
 import { isSubagentStatusSurfaceMessage } from './subagent-display.js';
 import { isMinimalToolCallMessage } from './tool-call-display.js';
 
@@ -78,9 +79,27 @@ export function shouldCompactAfterPreviousMessage(
   );
 }
 
+export function shouldUseDefaultSpacingAfterAbortedThought(
+  previous: ConversationMessageSnapshot | undefined,
+  current: ConversationMessageSnapshot,
+  messages: readonly ConversationMessageSnapshot[],
+  currentIndex: number,
+): boolean {
+  return (
+    isStandaloneAssistantAuxMessage(previous) &&
+    previous.pending === false &&
+    current.role === 'assistant' &&
+    !current.tool &&
+    current.pending === true &&
+    !hasAssistantToolInCurrentTurn(messages, currentIndex)
+  );
+}
+
 export function shouldTightenAfterPreviousMetaMessage(
   previous: ConversationMessageSnapshot | undefined,
   current: ConversationMessageSnapshot,
+  messages?: readonly ConversationMessageSnapshot[],
+  currentIndex?: number,
 ): boolean {
   // Symmetric Thought↔tool rhythm: list rows use space-y-3 + pb-3 only — never -mt-3 when a tool
   // is on either side (logs: tool tighten=false but nextTighten=true made tool→Thought tighter than Thought→tool).
@@ -93,6 +112,14 @@ export function shouldTightenAfterPreviousMetaMessage(
     return false;
   }
 
+  if (
+    messages !== undefined &&
+    currentIndex !== undefined &&
+    shouldUseDefaultSpacingAfterAbortedThought(previous, current, messages, currentIndex)
+  ) {
+    return false;
+  }
+
   return isGrayMetaTrailingMessage(previous) && isGrayMetaLeadingMessage(current);
 }
 
@@ -100,6 +127,7 @@ export function shouldTightenAfterPreviousRenderItem(
   previousItem: ConversationRenderItem | undefined,
   current: ConversationMessageSnapshot,
   messages: readonly ConversationMessageSnapshot[],
+  currentMessageIndex?: number,
 ): boolean {
   if (previousItem?.kind === 'process-group') {
     return Boolean(
@@ -111,6 +139,8 @@ export function shouldTightenAfterPreviousRenderItem(
   return shouldTightenAfterPreviousMetaMessage(
     resolveMessageForRenderSpacing(previousItem, messages),
     current,
+    messages,
+    currentMessageIndex,
   );
 }
 

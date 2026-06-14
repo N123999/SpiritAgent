@@ -221,6 +221,11 @@ export function shouldShowAssistantThinkingCollapsible(
     if (isStandaloneThinkingMessage(message) && hasAssistantToolLaterInTurn(messages, listIndex)) {
       return true;
     }
+    // Abort + continue (no tools): prior standalone Thought must stay visible while the next
+    // segment streams live Thinking — deferAfterStream normally prevents this adjacency.
+    if (isStandaloneThinkingMessage(message) && !hasAssistantToolInCurrentTurn(messages, listIndex)) {
+      return true;
+    }
     return false;
   }
 

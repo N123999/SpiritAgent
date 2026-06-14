@@ -173,6 +173,10 @@ export function buildConversationRenderItems(
   while (index < messages.length) {
     const message = messages[index];
     if (!isProcessEligibleMetaMessage(message)) {
+      if (isAssistantBodyTextMessage(message) && pendingAuxIndices.length > 0) {
+        pushProcessGroup(pendingAuxIndices, pendingAuxIndices[0]!);
+        pendingAuxIndices = [];
+      }
       items.push({ kind: 'message', messageIndex: index });
       index += 1;
       continue;

@@ -272,3 +272,25 @@ test('buildConversationRenderItems merges post-body thinking into the next tool 
   }
   assert.deepEqual(group.messageIndices, [3, 4, 5]);
 });
+
+test('buildConversationRenderItems keeps multi-thinking process group before body after continue', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'nih', pending: false },
+    { id: 2, role: 'assistant', content: '', pending: false, aux: { thinking: 'first thought' } },
+    { id: 3, role: 'assistant', content: '', pending: false, aux: { thinking: 'continued thought' } },
+    { id: 4, role: 'assistant', content: 'Hello!', pending: false },
+  ];
+  const items = buildConversationRenderItems(messages, scopeKey);
+  assert.deepEqual(
+    items.map((item) => item.kind),
+    ['message', 'process-group', 'message'],
+  );
+  const group = items[1];
+  assert.equal(group.kind, 'process-group');
+  if (group.kind !== 'process-group') {
+    return;
+  }
+  assert.deepEqual(group.messageIndices, [1, 2]);
+  assert.equal(isMessageHiddenByProcessGroup(items, 1), true);
+  assert.equal(isMessageHiddenByProcessGroup(items, 4), false);
+});
