@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DESKTOP_FORM_INPUT_SHELL,
+  DESKTOP_FORM_TEXTAREA_INNER,
+} from "@/lib/desktop-chrome";
+import { cn } from "@/lib/utils";
 import type { PendingToolApprovalSnapshot } from "@/types";
 
 type PendingApprovalCardProps = {
@@ -76,12 +81,12 @@ export function PendingApprovalCard({
             {t("app.deny")}
           </Button>
         </div>
-        <div className="flex min-h-9 items-stretch overflow-hidden rounded-md border border-input bg-transparent focus-within:border-ring/60 focus-within:ring-2 focus-within:ring-ring/20">
+        <div className={cn("flex min-h-9 items-stretch", DESKTOP_FORM_INPUT_SHELL)}>
           <Textarea
             value={approvalGuidance}
             onChange={(event) => onApprovalGuidanceChange(event.target.value)}
             placeholder={t("app.approvalGuidancePlaceholder")}
-            className="min-h-9 flex-1 resize-none rounded-none border-0 bg-transparent px-2.5 py-2 text-sm shadow-none focus-visible:ring-0"
+            className={DESKTOP_FORM_TEXTAREA_INNER}
           />
           <Button
             size="icon-sm"
