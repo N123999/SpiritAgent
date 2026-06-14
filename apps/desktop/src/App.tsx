@@ -40,6 +40,7 @@ import {
   resolveUseMicaBackdrop,
 } from "@/lib/desktop-shell";
 import { isMarkdownPath } from "@/lib/file-picker-path";
+import { isWorkspaceReferenceDirectoryPath, normalizeWorkspaceReferenceDirectoryPath } from "@spirit-agent/host-internal/workspace-file-reference-query";
 import { tryHandleGitHubPullRequestMarkdownLink } from "@/lib/github-markdown-link";
 import { resolveDark } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -537,6 +538,7 @@ export default function App() {
               workspaceFileRevealAbsolutePath: workspaceTools.workspaceFileRevealAbsolutePath,
               workspaceFileRevealScope: workspaceTools.workspaceFileRevealScope,
               workspaceFileRevealViewMode: workspaceTools.workspaceFileRevealViewMode,
+              workspaceFileRevealDirectoryOnly: workspaceTools.workspaceFileRevealDirectoryOnly,
               workspacePrRevealNonce: workspaceTools.workspacePrRevealNonce,
               workspacePrRevealTargetId: workspaceTools.workspacePrRevealTargetId,
               workspacePrRevealRequest: workspaceTools.workspacePrRevealRequest,
@@ -588,6 +590,12 @@ export default function App() {
         workspaceRoot={snapshot?.workspaceRoot ?? ''}
         workspaceBinding={snapshot?.workspaceBinding ?? 'project'}
         onOpenWorkspaceFile={(relativePath) => {
+          if (isWorkspaceReferenceDirectoryPath(relativePath)) {
+            workspaceTools.revealWorkspaceDirectory(
+              normalizeWorkspaceReferenceDirectoryPath(relativePath),
+            );
+            return;
+          }
           workspaceTools.openWorkspaceFile(relativePath, {
             viewMode: isMarkdownPath(relativePath) ? "preview" : "edit",
           });

@@ -42,6 +42,9 @@ export type WorkspaceFilesPanelProps = {
   listExplorerChildren: (relativePath: string) => Promise<WorkspaceExplorerListResult>;
   /** 当前选中的条目；`plan` 为托管计划文件，`workspace:*` 为工作区相对路径。 */
   selectedEntryKey?: string | null;
+  /** 展开并滚动到该目录（不含末尾 `/`）。 */
+  expandDirectoryPath?: string;
+  expandDirectoryNonce?: number;
   onOpenFile?: (relativePath: string) => void;
   onOpenPlan?: () => void;
 };
@@ -51,6 +54,8 @@ export function WorkspaceFilesPanel({
   plan,
   listExplorerChildren,
   selectedEntryKey = null,
+  expandDirectoryPath = "",
+  expandDirectoryNonce = 0,
   onOpenFile,
   onOpenPlan,
 }: WorkspaceFilesPanelProps) {
@@ -86,6 +91,33 @@ export function WorkspaceFilesPanel({
     setRootOpen(true);
     void loadDir("");
   }, [workspaceRoot, loadDir]);
+
+  useEffect(() => {
+    if (!expandDirectoryPath || expandDirectoryNonce <= 0) {
+      return;
+    }
+
+    const segments = expandDirectoryPath.split("/").filter((segment) => segment.length > 0);
+    const directoriesToExpand = [""];
+    let current = "";
+    for (const segment of segments) {
+      current = current ? `${current}/${segment}` : segment;
+      directoriesToExpand.push(current);
+    }
+
+    setRootOpen(true);
+    setExpanded((previous) => {
+      const next = { ...previous };
+      for (const directory of directoriesToExpand) {
+        next[directory] = true;
+      }
+      return next;
+    });
+
+    for (const directory of directoriesToExpand) {
+      void loadDir(directory);
+    }
+  }, [expandDirectoryNonce, expandDirectoryPath, loadDir]);
 
   const onToggleDir = useCallback(
     (dirRel: string) => {

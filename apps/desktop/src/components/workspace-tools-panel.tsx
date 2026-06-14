@@ -110,6 +110,7 @@ export type WorkspaceToolsDockProps = {
   fileRevealAbsolutePath?: string;
   fileRevealScope?: EditorFileTarget["scope"];
   fileRevealViewMode?: WorkspaceEditorViewMode;
+  fileRevealDirectoryOnly?: boolean;
   prRevealNonce?: number;
   prRevealTabId?: string | null;
   prRevealRequest?: import("@/lib/workspace-pr-navigation").GitHubPullRequestRevealRequest | null;
@@ -190,6 +191,7 @@ function WorkspaceToolsDockInner({
   fileRevealAbsolutePath = "",
   fileRevealScope = "workspace",
   fileRevealViewMode = "edit",
+  fileRevealDirectoryOnly = false,
   prRevealNonce = 0,
   prRevealTabId = null,
   prRevealRequest = null,
@@ -653,6 +655,7 @@ function WorkspaceToolsDockInner({
                         fileRevealAbsolutePath={fileRevealAbsolutePath}
                         fileRevealScope={fileRevealScope}
                         fileRevealViewMode={fileRevealViewMode}
+                        fileRevealDirectoryOnly={fileRevealDirectoryOnly}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                       />
                     </div>

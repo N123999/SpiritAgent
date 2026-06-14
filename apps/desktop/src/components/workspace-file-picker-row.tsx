@@ -1,3 +1,7 @@
+import {
+  isWorkspaceReferenceDirectoryPath,
+  normalizeWorkspaceReferenceDirectoryPath,
+} from '@spirit-agent/host-internal/workspace-file-reference-query'
 import { workspaceFileBasename } from '@/lib/file-picker-path'
 import { workspaceExplorerIconForPath } from '@/lib/workspace-explorer-icon'
 import { cn } from '@/lib/utils'
@@ -8,7 +12,9 @@ type WorkspaceFilePickerRowProps = {
 }
 
 export function WorkspaceFilePickerRow({ path, tone = 'popover' }: WorkspaceFilePickerRowProps) {
-  const Icon = workspaceExplorerIconForPath(path)
+  const isDirectory = isWorkspaceReferenceDirectoryPath(path)
+  const displayPath = isDirectory ? normalizeWorkspaceReferenceDirectoryPath(path) : path
+  const Icon = workspaceExplorerIconForPath(displayPath, isDirectory ? 'dir' : 'file')
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
       <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
@@ -18,10 +24,10 @@ export function WorkspaceFilePickerRow({ path, tone = 'popover' }: WorkspaceFile
           tone === 'menu' ? 'text-foreground' : 'text-popover-foreground',
         )}
       >
-        {workspaceFileBasename(path)}
+        {workspaceFileBasename(displayPath)}
       </span>
       <span className="min-w-0 flex-1 truncate text-xs leading-6 text-muted-foreground">
-        {path}
+        {displayPath}
       </span>
     </div>
   )

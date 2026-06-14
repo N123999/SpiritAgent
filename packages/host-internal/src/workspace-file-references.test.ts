@@ -13,6 +13,7 @@ import {
 import {
   computeWorkspaceFileReferenceSuggestions,
   currentWorkspaceFileReferenceQuery,
+  deriveWorkspaceDirectoryPathsFromFiles,
   referencedWorkspaceFilePathsFromInput,
   replaceWorkspaceFileReferenceQuery,
 } from './workspace-file-reference-query.js';
@@ -72,6 +73,26 @@ test('fuzzy suggestions prioritize exact basename match', () => {
     'src/host_runtime.rs',
     'src/runtime/host_runtime.rs',
   ]);
+});
+
+test('fuzzy suggestions include directories and prioritize exact directory basename match', () => {
+  const files = [
+    'apps/desktop/src/lib/desktop-shell.ts',
+    'apps/desktop/electron/main.ts',
+    'packages/other/desktop-helper.ts',
+  ];
+
+  const suggestions = computeWorkspaceFileReferenceSuggestions('@Desktop', files);
+  assert.equal(suggestions[0], 'apps/desktop/');
+  assert.ok(suggestions.includes('apps/desktop/electron/main.ts'));
+  assert.ok(suggestions.includes('packages/other/desktop-helper.ts'));
+});
+
+test('derive workspace directory paths from indexed files', () => {
+  assert.deepEqual(
+    deriveWorkspaceDirectoryPathsFromFiles(['apps/desktop/src/main.ts', 'README.md']),
+    ['apps/', 'apps/desktop/', 'apps/desktop/src/'],
+  );
 });
 
 test('collect workspace file index respects root gitignore and default ignored dirs', async () => {

@@ -75,6 +75,7 @@ export type WorkspaceFilesTabProps = {
   fileRevealAbsolutePath?: string;
   fileRevealScope?: EditorFileTarget["scope"];
   fileRevealViewMode?: WorkspaceEditorViewMode;
+  fileRevealDirectoryOnly?: boolean;
   /** 当前打开文件名变化时通知父层，用于选项卡标题显示；无选中时传 undefined */
   onTitleChange?: (title: string | undefined) => void;
 };
@@ -98,6 +99,7 @@ export function WorkspaceFilesTab({
   fileRevealAbsolutePath = "",
   fileRevealScope = "workspace",
   fileRevealViewMode = "edit",
+  fileRevealDirectoryOnly = false,
   onTitleChange,
 }: WorkspaceFilesTabProps) {
   const { t } = useTranslation();
@@ -167,6 +169,9 @@ export function WorkspaceFilesTab({
     if (!fileRevealEnabled || autoRevealFileNonce <= 0) {
       return;
     }
+    if (fileRevealDirectoryOnly) {
+      return;
+    }
     setMarkdownViewMode(fileRevealViewMode);
     if (fileRevealScope === "external") {
       if (!fileRevealAbsolutePath) {
@@ -182,6 +187,7 @@ export function WorkspaceFilesTab({
   }, [
     autoRevealFileNonce,
     fileRevealAbsolutePath,
+    fileRevealDirectoryOnly,
     fileRevealEnabled,
     fileRevealPath,
     fileRevealScope,
@@ -375,6 +381,8 @@ export function WorkspaceFilesTab({
           plan={plan}
           listExplorerChildren={listExplorerChildren}
           selectedEntryKey={selectedEntryKey}
+          expandDirectoryPath={fileRevealDirectoryOnly ? fileRevealPath : ""}
+          expandDirectoryNonce={fileRevealDirectoryOnly ? autoRevealFileNonce : 0}
           onOpenFile={(relativePath) => {
             setMarkdownViewMode(isMarkdownPath(relativePath) ? "preview" : "edit");
             setSelectedEntry({ kind: "workspace", relativePath });

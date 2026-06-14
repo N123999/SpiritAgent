@@ -13,6 +13,7 @@ import {
 } from "@/lib/workspace-tool-tabs";
 import {
   buildOpenEditorFileNavigation,
+  resolveWorkspaceFilesTab,
   type EditorFileTarget,
   type WorkspaceEditorViewMode,
 } from "@/lib/workspace-editor-navigation";
@@ -69,6 +70,7 @@ export function useWorkspaceToolsController({
   >("workspace");
   const [workspaceFileRevealViewMode, setWorkspaceFileRevealViewMode] =
     useState<WorkspaceEditorViewMode>("edit");
+  const [workspaceFileRevealDirectoryOnly, setWorkspaceFileRevealDirectoryOnly] = useState(false);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(readWorkspaceToolsWidthPx);
   const [workspacePrRevealNonce, setWorkspacePrRevealNonce] = useState(0);
   const [workspacePrRevealTargetId, setWorkspacePrRevealTargetId] = useState<string | null>(null);
@@ -107,6 +109,7 @@ export function useWorkspaceToolsController({
     setWorkspaceFileRevealTargetId(navigation.filesTabId);
     setWorkspaceFileRevealScope(target.scope);
     setWorkspaceFileRevealViewMode(target.viewMode);
+    setWorkspaceFileRevealDirectoryOnly(false);
     if (target.scope === "workspace") {
       setWorkspaceFileRevealPath(target.relativePath);
       setWorkspaceFileRevealAbsolutePath("");
@@ -127,6 +130,22 @@ export function useWorkspaceToolsController({
     },
     [openEditorFile],
   );
+
+  const revealWorkspaceDirectory = useCallback((relativePath: string) => {
+    const navigation = resolveWorkspaceFilesTab(
+      workspaceToolTabsRef.current,
+      activeWorkspaceToolTabIdRef.current,
+    );
+    setWorkspaceToolsOpen(true);
+    setWorkspaceToolTabs(navigation.tabs);
+    setActiveWorkspaceToolTabId(navigation.activeTabId);
+    setWorkspaceFileRevealTargetId(navigation.filesTabId);
+    setWorkspaceFileRevealScope("workspace");
+    setWorkspaceFileRevealDirectoryOnly(true);
+    setWorkspaceFileRevealPath(relativePath.replace(/\/+$/u, ""));
+    setWorkspaceFileRevealAbsolutePath("");
+    setWorkspaceFileRevealNonce((value) => value + 1);
+  }, []);
 
   const openPullRequestInPrTab = useCallback((request: GitHubPullRequestRevealRequest) => {
     if (runtime.hostKind !== "electron") {
@@ -261,9 +280,11 @@ export function useWorkspaceToolsController({
     workspaceFileRevealAbsolutePath,
     workspaceFileRevealScope,
     workspaceFileRevealViewMode,
+    workspaceFileRevealDirectoryOnly,
     openBrowserUrlInNewTab,
     openEditorFile,
     openWorkspaceFile,
+    revealWorkspaceDirectory,
     openPullRequestInPrTab,
     workspacePrRevealNonce,
     workspacePrRevealTargetId,

@@ -1,5 +1,8 @@
 const DEFAULT_SUGGESTION_LIMIT = 128;
 
+/** Trailing slash marks directory entries in suggestion lists. */
+export const WORKSPACE_REFERENCE_DIRECTORY_SUFFIX = '/';
+
 export interface ActiveWorkspaceFileReferenceQuery {
   start: number;
   end: number;
@@ -79,6 +82,27 @@ export function referencedWorkspaceFilePathsFromInput(input: string): string[] {
   return paths;
 }
 
+export function isWorkspaceReferenceDirectoryPath(path: string): boolean {
+  return path.endsWith(WORKSPACE_REFERENCE_DIRECTORY_SUFFIX) && path.length > 1;
+}
+
+export function normalizeWorkspaceReferenceDirectoryPath(path: string): string {
+  return path.replace(/\/+$/u, '');
+}
+
+export function deriveWorkspaceDirectoryPathsFromFiles(files: readonly string[]): string[] {
+  const directories = new Set<string>();
+
+  for (const file of files) {
+    const segments = file.split('/').filter((segment) => segment.length > 0);
+    for (let index = 1; index < segments.length; index += 1) {
+      directories.add(`${segments.slice(0, index).join('/')}${WORKSPACE_REFERENCE_DIRECTORY_SUFFIX}`);
+    }
+  }
+
+  return Array.from(directories);
+}
+
 export function computeWorkspaceFileReferenceSuggestions(
   query: string,
   files: readonly string[],
@@ -88,8 +112,12 @@ export function computeWorkspaceFileReferenceSuggestions(
     .trim()
     .toLowerCase();
 
-  const scored = files
+  const directories = deriveWorkspaceDirectoryPathsFromFiles(files);
+  const candidates = [...directories, ...files];
+
+  const scored = candidates
     .map((path) => {
+      const isDirectory = isWorkspaceReferenceDirectoryPath(path);
       const score = scoreWorkspaceFileReferenceCandidate(needle, path);
       if (!score) {
         return undefined;
@@ -97,18 +125,28 @@ export function computeWorkspaceFileReferenceSuggestions(
 
       return {
         score: score.score,
+        isDirectory,
         basenameLength: score.basenameLength,
         pathLength: score.pathLength,
         path,
       };
     })
-    .filter((item): item is { score: number; basenameLength: number; pathLength: number; path: string } =>
-      item !== undefined,
+    .filter(
+      (
+        item,
+      ): item is {
+        score: number;
+        isDirectory: boolean;
+        basenameLength: number;
+        pathLength: number;
+        path: string;
+      } => item !== undefined,
     );
 
   scored.sort((left, right) => {
     return (
       right.score - left.score ||
+      Number(right.isDirectory) - Number(left.isDirectory) ||
       left.basenameLength - right.basenameLength ||
       left.pathLength - right.pathLength ||
       left.path.localeCompare(right.path)
@@ -200,21 +238,28 @@ function previousCodePointIndex(input: string, fromIndex: number): number {
   return previousIndex;
 }
 
+function referencePathBasename(path: string): string {
+  const normalized = normalizeWorkspaceReferenceDirectoryPath(path);
+  return normalized.split('/').at(-1) ?? normalized;
+}
+
 function scoreWorkspaceFileReferenceCandidate(
   needle: string,
   path: string,
 ): { score: number; basenameLength: number; pathLength: number } | undefined {
-  const pathLower = path.toLowerCase();
-  const basename = path.split('/').at(-1) ?? path;
+  const normalizedPath = normalizeWorkspaceReferenceDirectoryPath(path);
+  const pathLower = normalizedPath.toLowerCase();
+  const basename = referencePathBasename(path);
   const basenameLower = basename.toLowerCase();
   const basenameLength = Array.from(basename).length;
-  const pathLength = Array.from(path).length;
+  const pathLength = Array.from(normalizedPath).length;
+  const isDirectory = isWorkspaceReferenceDirectoryPath(path);
 
   if (!needle) {
-    return { score: 0, basenameLength, pathLength };
+    return { score: isDirectory ? 1 : 0, basenameLength, pathLength };
   }
   if (basenameLower === needle) {
-    return { score: 10_000, basenameLength, pathLength };
+    return { score: isDirectory ? 10_100 : 10_000, basenameLength, pathLength };
   }
   if (pathLower === needle) {
     return { score: 9_700, basenameLength, pathLength };

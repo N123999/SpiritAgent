@@ -23,10 +23,7 @@ import {
 } from "@/lib/github-pr-diff-chip-styles";
 import type { PullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { workspaceFileBasename } from "@/lib/file-picker-path";
-import {
-  WORKSPACE_FILE_CHIP_CLASS,
-  WORKSPACE_FILE_CHIP_ICON_CLASS,
-} from "@/lib/workspace-file-chip-styles";
+import { resolveWorkspaceFileChipPresentation } from "@/lib/workspace-file-chip-styles";
 import { workspaceExplorerIconForPath } from "@/lib/workspace-explorer-icon";
 import { cn } from "@/lib/utils";
 import type { ConversationMessageSnapshot } from "@/types";
@@ -45,10 +42,11 @@ function ElementCard({ tagName, url }: { tagName: string; url: string }) {
 
 function WorkspaceFileCard({ path }: { path: string }) {
   const normalized = path.replace(/\\/gu, "/");
-  const Icon = workspaceExplorerIconForPath(normalized);
+  const presentation = resolveWorkspaceFileChipPresentation(normalized);
+  const Icon = workspaceExplorerIconForPath(presentation.iconPath, presentation.iconKind);
   return (
-    <span title={normalized} className={WORKSPACE_FILE_CHIP_CLASS}>
-      <Icon className={cn("size-[10px] shrink-0", WORKSPACE_FILE_CHIP_ICON_CLASS)} aria-hidden />
+    <span title={normalized} className={presentation.chipClass}>
+      <Icon className={cn("size-[10px] shrink-0", presentation.iconClass)} aria-hidden />
       {workspaceFileBasename(normalized)}
     </span>
   );
