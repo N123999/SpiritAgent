@@ -8,8 +8,8 @@ import {
 } from '../../src/lib/process-summary-format.ts';
 
 const t = (key, options) => {
-  if (key === 'process.viewed' && options?.count === 2) {
-    return '2 Viewed';
+  if (key === 'process.explored' && options?.count === 2) {
+    return '2 Explored';
   }
   if (key === 'process.thought' && options?.count === 1) {
     return '1 Thought';
@@ -51,11 +51,11 @@ test('formatProcessGroupSummary prefers tool counts over aux rows', () => {
   ];
   const summary = formatProcessGroupSummary(
     t,
-    { ...emptyProcessToolCounts(), view: 2 },
+    { ...emptyProcessToolCounts(), explore: 2 },
     messages,
     [1, 2, 3],
   );
-  assert.equal(summary, '2 Viewed');
+  assert.equal(summary, '2 Explored');
 });
 
 test('formatProcessGroupSummary falls back to thought count when no tools', () => {

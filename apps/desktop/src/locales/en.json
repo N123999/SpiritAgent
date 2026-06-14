@@ -1065,8 +1065,8 @@
   "process": {
     "separator": ", ",
     "andMore": "and more",
-    "read_one": "1 Read",
-    "read_other": "{{count}} Read",
+    "explored_one": "1 Explored",
+    "explored_other": "{{count}} Explored",
     "viewed_one": "1 Viewed",
     "viewed_other": "{{count}} Viewed",
     "created_one": "1 Created",

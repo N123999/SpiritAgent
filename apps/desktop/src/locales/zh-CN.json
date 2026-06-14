@@ -1011,8 +1011,8 @@
   "process": {
     "separator": "，",
     "andMore": "及更多",
-    "read_one": "1 次查看",
-    "read_other": "{{count}} 次查看",
+    "explored_one": "1 次探索",
+    "explored_other": "{{count}} 次探索",
     "viewed_one": "1 次查看",
     "viewed_other": "{{count}} 次查看",
     "created_one": "1 次创建",

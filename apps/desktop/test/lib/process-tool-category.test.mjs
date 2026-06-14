@@ -10,7 +10,11 @@ import { formatProcessSummary } from '../../src/lib/process-summary-format.ts';
 import i18n from '../../src/lib/i18n.ts';
 
 test('classifyProcessToolCategory maps known tools', () => {
-  assert.equal(classifyProcessToolCategory('read_file'), 'read');
+  assert.equal(classifyProcessToolCategory('read_file'), 'explore');
+  assert.equal(classifyProcessToolCategory('grep'), 'explore');
+  assert.equal(classifyProcessToolCategory('glob'), 'explore');
+  assert.equal(classifyProcessToolCategory('list_directory_files'), 'explore');
+  assert.equal(classifyProcessToolCategory('web_fetch'), 'view');
   assert.equal(classifyProcessToolCategory('create_file'), 'create');
   assert.equal(classifyProcessToolCategory('edit_file'), 'edit');
   assert.equal(classifyProcessToolCategory('delete_file'), 'delete');
@@ -34,8 +38,7 @@ test('aggregateProcessToolCounts counts each tool once', () => {
   ]);
   assert.deepEqual(counts, {
     ...emptyProcessToolCounts(),
-    read: 1,
-    view: 1,
+    explore: 2,
     edit: 1,
   });
 });
@@ -84,12 +87,12 @@ test('formatProcessSummary: run_shell_command uses ran label', async () => {
 test('formatProcessSummary: read_file uses read label in English', async () => {
   await i18n.changeLanguage('zh-CN');
   assert.equal(
-    formatProcessSummary(i18n.t.bind(i18n), { ...emptyProcessToolCounts(), read: 1 }),
-    '1 次查看',
+    formatProcessSummary(i18n.t.bind(i18n), { ...emptyProcessToolCounts(), explore: 1 }),
+    '1 次探索',
   );
   await i18n.changeLanguage('en');
   assert.equal(
-    formatProcessSummary(i18n.t.bind(i18n), { ...emptyProcessToolCounts(), read: 2 }),
-    '2 Read',
+    formatProcessSummary(i18n.t.bind(i18n), { ...emptyProcessToolCounts(), explore: 2 }),
+    '2 Explored',
   );
 });

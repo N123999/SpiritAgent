@@ -1,7 +1,7 @@
 import type { ToolBlockSnapshot } from '@/types';
 
 export type ProcessToolCategory =
-  | 'read'
+  | 'explore'
   | 'view'
   | 'create'
   | 'edit'
@@ -15,7 +15,7 @@ export type ProcessToolCategory =
 export type ProcessToolCounts = Record<ProcessToolCategory, number>;
 
 export const PROCESS_TOOL_CATEGORY_ORDER: readonly ProcessToolCategory[] = [
-  'read',
+  'explore',
   'view',
   'create',
   'edit',
@@ -27,10 +27,15 @@ export const PROCESS_TOOL_CATEGORY_ORDER: readonly ProcessToolCategory[] = [
   'other',
 ];
 
-const VIEW_TOOLS = new Set([
+/** 过程卡片摘要：读文件 / 搜索 / 匹配 / 列目录等探索类工具统一为「探索」。 */
+const EXPLORE_TOOLS = new Set([
+  'read_file',
   'list_directory_files',
   'grep',
   'glob',
+]);
+
+const VIEW_TOOLS = new Set([
   'web_fetch',
   'web_search',
   'dream_read',
@@ -55,7 +60,7 @@ const APPLY_PATCH_DELETE = new Set(['删除', 'Delete', 'Deleting', 'Deleted']);
 
 export function emptyProcessToolCounts(): ProcessToolCounts {
   return {
-    read: 0,
+    explore: 0,
     view: 0,
     create: 0,
     edit: 0,
@@ -101,8 +106,8 @@ export function classifyProcessToolCategory(
   if (toolName === 'run_shell_command') {
     return 'run';
   }
-  if (toolName === 'read_file') {
-    return 'read';
+  if (EXPLORE_TOOLS.has(toolName)) {
+    return 'explore';
   }
   if (toolName === 'apply_patch') {
     return classifyApplyPatch(headline);
