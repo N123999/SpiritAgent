@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import { SpiritGlassLogo, spiritGlassLogoMaskStyle } from "@/components/spirit-glass-logo";
+import { syncLaunchSplashChromeToDocument } from "@/lib/desktop-shell";
 import { cn } from "@/lib/utils";
 
 const LAUNCH_LOGO_WIDTH_PX = 72;
@@ -51,16 +52,10 @@ export function LaunchSplash({ active, useMicaBackdrop = false }: LaunchSplashPr
     return () => window.clearTimeout(id);
   }, [phase]);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (phase === "gone") {
-      root.classList.remove("spirit-launch-splash-active", "spirit-launch-splash-exiting");
-      return;
-    }
-    root.classList.add("spirit-launch-splash-active");
-    root.classList.toggle("spirit-launch-splash-exiting", phase === "leaving");
+  useLayoutEffect(() => {
+    syncLaunchSplashChromeToDocument(phase);
     return () => {
-      root.classList.remove("spirit-launch-splash-active", "spirit-launch-splash-exiting");
+      syncLaunchSplashChromeToDocument("gone");
     };
   }, [phase]);
 

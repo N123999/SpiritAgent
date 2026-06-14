@@ -53,8 +53,27 @@ export function applyDesktopNativeChromeToDocument(): void {
   }
   const root = document.documentElement;
   const native = isElectronChrome();
+  const mica = native && readStoredNativeBackdropBlur();
   root.classList.toggle("spirit-desktop-native", native);
-  root.classList.toggle("spirit-desktop-mica", native && readStoredNativeBackdropBlur());
+  root.classList.toggle("spirit-desktop-mica", mica);
+  // 与 LaunchSplash 同步：首帧即隐藏 Mica 下的主布局，避免 useEffect 前闪白。
+  root.classList.toggle("spirit-launch-splash-active", mica);
+}
+
+/** LaunchSplash 挂载/卸载时同步 html 上的启动层 class（须与 styles.css 规则一致）。 */
+export function syncLaunchSplashChromeToDocument(
+  phase: "running" | "leaving" | "gone",
+): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  const root = document.documentElement;
+  if (phase === "gone") {
+    root.classList.remove("spirit-launch-splash-active", "spirit-launch-splash-exiting");
+    return;
+  }
+  root.classList.add("spirit-launch-splash-active");
+  root.classList.toggle("spirit-launch-splash-exiting", phase === "leaving");
 }
 
 /** 当前宿主是否为 macOS（Electron preload 注入的平台值）。 */
