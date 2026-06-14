@@ -1,0 +1,71 @@
+import { useCallback, useRef, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
+
+import {
+  TextSelectionActionMenu,
+  TextSelectionActionMenuItem,
+} from "@/components/text-selection-action-menu";
+import { useTerminalSelectionActionMenu } from "@/hooks/use-terminal-selection-action-menu";
+import type { TerminalSnippetAttachment } from "@/lib/terminal-snippet-attachment";
+import type { Terminal } from "@xterm/xterm";
+
+function TerminalSelectionMenu({
+  containerRef,
+  terminalRef,
+  terminalDisplayName,
+  onTerminalAddToSession,
+}: {
+  containerRef: RefObject<HTMLElement | null>;
+  terminalRef: RefObject<Terminal | null>;
+  terminalDisplayName: string;
+  onTerminalAddToSession?: (attachment: TerminalSnippetAttachment) => void;
+}) {
+  const { t } = useTranslation();
+  const enabled = Boolean(onTerminalAddToSession);
+  const { open, setOpen, anchor, selectionText, lineRange, dismiss } = useTerminalSelectionActionMenu({
+    enabled,
+    containerRef,
+    terminalRef,
+  });
+
+  const handleAddToSession = useCallback(() => {
+    const term = terminalRef.current;
+    if (!term || !onTerminalAddToSession) {
+      dismiss();
+      return;
+    }
+
+    const selectedText = term.getSelection();
+    if (!selectedText.trim()) {
+      dismiss();
+      return;
+    }
+
+    const range = lineRange ?? { lineStart: 0, lineEnd: 0 };
+    const attachment: TerminalSnippetAttachment = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      terminalName: terminalDisplayName,
+      lineStart: range.lineStart,
+      lineEnd: range.lineEnd,
+      selectedText,
+    };
+    onTerminalAddToSession(attachment);
+    dismiss();
+    term.clearSelection();
+  }, [dismiss, lineRange, onTerminalAddToSession, terminalDisplayName, terminalRef]);
+
+  if (!enabled) {
+    return null;
+  }
+
+  return (
+    <TextSelectionActionMenu open={open && Boolean(selectionText.trim())} anchor={anchor} onOpenChange={setOpen}>
+      <TextSelectionActionMenuItem
+        label={t("workspace.prAddDiffToSession")}
+        onSelect={handleAddToSession}
+      />
+    </TextSelectionActionMenu>
+  );
+}
+
+export { TerminalSelectionMenu };

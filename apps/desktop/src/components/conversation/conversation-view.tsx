@@ -140,6 +140,9 @@ export type WorkspaceToolsSectionProps = {
   onPrDiffAddToSession?: NonNullable<
     ComponentProps<typeof WorkspaceToolsDock>["onPrDiffAddToSession"]
   >;
+  onTerminalAddToSession?: NonNullable<
+    ComponentProps<typeof WorkspaceToolsDock>["onTerminalAddToSession"]
+  >;
   onBrowserOpenInNewTab: (rawUrl: string) => void;
   browserTabEnabled: boolean;
   prTabEnabled: boolean;
@@ -378,6 +381,7 @@ export function ConversationView({
           onActiveTabIdChange={workspaceTools.onActiveWorkspaceToolTabIdChange}
           onBrowserElementPicked={workspaceTools.onBrowserElementPicked}
           onPrDiffAddToSession={workspaceTools.onPrDiffAddToSession}
+          onTerminalAddToSession={workspaceTools.onTerminalAddToSession}
           onBrowserOpenInNewTab={workspaceTools.onBrowserOpenInNewTab}
           browserTabEnabled={workspaceTools.browserTabEnabled}
           prTabEnabled={workspaceTools.prTabEnabled}

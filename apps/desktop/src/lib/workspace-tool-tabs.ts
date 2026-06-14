@@ -83,6 +83,24 @@ export function workspaceToolTabLabel(
   return `${base} ${index + 1}`;
 }
 
+/** Chip 显示名：优先 OSC 终端标题，否则 i18n 默认 Terminal（多 tab 加序号）。 */
+export function workspaceTerminalChipDisplayName(
+  tab: WorkspaceToolTab,
+  tabs: readonly WorkspaceToolTab[],
+  translate: (key: string) => string,
+): string {
+  const titled = tab.tabTitle?.trim();
+  if (titled) {
+    return titled;
+  }
+  const index = tabs.filter((item) => item.kind === "shell").findIndex((item) => item.id === tab.id);
+  const base = translate("workspace.terminalChipDefaultName");
+  if (index <= 0) {
+    return base;
+  }
+  return `${base} ${index + 1}`;
+}
+
 export function focusFirstTabOfKind(
   tabs: readonly WorkspaceToolTab[],
   kind: WorkspaceToolTabKind,

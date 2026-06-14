@@ -22,6 +22,7 @@ import {
 } from "@/lib/composer-direct-media";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
+import type { TerminalSnippetAttachment } from "@/lib/terminal-snippet-attachment";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import type { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
@@ -558,6 +559,11 @@ export function useComposerController({
     composerRichInputRef.current?.focus();
   }, []);
 
+  const handleTerminalAddToSession = useCallback((attachment: TerminalSnippetAttachment) => {
+    composerRichInputRef.current?.insertTerminalSnippet(attachment);
+    composerRichInputRef.current?.focus();
+  }, []);
+
   const pickLocalFileFromPalette = useCallback(() => {
     void runtime.pickLocalFile().then((filePath) => {
       if (!filePath) {
@@ -877,6 +883,7 @@ export function useComposerController({
     removeLocalFileAttachment,
     handleBrowserElementPicked,
     handlePrDiffAddToSession,
+    handleTerminalAddToSession,
     pickLocalFileFromPalette,
     handleComposerPaste,
     submitComposerMessage,

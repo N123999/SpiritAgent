@@ -52,6 +52,7 @@ import type {
 import {
   addWorkspaceToolTab,
   closeWorkspaceToolTab,
+  workspaceTerminalChipDisplayName,
   workspaceToolTabLabel,
   type WorkspaceToolTab,
   type WorkspaceToolTabKind,
@@ -121,6 +122,9 @@ export type WorkspaceToolsDockProps = {
   onActiveTabIdChange(id: string): void;
   onBrowserElementPicked?: WorkspaceBrowserTabProps['onElementPicked'];
   onPrDiffAddToSession?: (attachment: import("@/lib/pr-diff-attachment").PrDiffAttachment) => void;
+  onTerminalAddToSession?: (
+    attachment: import("@/lib/terminal-snippet-attachment").TerminalSnippetAttachment,
+  ) => void;
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
   browserTabEnabled?: boolean;
@@ -202,6 +206,7 @@ function WorkspaceToolsDockInner({
   onActiveTabIdChange,
   onBrowserElementPicked,
   onPrDiffAddToSession,
+  onTerminalAddToSession,
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   prTabEnabled = false,
@@ -666,6 +671,8 @@ function WorkspaceToolsDockInner({
                           workspaceRoot={workspaceRoot}
                           useMicaBackdrop={useMicaBackdrop}
                           onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                          terminalDisplayName={workspaceTerminalChipDisplayName(item, tabs, t)}
+                          onTerminalAddToSession={onTerminalAddToSession}
                           suspendTerminalResize={isResizing}
                         />
                       </div>

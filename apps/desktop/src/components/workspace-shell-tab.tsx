@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import "@xterm/xterm/css/xterm.css";
 
 import { Button } from "@/components/ui/button";
+import { TerminalSelectionMenu } from "@/components/workspace-terminal-selection-menu";
 import { createWorkspaceTerminalSession } from "@/lib/workspace-xterm";
 import { desktopMicaTerminalTintClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,11 @@ export type WorkspaceShellTabProps = {
   workspaceRoot: string;
   /** 终端标题变化时通知父层（来自 OSC 0/2 序列）；无标题时传 undefined */
   onTitleChange?: (title: string | undefined) => void;
+  /** Chip 与菜单展示用的终端名称（OSC 标题或默认 Terminal 标签）。 */
+  terminalDisplayName?: string;
+  onTerminalAddToSession?: (
+    attachment: import("@/lib/terminal-snippet-attachment").TerminalSnippetAttachment,
+  ) => void;
   /** 侧栏连续拖拽调整宽度时为 true，暂停终端 fit 直至松手。 */
   suspendTerminalResize?: boolean;
   /** Windows 云母 / macOS Vibrancy：终端保留较高不透明度以保证 ANSI 可读性。 */
@@ -22,6 +28,8 @@ export type WorkspaceShellTabProps = {
 export function WorkspaceShellTab({
   workspaceRoot,
   onTitleChange,
+  terminalDisplayName = "Terminal",
+  onTerminalAddToSession,
   suspendTerminalResize = false,
   useMicaBackdrop = false,
 }: WorkspaceShellTabProps) {
@@ -102,7 +110,7 @@ export function WorkspaceShellTab({
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden">
       {embedError ? (
         <div className="flex shrink-0 flex-col gap-2">
           <p className="text-xs text-destructive">{embedError}</p>
@@ -131,6 +139,12 @@ export function WorkspaceShellTab({
           desktopMicaTerminalTintClass(useMicaBackdrop),
           embedError ? "hidden" : "block",
         )}
+      />
+      <TerminalSelectionMenu
+        containerRef={containerRef}
+        terminalRef={termRef}
+        terminalDisplayName={terminalDisplayName}
+        onTerminalAddToSession={onTerminalAddToSession}
       />
     </div>
   );
