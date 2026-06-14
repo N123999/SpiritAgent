@@ -5,7 +5,7 @@ import {
   TextSelectionActionMenu,
   TextSelectionActionMenuItem,
 } from "@/components/text-selection-action-menu";
-import { useTerminalSelectionActionMenu } from "@/hooks/use-terminal-selection-action-menu";
+import { useTerminalSelectionActionMenu, readTerminalSelectionLineRange } from "@/hooks/use-terminal-selection-action-menu";
 import type { TerminalSnippetAttachment } from "@/lib/terminal-snippet-attachment";
 import type { Terminal } from "@xterm/xterm";
 
@@ -41,7 +41,7 @@ function TerminalSelectionMenu({
       return;
     }
 
-    const range = lineRange ?? { lineStart: 0, lineEnd: 0 };
+    const range = readTerminalSelectionLineRange(term) ?? lineRange ?? { lineStart: 0, lineEnd: 0 };
     const attachment: TerminalSnippetAttachment = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       terminalName: terminalDisplayName,
