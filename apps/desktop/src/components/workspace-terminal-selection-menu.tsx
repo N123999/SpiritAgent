@@ -41,12 +41,12 @@ function TerminalSelectionMenu({
       return;
     }
 
-    const range = readTerminalSelectionLineRange(term) ?? lineRange ?? { lineStart: 0, lineEnd: 0 };
+    const range = readTerminalSelectionLineRange(term) ?? lineRange;
     const attachment: TerminalSnippetAttachment = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       terminalName: terminalDisplayName,
-      lineStart: range.lineStart,
-      lineEnd: range.lineEnd,
+      lineStart: range?.lineStart ?? 0,
+      lineEnd: range?.lineEnd ?? 0,
       selectedText,
     };
     onTerminalAddToSession(attachment);
