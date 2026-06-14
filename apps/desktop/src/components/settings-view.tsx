@@ -18,6 +18,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DesktopFormInput } from "@/components/ui/desktop-form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,7 +52,6 @@ import {
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
 import {
   DESKTOP_FORM_FIELD_TRIGGER_INNER,
-  DESKTOP_FORM_INPUT_INNER,
   DESKTOP_FORM_INPUT_SHELL,
 } from "@/lib/desktop-chrome";
 import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
@@ -477,17 +477,6 @@ function modelDefaultActionLabel(roles: readonly ModelDefaultRole[]): string {
   }
 
   return i18n.t('settings.selectDefaultRole');
-}
-
-function ProviderFormInput({
-  className,
-  ...props
-}: ComponentProps<typeof Input>) {
-  return (
-    <div className={DESKTOP_FORM_INPUT_SHELL}>
-      <Input className={cn(DESKTOP_FORM_INPUT_INNER, className)} {...props} />
-    </div>
-  );
 }
 
 function ModelCapabilitiesCombobox({
@@ -3367,7 +3356,7 @@ function ModelsSettingsPanel({
             <DialogDescription>{t('settings.selectProviderDescription')}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
-            <ProviderFormInput
+            <DesktopFormInput
               value={providerQuery}
               onChange={(e) => setProviderQuery(e.target.value)}
               placeholder={t('common.search')}
@@ -3487,7 +3476,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" && customConnectMode === "single" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-model-name">{t('settings.modelName')}</Label>
-                <ProviderFormInput
+                <DesktopFormInput
                   id="connect-model-name"
                   value={connectName}
                   onChange={(e) => setConnectName(e.target.value)}
@@ -3509,7 +3498,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" && customConnectMode === "single" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-context-length">{t('settings.contextLength')}</Label>
-                <ProviderFormInput
+                <DesktopFormInput
                   id="connect-context-length"
                   type="number"
                   min={1}
@@ -3524,7 +3513,7 @@ function ModelsSettingsPanel({
             {selectedProvider === "custom" ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-base">{t('settings.endpoint')}</Label>
-                <ProviderFormInput
+                <DesktopFormInput
                   id="connect-api-base"
                   value={connectApiBase}
                   onChange={(e) => setConnectApiBase(e.target.value)}
@@ -3538,7 +3527,7 @@ function ModelsSettingsPanel({
             ) : null}
             <div className="grid gap-2">
               <Label htmlFor="connect-api-key">API Key</Label>
-              <ProviderFormInput
+              <DesktopFormInput
                 id="connect-api-key"
                 type="password"
                 value={connectApiKey}
