@@ -35,7 +35,7 @@ function PrConversationTimelineSkeletonRow({
       </div>
       <div className="mt-2 flex min-w-0">
         <div className={TIMELINE_COMMENT_CARD_INDENT_CLASS} aria-hidden />
-        <div className="min-w-0 flex-1 space-y-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 shadow-sm">
+        <div className="min-w-0 flex-1 space-y-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2">
           {cardLines.map((widthClass, index) => (
             <PrSkeletonBlock key={index} className={cn("h-3", widthClass)} />
           ))}
