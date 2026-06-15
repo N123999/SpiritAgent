@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useHostApi } from "@/hooks/useHostApi";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
+import { evictRecordKeysUnderPrefix } from "@/lib/workspace-entry-path-sync";
 import { cn } from "@/lib/utils";
 import type { PlanSnapshot, WorkspaceExplorerEntry, WorkspaceExplorerListResult } from "@/types";
 
@@ -319,6 +320,11 @@ export function WorkspaceFilesPanel({
     [listExplorerChildren],
   );
 
+  const evictExplorerPathPrefix = useCallback((prefixRel: string) => {
+    setCache((current) => evictRecordKeysUnderPrefix(current, prefixRel));
+    setExpanded((current) => evictRecordKeysUnderPrefix(current, prefixRel));
+  }, []);
+
   const loadDir = useCallback(
     async (rel: string) => {
       setCache((c) => ({ ...c, [rel]: { status: "loading" } }));
@@ -431,6 +437,7 @@ export function WorkspaceFilesPanel({
         ? renamingPath.slice(0, renamingPath.lastIndexOf("/"))
         : "";
       invalidateDir(parentRel);
+      evictExplorerPathPrefix(renamingPath);
       onWorkspaceEntryRenamed?.(renamingPath, result.relativePath);
       handleRenameCancel();
     } catch (error) {
@@ -441,6 +448,7 @@ export function WorkspaceFilesPanel({
   }, [
     api,
     handleRenameCancel,
+    evictExplorerPathPrefix,
     invalidateDir,
     onWorkspaceEntryRenamed,
     renameValue,
@@ -463,6 +471,7 @@ export function WorkspaceFilesPanel({
         ? target.relativePath.slice(0, target.relativePath.lastIndexOf("/"))
         : "";
       invalidateDir(parentRel);
+      evictExplorerPathPrefix(target.relativePath);
       onWorkspaceEntryDeleted?.(target.relativePath);
       setDeleteTarget(null);
     } catch (error) {
@@ -472,7 +481,7 @@ export function WorkspaceFilesPanel({
     } finally {
       setDeleteBusy(false);
     }
-  }, [api, deleteTarget, invalidateDir, onWorkspaceEntryDeleted]);
+  }, [api, deleteTarget, evictExplorerPathPrefix, invalidateDir, onWorkspaceEntryDeleted]);
 
   const handleForceDelete = useCallback(async () => {
     const target = forceDeleteTarget;
@@ -486,6 +495,7 @@ export function WorkspaceFilesPanel({
         ? target.relativePath.slice(0, target.relativePath.lastIndexOf("/"))
         : "";
       invalidateDir(parentRel);
+      evictExplorerPathPrefix(target.relativePath);
       onWorkspaceEntryDeleted?.(target.relativePath);
       setForceDeleteTarget(null);
       setForceDeleteReason("");
@@ -494,7 +504,7 @@ export function WorkspaceFilesPanel({
     } finally {
       setForceDeleteBusy(false);
     }
-  }, [api, forceDeleteTarget, invalidateDir, onWorkspaceEntryDeleted]);
+  }, [api, evictExplorerPathPrefix, forceDeleteTarget, invalidateDir, onWorkspaceEntryDeleted]);
 
   const handleAddToSession = useCallback(
     (target: WorkspaceExplorerContextTarget) => {
@@ -527,6 +537,7 @@ export function WorkspaceFilesPanel({
         : "";
       invalidateDir(sourceParent);
       invalidateDir(pending.targetDirectoryRel);
+      evictExplorerPathPrefix(pending.sourceRelativePath);
       onWorkspaceEntryMoved?.(pending.sourceRelativePath, result.relativePath);
       setMoveTarget(null);
     } catch (error) {
@@ -535,7 +546,7 @@ export function WorkspaceFilesPanel({
     } finally {
       setMoveBusy(false);
     }
-  }, [api, invalidateDir, moveTarget, onWorkspaceEntryMoved]);
+  }, [api, evictExplorerPathPrefix, invalidateDir, moveTarget, onWorkspaceEntryMoved]);
 
   const handleDragStart = useCallback(
     (event: DragEvent<HTMLButtonElement>, target: WorkspaceExplorerContextTarget) => {

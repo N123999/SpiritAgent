@@ -33,3 +33,29 @@ export function remapWorkspaceEntryPath(
   const suffix = current.slice(oldP.length);
   return `${newP}${suffix}`;
 }
+
+/** 从 keyed-by-relative-dir 的记录中移除 prefix 及其子路径键。 */
+export function evictRecordKeysUnderPrefix<T>(
+  record: Record<string, T>,
+  prefixRel: string,
+): Record<string, T> {
+  const prefix = normalizeWorkspaceEntryRel(prefixRel);
+  const shouldEvict = (key: string): boolean => {
+    const normalized = normalizeWorkspaceEntryRel(key);
+    if (normalized === prefix) {
+      return true;
+    }
+    if (prefix === "") {
+      return normalized !== "";
+    }
+    return normalized.startsWith(`${prefix}/`);
+  };
+
+  const next: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!shouldEvict(key)) {
+      next[key] = value;
+    }
+  }
+  return next;
+}
