@@ -575,7 +575,6 @@ type WorkspaceListNavProps = {
   deleteWorkspaceBusy?: boolean;
   deleteSessionBusy?: boolean;
   onContextMenuCapture(event: MouseEvent<HTMLElement>): void;
-  onContextMenuOpenChange(open: boolean): void;
   onRequestDeleteWorkspace(group: SessionWorkspaceGroup): void;
   onRequestDeleteSession(session: SessionListItem): void;
   children: ReactNode;
@@ -591,7 +590,6 @@ function WorkspaceListNav({
   deleteWorkspaceBusy,
   deleteSessionBusy,
   onContextMenuCapture,
-  onContextMenuOpenChange,
   onRequestDeleteWorkspace,
   onRequestDeleteSession,
   children,
@@ -617,8 +615,10 @@ function WorkspaceListNav({
   const sessionTarget = contextMenuSession ?? contextMenuSessionRef.current;
   const sessionBusy = sessionTarget?.isBusy === true;
 
+  // 不在 onOpenChange(false) 清 target：Radix exit 动画（duration-100）未结束时 Content 仍挂载，
+  // 立刻清空会让 isWorkspaceTarget 变 false，退场末帧闪成「删除会话」。capture / 删除确认时再更新即可。
   return (
-    <ContextMenu onOpenChange={onContextMenuOpenChange}>
+    <ContextMenu>
       <ContextMenuTrigger asChild>{inner}</ContextMenuTrigger>
       <ContextMenuContent aria-label={isWorkspaceTarget ? t("sidebar.workspaceActions") : t("sidebar.sessionActions")}>
         {isWorkspaceTarget && canDeleteWorkspace ? (
@@ -927,15 +927,6 @@ function SessionSidebarInner({
     },
     [sessionByPath, workspaceGroupById],
   );
-
-  const handleWorkspaceContextMenuOpenChange = useCallback((open: boolean) => {
-    if (!open) {
-      contextMenuWorkspaceGroupRef.current = null;
-      setContextMenuWorkspaceGroup(null);
-      contextMenuSessionRef.current = null;
-      setContextMenuSession(null);
-    }
-  }, []);
 
   const handleWorkspaceContextMenuDelete = useCallback((group: SessionWorkspaceGroup) => {
     contextMenuWorkspaceGroupRef.current = null;
@@ -1313,7 +1304,6 @@ function SessionSidebarInner({
                     deleteWorkspaceBusy={deleteWorkspaceBusy}
                     deleteSessionBusy={deleteSessionBusy}
                     onContextMenuCapture={handleWorkspaceContextMenuCapture}
-                    onContextMenuOpenChange={handleWorkspaceContextMenuOpenChange}
                     onRequestDeleteWorkspace={handleWorkspaceContextMenuDelete}
                     onRequestDeleteSession={handleContextMenuDelete}
                   >
