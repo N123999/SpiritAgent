@@ -570,6 +570,15 @@ export function useComposerController({
     composerRichInputRef.current?.focus();
   }, []);
 
+  const handleWorkspaceFileAddToSession = useCallback(
+    (relativePath: string) => {
+      ensureConversationSurface();
+      composerRichInputRef.current?.insertWorkspaceFileAtCaret(relativePath);
+      composerRichInputRef.current?.focus();
+    },
+    [ensureConversationSurface],
+  );
+
   const pickLocalFileFromPalette = useCallback(() => {
     void runtime.pickLocalFile().then((filePath) => {
       if (!filePath) {
@@ -891,6 +900,7 @@ export function useComposerController({
     handlePrDiffAddToSession,
     handleTerminalAddToSession,
     handleFileSnippetAddToSession,
+    handleWorkspaceFileAddToSession,
     pickLocalFileFromPalette,
     handleComposerPaste,
     submitComposerMessage,

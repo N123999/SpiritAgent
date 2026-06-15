@@ -22,6 +22,7 @@ import {
   caretToPlainTextOffset,
   replaceSkillSlashQueryInSegments,
   replaceWorkspaceFileReferenceInSegments,
+  normalizeWorkspaceFilePath,
   type ActiveSkillSlashQuery,
   type ActiveWorkspaceFileReferenceQuery,
 } from "@/lib/composer-segment-model";
@@ -131,6 +132,7 @@ export type ComposerRichInputHandle = {
     query: ActiveWorkspaceFileReferenceQuery,
     finalize?: boolean,
   ): void;
+  insertWorkspaceFileAtCaret(path: string): void;
   insertLoopChip(options?: InsertLoopChipOptions): void;
   removeLoopChip(): void;
   insertPlanChip(options?: InsertAgentModeChipOptions): void;
@@ -464,6 +466,28 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments],
     );
 
+    const insertWorkspaceFileAtCaret = useCallback(
+      (path: string) => {
+        const div = divRef.current;
+        if (!div) {
+          return;
+        }
+        div.focus();
+        const current = segmentsRef.current;
+        const caret =
+          selectionToCaret(div, current) ?? {
+            segmentIndex: current.length - 1,
+            offset: segmentsToPlainText(current).length,
+          };
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(current, caret, {
+          kind: "workspaceFile",
+          path: normalizeWorkspaceFilePath(path),
+        });
+        commitSegments(next, nextCaret);
+      },
+      [commitSegments],
+    );
+
     const replaceSkillSlashQuery = useCallback(
       (query: ActiveSkillSlashQuery, replacement: string, finalize = false) => {
         const div = divRef.current;
@@ -676,6 +700,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertTerminalSnippet,
         insertFileSnippet,
         insertWorkspaceFileReference,
+        insertWorkspaceFileAtCaret,
         insertLoopChip,
         removeLoopChip,
         insertPlanChip,

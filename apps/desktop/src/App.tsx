@@ -558,6 +558,7 @@ export default function App() {
               onPrDiffAddToSession: composer.handlePrDiffAddToSession,
               onTerminalAddToSession: composer.handleTerminalAddToSession,
               onFileSnippetAddToSession: composer.handleFileSnippetAddToSession,
+              onWorkspaceFileAddToSession: composer.handleWorkspaceFileAddToSession,
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
               prTabEnabled: workspaceTools.prTabEnabled,
