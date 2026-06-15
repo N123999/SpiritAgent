@@ -57,26 +57,7 @@ function activeTurnHasAssistantBodyText(messages: readonly ConversationMessageSn
   return findLastAssistantBodyTextIndexInTurn(messages, messages.length - 1) !== null;
 }
 
-function resolveContinueToolbarHostIndex(
-  messages: readonly ConversationMessageSnapshot[],
-  lastUser: number,
-  lastIndexInTurn: number,
-  continuableMessage: ConversationMessageSnapshot,
-): number {
-  const bodyHost = findLastAssistantBodyTextIndexInTurn(messages, lastIndexInTurn);
-  if (bodyHost !== null) {
-    return bodyHost;
-  }
-  for (let index = lastUser + 1; index <= lastIndexInTurn; index += 1) {
-    const message = messages[index];
-    if (message?.id === continuableMessage.id) {
-      return index;
-    }
-  }
-  return lastIndexInTurn;
-}
-
-/** Continue 应显示在当前轮最后一条 assistant 正文之后；无正文时挂在可继续的 thinking/tool 行。 */
+/** Continue / Fork 工具栏挂在当前轮最后一条 assistant 行（正文、tool、thinking 等）之后。 */
 export function resolveTurnContinuePresentation(
   messages: readonly ConversationMessageSnapshot[],
 ): TurnContinuePresentation | undefined {
@@ -104,12 +85,7 @@ export function resolveTurnContinuePresentation(
 
   return {
     continuableMessage,
-    showContinueAtIndex: resolveContinueToolbarHostIndex(
-      messages,
-      lastUser,
-      lastIndexInTurn,
-      continuableMessage,
-    ),
+    showContinueAtIndex: lastIndexInTurn,
   };
 }
 
@@ -126,11 +102,11 @@ export function shouldShowContinueToolbarOnProcessGroup(
   if (activeTurnHasAssistantBodyText(messages)) {
     return false;
   }
-  const continuableIndex = messages.findIndex(
-    (message) => message.id === turnContinue.continuableMessage.id,
+  const continuableInGroup = messageIndices.some(
+    (index) => messages[index]?.id === turnContinue.continuableMessage.id,
   );
-  if (continuableIndex < 0 || !messageIndices.includes(continuableIndex)) {
+  if (!continuableInGroup) {
     return false;
   }
-  return turnContinue.showContinueAtIndex === continuableIndex;
+  return messageIndices.includes(turnContinue.showContinueAtIndex);
 }

@@ -6,7 +6,7 @@ import {
   shouldShowContinueToolbarOnProcessGroup,
 } from '../../src/lib/conversation-continue-ui.ts';
 
-test('resolveTurnContinuePresentation anchors Continue on thinking when turn has no body text', () => {
+test('resolveTurnContinuePresentation anchors Continue on last assistant row when tools follow thinking', () => {
   const messages = [
     { id: 1, role: 'user', content: 'hi', pending: false },
     { id: 2, role: 'assistant', content: '', pending: false, canContinue: true, aux: { thinking: 'plan' } },
@@ -16,7 +16,25 @@ test('resolveTurnContinuePresentation anchors Continue on thinking when turn has
   const resolved = resolveTurnContinuePresentation(messages);
   assert.ok(resolved);
   assert.equal(resolved.continuableMessage.id, 2);
-  assert.equal(resolved.showContinueAtIndex, 1);
+  assert.equal(resolved.showContinueAtIndex, 3);
+});
+
+test('resolveTurnContinuePresentation anchors Continue on last row when timeline rows share message id', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'hi', pending: false },
+    { id: 1, role: 'assistant', content: '', pending: false, aux: { thinking: 'plan' } },
+    {
+      id: 1,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      canContinue: true,
+      tool: { toolName: 'run_shell_command', phase: 'failed', headline: 'x', detailLines: [] },
+    },
+  ];
+  const resolved = resolveTurnContinuePresentation(messages);
+  assert.ok(resolved);
+  assert.equal(resolved.showContinueAtIndex, 2);
 });
 
 test('resolveTurnContinuePresentation keeps Continue on last assistant body when present', () => {

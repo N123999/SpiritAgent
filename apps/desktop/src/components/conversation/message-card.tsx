@@ -345,20 +345,6 @@ export function MessageCard({
           </div>
           )
         ) : null}
-        {showTurnActions ? (
-          <MessageTurnActions
-            showContinueButton={showContinueButton}
-            continueTarget={continueTarget}
-            continueBusy={continueBusy}
-            onContinue={onContinue}
-            canFork={showForkMenu && Boolean(onForkMessage)}
-            forkEnabled={canFork}
-            forkMenuAlwaysVisible={forkMenuAlwaysVisible}
-            forkMenuHoverRevealed={forkMenuHoverRevealed}
-            forkBusy={forkBusy}
-            onFork={() => onForkMessage?.(message, listIndex)}
-          />
-        ) : null}
         {!isUser && message.aux?.finishTaskNotice ? (
           <p className="text-xs leading-relaxed text-muted-foreground">
             {message.aux.finishTaskNotice}
@@ -373,6 +359,20 @@ export function MessageCard({
             saveLocalImageAs={saveLocalImageAs}
             onOpenSubagentViewer={onOpenSubagentViewer}
             onAbortShell={onAbortShell}
+          />
+        ) : null}
+        {showTurnActions ? (
+          <MessageTurnActions
+            showContinueButton={showContinueButton}
+            continueTarget={continueTarget}
+            continueBusy={continueBusy}
+            onContinue={onContinue}
+            canFork={showForkMenu && Boolean(onForkMessage)}
+            forkEnabled={canFork}
+            forkMenuAlwaysVisible={forkMenuAlwaysVisible}
+            forkMenuHoverRevealed={forkMenuHoverRevealed}
+            forkBusy={forkBusy}
+            onFork={() => onForkMessage?.(message, listIndex)}
           />
         ) : null}
       </div>
