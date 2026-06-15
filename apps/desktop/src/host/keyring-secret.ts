@@ -95,10 +95,11 @@ export function setKeyringPassword(service: string, account: string, password: s
     return;
   }
 
-  new Entry(service, account).setPassword(buildShardedKeyringPrimary(chunks.length));
+  // 先写分片再写 primary 标记，避免崩溃后 primary 指向缺失 shard。
   for (let index = 0; index < chunks.length; index += 1) {
     new Entry(service, shardKeyringAccount(account, index)).setPassword(chunks[index]!);
   }
+  new Entry(service, account).setPassword(buildShardedKeyringPrimary(chunks.length));
 }
 
 export function deleteKeyringPassword(service: string, account: string): void {
