@@ -181,12 +181,15 @@ function ExplorerRow({
 
   const rowClassName = cn(
     "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
-    ignored ? "text-muted-foreground/60" : "text-foreground/90",
-    "hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+    "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
     selected && "bg-foreground/[0.08] dark:bg-foreground/12",
     dropHighlight && "bg-primary/15 ring-1 ring-primary/40",
   );
-  const iconClassName = cn("size-3.5 shrink-0", ignored ? "opacity-40" : "opacity-70");
+  const labelClassName = cn(
+    "min-w-0 truncate",
+    ignored && "text-foreground/60",
+  );
+  const iconClassName = "size-3.5 shrink-0 opacity-70";
   const rowStyle = { paddingLeft: `${depth * 12 + 4}px` };
 
   const renameInput = (
@@ -230,7 +233,7 @@ function ExplorerRow({
     >
       {leading}
       <Icon className={iconClassName} aria-hidden />
-      <span className="min-w-0 truncate">{target.name}</span>
+      <span className={labelClassName}>{target.name}</span>
     </button>
   );
 
@@ -737,10 +740,7 @@ export function WorkspaceFilesPanel({
           const Icon = workspaceExplorerIcon(entry.name, entry.kind);
           const open = isDir && expanded[childRel] === true;
           const ignored = entry.ignored === true;
-          const chevronClassName = cn(
-            "size-3.5 shrink-0",
-            ignored ? "opacity-40" : "opacity-60",
-          );
+          const chevronClassName = "size-3.5 shrink-0 opacity-60";
           const target: WorkspaceExplorerContextTarget = {
             relativePath: childRel,
             kind: entry.kind,
