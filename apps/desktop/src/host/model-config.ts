@@ -13,6 +13,8 @@ import {
   listProviderModels,
   resolveProviderConnectApiBase,
   bedrockApiBaseFromRegion,
+  bedrockMantleApiBaseFromRegion,
+  isBedrockMantleOpenAiModel,
   type ProviderListedModelEntry,
 } from '@spirit-agent/host-internal';
 
@@ -49,11 +51,14 @@ import {
 export { resolveComposerDirectMediaTool, type DirectMediaTool };
 
 export function resolveProfileApiBase(
-  profile: Pick<ModelProfileSnapshot, 'provider' | 'transportKind' | 'apiBase' | 'awsRegion'>,
+  profile: Pick<ModelProfileSnapshot, 'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion'>,
 ): string {
   if (profile.provider === 'amazon-bedrock') {
     const region = profile.awsRegion?.trim();
     if (region) {
+      if (isBedrockMantleOpenAiModel(profile.name)) {
+        return bedrockMantleApiBaseFromRegion(region);
+      }
       return bedrockApiBaseFromRegion(region);
     }
   }
@@ -143,6 +148,55 @@ export function buildPrimaryTransportConfig(input: {
 }): LlmTransportConfig {
   const spiritAgentMode = input.agentMode ?? 'agent';
   const transportKind = resolveDesktopTransportKind(input.profile);
+
+  if (
+    input.profile?.provider === 'amazon-bedrock'
+    && isBedrockMantleOpenAiModel(input.model)
+  ) {
+    const region = input.profile.awsRegion?.trim();
+    if (!region) {
+      throw new Error('Amazon Bedrock 模型缺少 AWS 区域配置。');
+    }
+    const bedrockCredentials = input.bedrockCredentials;
+    const apiKey = input.apiKey.trim() || bedrockCredentials?.apiKey?.trim();
+    if (!apiKey) {
+      throw new Error('Amazon Bedrock Mantle 模型需要 Bearer API Key。');
+    }
+    const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
+      input.profile?.reasoningEffort,
+      {
+        provider: 'openai',
+        transportKind: 'open-responses',
+        ...(input.profile?.supportedReasoningEfforts !== undefined
+          ? { supportedEfforts: input.profile.supportedReasoningEfforts }
+          : {}),
+        model: input.model,
+      },
+    );
+    const reasoningSummary = resolveOpenResponsesReasoningSummary({
+      llmVendor: 'openai',
+      model: input.model,
+      ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+    });
+
+    return {
+      transportKind: 'open-responses',
+      apiKey,
+      model: input.model,
+      baseUrl: bedrockMantleApiBaseFromRegion(region),
+      workspaceRoot: input.workspaceRoot,
+      spiritAgentMode,
+      responsesProvider: 'openai',
+      llmVendor: 'openai',
+      store: false,
+      ...(input.profile?.capabilities
+        ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
+        : {}),
+      ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+      ...(reasoningSummary ? { reasoningSummary } : {}),
+    };
+  }
+
   if (transportKind === 'open-responses') {
     const llmVendor = openAiCompatibleVendorFromProvider(input.profile?.provider);
     const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(

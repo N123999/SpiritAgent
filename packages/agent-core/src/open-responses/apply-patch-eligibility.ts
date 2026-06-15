@@ -33,6 +33,11 @@ export interface ApplyPatchOperation {
  */
 export function parseOpenAiGptModelVersion(modelId: string): { major: number; minor: number } | undefined {
   const trimmed = modelId.trim().toLowerCase();
+  const bedrockMantle = /^openai\.(gpt-\d+(?:\.\d+)?)/.exec(trimmed);
+  if (bedrockMantle?.[1]) {
+    return parseOpenAiGptModelVersion(bedrockMantle[1]);
+  }
+
   const versioned = /^gpt-(\d+)\.(\d+)/.exec(trimmed);
   if (versioned) {
     return {

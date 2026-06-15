@@ -38,6 +38,7 @@ import {
   supportsVideoGeneration,
 } from './model-config.js';
 import { bedrockApiBaseFromRegion } from '@spirit-agent/host-internal';
+import { bedrockMantleApiBaseFromRegion, isBedrockMantleOpenAiModel } from '@spirit-agent/host-internal/bedrock-mantle';
 import { modelSupportsChat } from './lightweight-chat-model.js';
 import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
 import {
@@ -294,10 +295,14 @@ function resolveManagedConnectApiBase(
   transportKind: DesktopTransportKind,
   requestApiBase: string,
   awsRegion?: string,
+  modelName?: string,
 ): string {
   if (provider === 'amazon-bedrock') {
     const region = awsRegion?.trim();
     if (region) {
+      if (modelName && isBedrockMantleOpenAiModel(modelName)) {
+        return bedrockMantleApiBaseFromRegion(region);
+      }
       return bedrockApiBaseFromRegion(region);
     }
   }
@@ -526,7 +531,7 @@ export async function addModelCommand(
     if (provider === 'amazon-bedrock' && !awsRegion) {
       throw new Error(i18n.t('error.bedrockRegionRequired'));
     }
-    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion);
+    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion, name);
     const apiKey = request.apiKey.trim();
 
     if (!name) {

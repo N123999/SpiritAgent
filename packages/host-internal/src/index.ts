@@ -17,6 +17,7 @@ export * from './marketplace.js';
 export * from './google-gemini-endpoints.js';
 export * from './bedrock-models.js';
 export * from './bedrock-region.js';
+export * from './bedrock-mantle.js';
 export * from './model-provider-presets.js';
 export * from './openai-models.js';
 export * from './reasoning-effort.js';

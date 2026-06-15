@@ -31,6 +31,10 @@
       "types": "./dist/bedrock-region.d.ts",
       "default": "./dist/bedrock-region.js"
     },
+    "./bedrock-mantle": {
+      "types": "./dist/bedrock-mantle.d.ts",
+      "default": "./dist/bedrock-mantle.js"
+    },
     "./reasoning-effort": {
       "types": "./dist/reasoning-effort.d.ts",
       "default": "./dist/reasoning-effort.js"
