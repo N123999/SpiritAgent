@@ -38,7 +38,7 @@ fn model_catalog_cache_file_path(hint_key: &str) -> PathBuf {
 fn provider_uses_catalog_display(provider: ModelProvider) -> bool {
     matches!(
         provider,
-        ModelProvider::VercelAiGateway | ModelProvider::Openrouter
+        ModelProvider::VercelAiGateway | ModelProvider::Openrouter | ModelProvider::Google
     )
 }
 
@@ -228,6 +228,49 @@ mod tests {
         assert_eq!(
             titles.get("gpt-4o-mini").map(String::as_str),
             Some("Gpt 4o Mini")
+        );
+    }
+
+    #[test]
+    fn provider_uses_catalog_display_includes_google() {
+        assert!(provider_uses_catalog_display(ModelProvider::Google));
+        assert!(!provider_uses_catalog_display(ModelProvider::Openai));
+    }
+
+    #[test]
+    fn read_display_names_for_hint_parses_google_model_catalog() {
+        let dir = env::temp_dir().join(format!(
+            "spirit-google-catalog-display-test-{}",
+            std::process::id()
+        ));
+        let hint = "google::openai-compatible::https://generativelanguage.googleapis.com/v1beta/openai";
+        let previous = env::var("APPDATA").ok();
+        // SAFETY: test-only isolation of SpiritAgent data dir.
+        unsafe {
+            env::set_var("APPDATA", &dir);
+        }
+        let path = model_catalog_cache_file_path(hint);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("cache dir");
+        }
+        fs::write(
+            &path,
+            r#"{"apiBase":"https://generativelanguage.googleapis.com/v1beta/openai","fetchedAtUnixMs":1,"modelIds":["gemini-2.5-flash"],"modelCatalog":[{"id":"gemini-2.5-flash","displayName":"Gemini 2.5 Flash"}]}"#,
+        )
+        .expect("write cache");
+        let titles = read_display_names_for_hint(hint);
+        unsafe {
+            if let Some(value) = previous {
+                env::set_var("APPDATA", value);
+            } else {
+                env::remove_var("APPDATA");
+            }
+        }
+        let _ = fs::remove_dir_all(dir);
+
+        assert_eq!(
+            titles.get("gemini-2.5-flash").map(String::as_str),
+            Some("Gemini 2.5 Flash")
         );
     }
 

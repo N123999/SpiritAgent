@@ -35,6 +35,16 @@ pub(crate) fn model_add_preset_api_base_by_choice_index(selected: usize) -> Opti
     p.preset_api_base_by_provider.get(id).cloned()
 }
 
+pub(crate) fn model_add_preset_api_base_by_provider(provider: crate::model_registry::ModelProvider) -> Option<String> {
+    if provider == crate::model_registry::ModelProvider::Custom {
+        return None;
+    }
+    presets()
+        .preset_api_base_by_provider
+        .get(provider.as_str())
+        .cloned()
+}
+
 pub(crate) fn model_add_default_custom_api_base(
     transport_kind: ModelTransportKind,
 ) -> String {
@@ -63,41 +73,58 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(1).as_deref(),
-            Some("https://api.x.ai/v1")
+            Some("https://generativelanguage.googleapis.com/v1beta/openai")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(2).as_deref(),
-            Some("https://api.anthropic.com/v1")
+            Some("https://api.x.ai/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(3).as_deref(),
-            Some("https://api.deepseek.com/v1")
+            Some("https://api.anthropic.com/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(4).as_deref(),
-            Some("https://ai-gateway.vercel.sh/v1")
+            Some("https://api.deepseek.com/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(5).as_deref(),
-            Some("https://openrouter.ai/api/v1")
+            Some("https://ai-gateway.vercel.sh/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(6).as_deref(),
-            Some("https://api.moonshot.cn/v1")
+            Some("https://openrouter.ai/api/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(7).as_deref(),
-            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+            Some("https://api.moonshot.cn/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(8).as_deref(),
-            Some("https://api.minimaxi.com/v1")
+            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(9).as_deref(),
+            Some("https://api.minimaxi.com/v1")
+        );
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(10).as_deref(),
             Some("https://ark.cn-beijing.volces.com/api/v3")
         );
-        assert!(model_add_preset_api_base_by_choice_index(10).is_none());
+        assert!(model_add_preset_api_base_by_choice_index(11).is_none());
+    }
+
+    #[test]
+    fn preset_api_base_by_provider_returns_google_openai_compat_base() {
+        assert_eq!(
+            super::model_add_preset_api_base_by_provider(crate::model_registry::ModelProvider::Google)
+                .as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta/openai")
+        );
+        assert!(super::model_add_preset_api_base_by_provider(
+            crate::model_registry::ModelProvider::Custom
+        )
+        .is_none());
     }
 
     #[test]

@@ -14,6 +14,7 @@ export * from './todos.js';
 export * from './extensions.js';
 export * from './file-rewind.js';
 export * from './marketplace.js';
+export * from './google-gemini-endpoints.js';
 export * from './model-provider-presets.js';
 export * from './openai-models.js';
 export * from './reasoning-effort.js';

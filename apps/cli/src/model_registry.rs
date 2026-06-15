@@ -28,6 +28,7 @@ pub enum ModelProvider {
     VercelAiGateway,
     Openrouter,
     Openai,
+    Google,
     Volcengine,
     Custom,
 }
@@ -44,6 +45,7 @@ impl ModelProvider {
             Self::VercelAiGateway => "vercel-ai-gateway",
             Self::Openrouter => "openrouter",
             Self::Openai => "openai",
+            Self::Google => "google",
             Self::Volcengine => "volcengine",
             Self::Custom => "custom",
         }
@@ -64,6 +66,7 @@ impl FromStr for ModelProvider {
             "vercel-ai-gateway" => Ok(Self::VercelAiGateway),
             "openrouter" => Ok(Self::Openrouter),
             "openai" => Ok(Self::Openai),
+            "google" => Ok(Self::Google),
             "volcengine" => Ok(Self::Volcengine),
             "custom" => Ok(Self::Custom),
             other => Err(format!("不支持的 provider: {other}")),
@@ -155,6 +158,7 @@ impl ModelProfile {
             | Some(ModelProvider::VercelAiGateway)
             | Some(ModelProvider::Openrouter)
             | Some(ModelProvider::Openai)
+            | Some(ModelProvider::Google)
             | Some(ModelProvider::Volcengine)
             | Some(ModelProvider::Custom)
             | None => true,
@@ -404,7 +408,15 @@ fn normalize_config(cfg: &mut AppConfig) {
 }
 
 fn normalize_transport_kind(model: &mut ModelProfile) {
-    let transport_kind = model.transport_kind();
+    let mut transport_kind = model.transport_kind();
+    if matches!(model.provider, Some(ModelProvider::Google))
+        && matches!(
+            transport_kind,
+            ModelTransportKind::OpenResponses | ModelTransportKind::Anthropic
+        )
+    {
+        transport_kind = ModelTransportKind::OpenAiCompatible;
+    }
     model.extra.remove("transportKind");
     model.extra.remove("transport_kind");
 
@@ -447,6 +459,12 @@ pub(crate) fn normalize_reasoning_effort_value(
                 _ => "default".to_string(),
             },
             Some(ModelProvider::Xai) => match normalized.as_str() {
+                "default" | "none" | "low" | "medium" | "high" => normalized,
+                "minimal" => "low".to_string(),
+                "xhigh" | "max" => "high".to_string(),
+                _ => "default".to_string(),
+            },
+            Some(ModelProvider::Google) => match normalized.as_str() {
                 "default" | "none" | "low" | "medium" | "high" => normalized,
                 "minimal" => "low".to_string(),
                 "xhigh" | "max" => "high".to_string(),
@@ -928,6 +946,24 @@ mod tests {
                 .and_then(|model| model.get("contextLength")),
             None
         );
+    }
+
+    #[test]
+    fn normalize_transport_kind_downgrades_google_open_responses() {
+        let mut model = super::ModelProfile {
+            name: "gemini-flash".to_string(),
+            api_base: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+            provider: Some(super::ModelProvider::Google),
+            reasoning_effort: None,
+            context_length: None,
+            extra: serde_json::Map::from_iter([(
+                "transportKind".to_string(),
+                serde_json::json!("open-responses"),
+            )]),
+        };
+        super::normalize_transport_kind(&mut model);
+        assert_eq!(model.transport_kind(), super::ModelTransportKind::OpenAiCompatible);
+        assert!(model.extra.get("transportKind").is_none());
     }
 }
 

@@ -88,6 +88,30 @@ test('xAI models normalize reasoning efforts to supported values', () => {
   );
 });
 
+test('google models normalize reasoning efforts to supported values', () => {
+  assert.equal(
+    resolveModelReasoningEffortForContext('minimal', {
+      provider: 'google',
+      transportKind: 'openai-compatible',
+    }),
+    'low',
+  );
+  assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('none', {
+      provider: 'google',
+      transportKind: 'openai-compatible',
+    }),
+    'none',
+  );
+  assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('max', {
+      provider: 'google',
+      transportKind: 'openai-compatible',
+    }),
+    'high',
+  );
+});
+
 test('anthropic supported efforts restrict unavailable levels', () => {
   assert.equal(
     resolveAnthropicTransportReasoningEffortForContext('xhigh', {

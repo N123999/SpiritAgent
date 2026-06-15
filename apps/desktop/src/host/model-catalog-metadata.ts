@@ -31,6 +31,7 @@ export function usesProviderListedModelCatalogMetadata(input: {
     input.provider === 'vercel-ai-gateway'
     || input.provider === 'openrouter'
     || input.provider === 'volcengine'
+    || input.provider === 'google'
   ) {
     return true;
   }

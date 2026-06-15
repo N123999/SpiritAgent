@@ -114,7 +114,14 @@ export async function updateConfigCommand(
     const reasoningEffort = request.reasoningEffort;
     const existing = state.config.models.find((model) => model.name === activeModel);
     if (existing) {
-      existing.apiBase = apiBase;
+      if (existing.provider && existing.provider !== 'custom') {
+        existing.apiBase = defaultApiBaseForTransport(
+          existing.provider,
+          resolveDesktopTransportKind(existing),
+        );
+      } else {
+        existing.apiBase = apiBase;
+      }
       if (reasoningEffort !== undefined) {
         existing.reasoningEffort = resolveModelReasoningEffortForContext(reasoningEffort, {
           ...(existing.provider ? { provider: existing.provider } : {}),
@@ -278,14 +285,25 @@ export async function updateConfigCommand(
   });
 }
 
+function resolveManagedConnectApiBase(
+  provider: DesktopModelProvider | undefined,
+  transportKind: DesktopTransportKind,
+  requestApiBase: string,
+): string {
+  if (!provider || provider === 'custom') {
+    const trimmed = requestApiBase.trim();
+    return trimmed || defaultApiBaseForTransport('custom', transportKind);
+  }
+  return defaultApiBaseForTransport(provider, transportKind);
+}
+
 export async function previewModelsCommand(request: PreviewModelsRequest): Promise<PreviewModelsResponse> {
   const provider = parseModelProviderId(request.provider);
   const transportKind = resolveDesktopTransportKind({
     provider,
     transportKind: request.transportKind,
   });
-  const apiBaseRaw = request.apiBase.trim();
-  const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
+  const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase);
   const apiKey = request.apiKey.trim();
   if (!apiKey) {
     throw new Error(i18n.t('error.apiKeyRequired'));
@@ -321,8 +339,7 @@ export async function addProviderModelsCommand(
       provider,
       transportKind: request.transportKind,
     });
-    const apiBaseRaw = request.apiBase.trim();
-    const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
+    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase);
     const apiKey = request.apiKey.trim();
     if (!apiKey) {
       throw new Error(i18n.t('error.apiKeyRequired'));
@@ -434,8 +451,7 @@ export async function addModelCommand(
       provider,
       transportKind: request.transportKind,
     });
-    const apiBaseRaw = request.apiBase.trim();
-    const apiBase = apiBaseRaw || defaultApiBaseForTransport(provider, transportKind);
+    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase);
     const apiKey = request.apiKey.trim();
 
     if (!name) {

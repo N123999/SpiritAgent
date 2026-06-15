@@ -3299,6 +3299,7 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::VercelAiGateway => "vercel-ai-gateway",
         ModelProvider::Openrouter => "openrouter",
         ModelProvider::Openai => "openai",
+        ModelProvider::Google => "google",
         ModelProvider::Volcengine => "volcengine",
         ModelProvider::Custom => "custom",
     }

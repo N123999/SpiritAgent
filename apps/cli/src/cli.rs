@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path, workspace_mcp_config_path,
     },
-    model_provider_presets::model_add_default_custom_api_base,
+    model_provider_presets::{model_add_default_custom_api_base, model_add_preset_api_base_by_provider},
     model_registry::{
         AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, ModelTransportKind,
     },
@@ -168,12 +168,19 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     provider,
                     transport_kind,
                 )?;
-                let api_base = api_base.unwrap_or_else(|| match transport_kind {
-                    ModelTransportKind::Anthropic => {
-                        model_add_default_custom_api_base(ModelTransportKind::Anthropic)
+                let api_base = api_base.unwrap_or_else(|| {
+                    if let Some(provider) = provider {
+                        if let Some(preset) = model_add_preset_api_base_by_provider(provider) {
+                            return preset;
+                        }
                     }
-                    ModelTransportKind::OpenResponses | ModelTransportKind::OpenAiCompatible => {
-                        DEFAULT_API_BASE.to_string()
+                    match transport_kind {
+                        ModelTransportKind::Anthropic => {
+                            model_add_default_custom_api_base(ModelTransportKind::Anthropic)
+                        }
+                        ModelTransportKind::OpenResponses | ModelTransportKind::OpenAiCompatible => {
+                            DEFAULT_API_BASE.to_string()
+                        }
                     }
                 });
                 let capabilities = normalize_model_capabilities(capabilities);
@@ -434,6 +441,9 @@ fn parse_model_transport_kind(
         }
         (Some(ModelProvider::Openai), ModelTransportKind::Anthropic) => {
             Err(anyhow!("provider=openai 时 transport-kind 不能是 anthropic"))
+        }
+        (Some(ModelProvider::Google), ModelTransportKind::OpenResponses | ModelTransportKind::Anthropic) => {
+            Err(anyhow!("provider=google 仅支持 openai-compatible transport-kind"))
         }
         (None, ModelTransportKind::Anthropic) => {
             Err(anyhow!("transport-kind=anthropic 需要同时指定 --provider custom 或 --provider anthropic"))

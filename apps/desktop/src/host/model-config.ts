@@ -46,11 +46,29 @@ import {
 
 export { resolveComposerDirectMediaTool, type DirectMediaTool };
 
+export function resolveProfileApiBase(
+  profile: Pick<ModelProfileSnapshot, 'provider' | 'transportKind' | 'apiBase'>,
+): string {
+  if (profile.provider && profile.provider !== 'custom') {
+    return defaultApiBaseForTransport(profile.provider, resolveDesktopTransportKind(profile));
+  }
+
+  const trimmed = profile.apiBase?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_API_BASE;
+}
+
 export function resolveDesktopTransportKind(
   profile?: Pick<ModelProfileSnapshot, 'provider' | 'transportKind'>,
 ): DesktopTransportKind {
-  if (profile?.transportKind) {
-    return profile.transportKind;
+  const requested = profile?.transportKind;
+  if (requested) {
+    if (
+      profile?.provider === 'google'
+      && (requested === 'open-responses' || requested === 'anthropic')
+    ) {
+      return 'openai-compatible';
+    }
+    return requested;
   }
 
   return profile?.provider === 'anthropic' ? 'anthropic' : 'openai-compatible';
@@ -249,7 +267,7 @@ export function buildImageGenerationSubConfig(input: {
   return {
     apiKey: input.apiKey,
     model: input.profile.name,
-    baseUrl: input.profile.apiBase || DEFAULT_API_BASE,
+    baseUrl: resolveProfileApiBase(input.profile),
     ...(imageGenerationVendor ? { llmVendor: imageGenerationVendor } : {}),
     ...(input.profile.capabilities
       ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
@@ -265,7 +283,7 @@ export function buildVideoGenerationSubConfig(input: {
   return {
     apiKey: input.apiKey,
     model: input.profile.name,
-    baseUrl: input.profile.apiBase || DEFAULT_API_BASE,
+    baseUrl: resolveProfileApiBase(input.profile),
     ...(videoGenerationVendor ? { llmVendor: videoGenerationVendor } : {}),
     ...(input.profile.capabilities
       ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
@@ -284,7 +302,7 @@ export function buildMediaOnlyTransportConfig(
     transportKind: 'openai-compatible' as const,
     apiKey: input.apiKey,
     model: input.profile.name,
-    baseUrl: input.profile.apiBase || DEFAULT_API_BASE,
+    baseUrl: resolveProfileApiBase(input.profile),
   };
 
   if (toolName === 'generate_image') {

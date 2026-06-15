@@ -49,7 +49,7 @@ const DEFAULT_HOOK_TIMEOUT: &str = "30";
 const HOOK_EVENT_PRE_TOOL_USE_INDEX: usize = 3;
 
 const MODEL_ADD_FIELD_PROVIDER: usize = 0;
-const MODEL_ADD_VOLCENGINE_PROVIDER_INDEX: usize = 9;
+const MODEL_ADD_VOLCENGINE_PROVIDER_INDEX: usize = 10;
 
 const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
@@ -208,6 +208,7 @@ pub(crate) fn new_hook_add_form(workspace_scope_available: bool) -> BottomFormVi
 fn model_add_provider_choice_labels() -> Vec<String> {
     vec![
         t!("form.model.provider.openai").into_owned(),
+        t!("form.model.provider.google").into_owned(),
         t!("form.model.provider.xai").into_owned(),
         t!("form.model.provider.anthropic").into_owned(),
         t!("form.model.provider.deepseek").into_owned(),
@@ -414,16 +415,17 @@ fn model_add_api_key_field(api_key: &str) -> BottomFormFieldView {
 fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
     match idx {
         0 => Some(ModelProvider::Openai),
-        1 => Some(ModelProvider::Xai),
-        2 => Some(ModelProvider::Anthropic),
-        3 => Some(ModelProvider::Deepseek),
-        4 => Some(ModelProvider::VercelAiGateway),
-        5 => Some(ModelProvider::Openrouter),
-        6 => Some(ModelProvider::Moonshot),
-        7 => Some(ModelProvider::Alibaba),
-        8 => Some(ModelProvider::Minimax),
-        9 => Some(ModelProvider::Volcengine),
-        10 => Some(ModelProvider::Custom),
+        1 => Some(ModelProvider::Google),
+        2 => Some(ModelProvider::Xai),
+        3 => Some(ModelProvider::Anthropic),
+        4 => Some(ModelProvider::Deepseek),
+        5 => Some(ModelProvider::VercelAiGateway),
+        6 => Some(ModelProvider::Openrouter),
+        7 => Some(ModelProvider::Moonshot),
+        8 => Some(ModelProvider::Alibaba),
+        9 => Some(ModelProvider::Minimax),
+        10 => Some(ModelProvider::Volcengine),
+        11 => Some(ModelProvider::Custom),
         _ => None,
     }
 }
@@ -1886,7 +1888,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 10;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 11;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -1894,7 +1896,7 @@ mod tests {
         assert!(matches!(form.kind, crate::view::BottomFormKind::ModelAdd));
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 3;
+                *selected = 4;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2026,7 +2028,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 7;
+                *selected = 8;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2047,7 +2049,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 2;
+                *selected = 3;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2068,7 +2070,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 9;
+                *selected = 10;
             }
         }
         sync_model_add_form_fields(&mut form);

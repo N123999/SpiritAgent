@@ -44,6 +44,7 @@
   },
   "providers": {
     "openai": "OpenAI",
+    "google": "Google",
     "xai": "xAI",
     "anthropic": "Anthropic",
     "deepseek": "DeepSeek",
