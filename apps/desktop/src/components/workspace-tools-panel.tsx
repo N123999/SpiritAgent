@@ -251,6 +251,9 @@ function WorkspaceToolsDockInner({
     () => new Set(),
   );
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
   const latestWidthPxRef = useRef(widthPx);
   latestWidthPxRef.current = widthPx;
   const [viewportMaxWidthPx, setViewportMaxWidthPx] = useState(computeWorkspaceToolsMaxWidthPx);
@@ -297,6 +300,31 @@ function WorkspaceToolsDockInner({
     [minWidthPx, maxWidthPx],
   );
 
+  const applyDragWidthPx = useCallback((next: number) => {
+    const splitWidth = `calc(0.25rem + ${next}px)`;
+    if (shellRef.current) {
+      shellRef.current.style.width = splitWidth;
+    }
+    if (splitRef.current) {
+      splitRef.current.style.width = splitWidth;
+    }
+    if (asideRef.current) {
+      asideRef.current.style.width = `${next}px`;
+    }
+  }, []);
+
+  const clearDragWidthInlineStyles = useCallback(() => {
+    if (shellRef.current) {
+      shellRef.current.style.width = "";
+    }
+    if (splitRef.current) {
+      splitRef.current.style.width = "";
+    }
+    if (asideRef.current) {
+      asideRef.current.style.width = "";
+    }
+  }, []);
+
   useEffect(() => {
     if (widthPx <= maxWidthPx) {
       return;
@@ -309,9 +337,11 @@ function WorkspaceToolsDockInner({
       event.preventDefault();
       setIsResizing(true);
       dragRef.current = { startX: event.clientX, startWidth: widthPx };
+      latestWidthPxRef.current = widthPx;
+      applyDragWidthPx(widthPx);
       event.currentTarget.setPointerCapture(event.pointerId);
     },
-    [widthPx],
+    [applyDragWidthPx, widthPx],
   );
 
   const onResizePointerMove = useCallback(
@@ -323,23 +353,26 @@ function WorkspaceToolsDockInner({
       const delta = drag.startX - event.clientX;
       const next = clampWidth(drag.startWidth + delta);
       latestWidthPxRef.current = next;
-      onWidthPxChange(next);
+      // 拖拽期间只改 DOM 宽度，松手再提交 React state，避免 md 预览每帧 ReactMarkdown 重解析
+      applyDragWidthPx(next);
     },
-    [clampWidth, onWidthPxChange],
+    [applyDragWidthPx, clampWidth],
   );
 
   const endResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     setIsResizing(false);
     if (dragRef.current) {
+      onWidthPxChange(latestWidthPxRef.current);
       writeWorkspaceToolsWidthPx(latestWidthPxRef.current);
     }
+    clearDragWidthInlineStyles();
     dragRef.current = null;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       // 已释放或无 capture
     }
-  }, []);
+  }, [clearDragWidthInlineStyles, onWidthPxChange]);
 
   const handleAddTab = useCallback(
     (kind: WorkspaceToolTabKind) => {
@@ -405,6 +438,7 @@ function WorkspaceToolsDockInner({
   return (
     <div
       id="workspace-tools-panel-shell"
+      ref={shellRef}
       className={cn(
         "flex h-full min-h-0 shrink-0 flex-row self-stretch overflow-hidden",
         isResizing
@@ -415,6 +449,7 @@ function WorkspaceToolsDockInner({
       style={{ width: shellWidth }}
     >
       <div
+        ref={splitRef}
         data-workspace-tools-split
         className={cn(
           "relative flex h-full min-h-0 shrink-0 flex-row self-stretch",
@@ -446,6 +481,7 @@ function WorkspaceToolsDockInner({
 
         <aside
           id="workspace-tools-panel"
+          ref={asideRef}
           data-spirit-surface="workspace-panel"
           className={cn(
             "flex h-full min-h-0 min-w-0 shrink-0 flex-col overflow-hidden text-foreground",

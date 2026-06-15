@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -17,7 +17,7 @@ import type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image
 export type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
 export type { MarkdownSize, MarkdownTone } from "@/lib/markdown-message-components";
 
-export function MarkdownMessage({
+export const MarkdownMessage = memo(function MarkdownMessage({
   content,
   className,
   tone = "default",
@@ -58,4 +58,4 @@ export function MarkdownMessage({
       </ReactMarkdown>
     </div>
   );
-}
+});
