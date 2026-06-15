@@ -12,6 +12,13 @@ import {
   WorkspaceFileContextMenu,
   type WorkspaceExplorerContextTarget,
 } from "@/components/workspace-file-context-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useHostApi } from "@/hooks/useHostApi";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 import { cn } from "@/lib/utils";
@@ -643,20 +650,23 @@ export function WorkspaceFilesPanel({
       )}
 
       {forceDeleteTarget ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="workspace-force-delete-title"
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !forceDeleteBusy) {
+              setForceDeleteTarget(null);
+              setForceDeleteReason("");
+            }
+          }}
         >
-          <div className="w-full max-w-md rounded-lg border bg-popover p-4 shadow-lg">
-            <h2 id="workspace-force-delete-title" className="text-sm font-medium">
-              {t("workspace.forceDelete")}
-            </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t("workspace.forceDeleteConfirm", { reason: forceDeleteReason })}
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
+          <DialogContent className="sm:max-w-md" showCloseButton>
+            <DialogHeader>
+              <DialogTitle>{t("workspace.forceDelete")}</DialogTitle>
+              <DialogDescription>
+                {t("workspace.forceDeleteConfirm", { reason: forceDeleteReason })}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2">
               <button
                 type="button"
                 className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
@@ -677,8 +687,8 @@ export function WorkspaceFilesPanel({
                 {t("workspace.forceDelete")}
               </button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </div>
   );
