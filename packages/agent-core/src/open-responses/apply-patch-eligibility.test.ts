@@ -8,6 +8,7 @@ import {
   shouldUseApplyPatchFileTools,
   shouldUseApplyPatchFunctionTool,
   shouldUseBuiltInApplyPatchRequestItems,
+  shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
 
 test('isOpenAiGptModelAtLeast51 boundaries', () => {
@@ -121,6 +122,21 @@ test('shouldUseApplyPatchFileTools openrouter aggregator', () => {
     }),
     false,
   );
+});
+
+test('Bedrock Mantle openai.gpt uses function apply_patch instead of SDK built-in', () => {
+  const mantleConfig = {
+    transportKind: 'open-responses' as const,
+    llmVendor: 'openai' as const,
+    responsesProvider: 'openai' as const,
+    model: 'openai.gpt-5.5',
+    baseUrl: 'https://bedrock-mantle.us-east-2.api.aws/openai/v1',
+  };
+
+  assert.equal(shouldUseApplyPatchFileTools(mantleConfig), true);
+  assert.equal(shouldUseOpenAiSdkApplyPatchTool(mantleConfig), false);
+  assert.equal(shouldUseApplyPatchFunctionTool(mantleConfig), true);
+  assert.equal(shouldUseBuiltInApplyPatchRequestItems(mantleConfig), false);
 });
 
 test('shouldUseApplyPatchFunctionTool only on gateway-compatible routes', () => {

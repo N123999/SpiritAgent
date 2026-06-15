@@ -43,6 +43,23 @@ test('buildResponsesGenerateTools adds web_search for gateway', () => {
   assert.ok('grep' in tools);
 });
 
+test('buildResponsesGenerateTools uses function apply_patch for Bedrock Mantle', () => {
+  const tools = buildResponsesGenerateTools(
+    {
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'openai.gpt-5.5',
+      baseUrl: 'https://bedrock-mantle.us-east-2.api.aws/openai/v1',
+      llmVendor: 'openai',
+      responsesProvider: 'openai',
+    },
+    [hostTool],
+  );
+
+  assert.ok('apply_patch' in tools);
+  assert.equal('grep' in tools, true);
+});
+
 test('buildResponsesGenerateTools omits sdk web_search for Bedrock Mantle', () => {
   const tools = buildResponsesGenerateTools(
     {
