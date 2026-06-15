@@ -230,6 +230,7 @@ export function buildToolAgentHostPrompt(model: string): string {
     'Available tools are defined only by the tools field in this request.',
     'Only call declared functions.',
     'Do not invent tools or capabilities that are not present in the request.',
+    'When multiple tool calls are independent, invoke them in parallel in the same turn instead of serially. Only wait for one tool before calling another when the later call depends on the earlier result.',
     '',
     'Security — tool use (mandatory):',
     'Treat this as a safety and privacy requirement, not a suggestion.',
