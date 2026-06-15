@@ -89,6 +89,8 @@ export type WorkspaceFilesPanelProps = {
   /** 工作区条目删除成功后通知父层关闭编辑器。 */
   onWorkspaceEntryDeleted?: (relativePath: string) => void;
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
+  /** Git 状态 revision；变化时刷新文件树 ignore 着色缓存。 */
+  gitRevision?: number;
 };
 
 type ExplorerRowProps = {
@@ -116,6 +118,7 @@ type ExplorerRowProps = {
   onDragLeave?: (event: DragEvent<HTMLElement>) => void;
   onDrop?: (event: DragEvent<HTMLElement>) => void;
   children?: ReactNode;
+  ignored?: boolean;
 };
 
 function ExplorerRow({
@@ -143,6 +146,7 @@ function ExplorerRow({
   onDragLeave,
   onDrop,
   children,
+  ignored = false,
 }: ExplorerRowProps) {
   const renameInputRef = useRef<HTMLInputElement>(null);
   const pendingRenameFocusRef = useRef(false);
@@ -177,10 +181,12 @@ function ExplorerRow({
 
   const rowClassName = cn(
     "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
-    "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+    ignored ? "text-muted-foreground/60" : "text-foreground/90",
+    "hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
     selected && "bg-foreground/[0.08] dark:bg-foreground/12",
     dropHighlight && "bg-primary/15 ring-1 ring-primary/40",
   );
+  const iconClassName = cn("size-3.5 shrink-0", ignored ? "opacity-40" : "opacity-70");
   const rowStyle = { paddingLeft: `${depth * 12 + 4}px` };
 
   const renameInput = (
@@ -206,7 +212,7 @@ function ExplorerRow({
   const rowTrigger = renaming ? (
     <div className={rowClassName} style={rowStyle} role="treeitem">
       {leading}
-      <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+      <Icon className={iconClassName} aria-hidden />
       {renameInput}
     </div>
   ) : (
@@ -223,7 +229,7 @@ function ExplorerRow({
       onDrop={onDrop}
     >
       {leading}
-      <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+      <Icon className={iconClassName} aria-hidden />
       <span className="min-w-0 truncate">{target.name}</span>
     </button>
   );
@@ -277,6 +283,7 @@ export function WorkspaceFilesPanel({
   onWorkspaceEntryMoved,
   onWorkspaceEntryDeleted,
   onWorkspaceFileAddToSession,
+  gitRevision,
 }: WorkspaceFilesPanelProps) {
   const { t } = useTranslation();
   const moveToTrashLabel = useMoveToTrashLabel();
@@ -304,6 +311,9 @@ export function WorkspaceFilesPanel({
   const [moveError, setMoveError] = useState("");
   const [revealError, setRevealError] = useState("");
   const renameCommitInFlightRef = useRef(false);
+  const prevGitRevisionRef = useRef<number | undefined>(undefined);
+  const cacheRef = useRef(cache);
+  cacheRef.current = cache;
 
   const dismissDeleteDialog = useCallback(() => {
     setDeleteDialogOpen(false);
@@ -370,6 +380,9 @@ export function WorkspaceFilesPanel({
     [listExplorerChildren],
   );
 
+  const loadDirRef = useRef(loadDir);
+  loadDirRef.current = loadDir;
+
   useEffect(() => {
     if (!workspaceRoot.trim()) {
       setCache({});
@@ -379,8 +392,43 @@ export function WorkspaceFilesPanel({
     setCache({});
     setExpanded({});
     setRootOpen(true);
-    void loadDir("");
-  }, [workspaceRoot, loadDir]);
+    void loadDirRef.current("");
+  }, [workspaceRoot]);
+
+  // git revision 变化时后台重拉已缓存目录的 ignore 标志，不清空展开状态、不进入 loading。
+  useEffect(() => {
+    if (gitRevision === undefined || !workspaceRoot.trim()) {
+      prevGitRevisionRef.current = gitRevision;
+      return;
+    }
+    if (prevGitRevisionRef.current === undefined) {
+      prevGitRevisionRef.current = gitRevision;
+      return;
+    }
+    if (prevGitRevisionRef.current === gitRevision) {
+      return;
+    }
+    prevGitRevisionRef.current = gitRevision;
+    const cachedReadyPaths = Object.keys(cacheRef.current).filter(
+      (rel) => cacheRef.current[rel]?.status === "ready",
+    );
+    for (const rel of cachedReadyPaths) {
+      void listExplorerChildren(rel)
+        .then(({ entries }) => {
+          setCache((current) => {
+            if (current[rel]?.status !== "ready") {
+              return current;
+            }
+            return { ...current, [rel]: { status: "ready", entries } };
+          });
+        })
+        .catch(() => undefined);
+    }
+  }, [gitRevision, workspaceRoot, listExplorerChildren]);
+
+  useEffect(() => {
+    prevGitRevisionRef.current = undefined;
+  }, [workspaceRoot]);
 
   useEffect(() => {
     if (!expandDirectoryPath || expandDirectoryNonce <= 0) {
@@ -688,6 +736,11 @@ export function WorkspaceFilesPanel({
           const isDir = entry.kind === "dir";
           const Icon = workspaceExplorerIcon(entry.name, entry.kind);
           const open = isDir && expanded[childRel] === true;
+          const ignored = entry.ignored === true;
+          const chevronClassName = cn(
+            "size-3.5 shrink-0",
+            ignored ? "opacity-40" : "opacity-60",
+          );
           const target: WorkspaceExplorerContextTarget = {
             relativePath: childRel,
             kind: entry.kind,
@@ -702,6 +755,7 @@ export function WorkspaceFilesPanel({
                 target={target}
                 depth={depth}
                 selected={selected}
+                ignored={ignored}
                 isElectron={isElectron}
                 renaming={renamingPath === childRel}
                 renameValue={renameValue}
@@ -728,6 +782,7 @@ export function WorkspaceFilesPanel({
               target={target}
               depth={depth}
               selected={false}
+              ignored={ignored}
               isElectron={isElectron}
               renaming={renamingPath === childRel}
               renameValue={renameValue}
@@ -741,9 +796,9 @@ export function WorkspaceFilesPanel({
               onClick={() => onToggleDir(childRel)}
               leading={
                 open ? (
-                  <ChevronDown className="size-3.5 shrink-0 opacity-60" aria-hidden />
+                  <ChevronDown className={chevronClassName} aria-hidden />
                 ) : (
-                  <ChevronRight className="size-3.5 shrink-0 opacity-60" aria-hidden />
+                  <ChevronRight className={chevronClassName} aria-hidden />
                 )
               }
               icon={Icon}

@@ -95,6 +95,7 @@ export type WorkspaceFilesTabProps = {
   onTitleChange?: (title: string | undefined) => void;
   onFileSnippetAddToSession?: (attachment: FileSnippetAttachment) => void;
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
+  gitRevision?: number;
 };
 
 export function WorkspaceFilesTab({
@@ -120,6 +121,7 @@ export function WorkspaceFilesTab({
   onTitleChange,
   onFileSnippetAddToSession,
   onWorkspaceFileAddToSession,
+  gitRevision,
 }: WorkspaceFilesTabProps) {
   const { t } = useTranslation();
   type MonacoEditor = Monaco.editor.IStandaloneCodeEditor;
@@ -425,6 +427,7 @@ export function WorkspaceFilesTab({
           workspaceRoot={workspaceRoot}
           plan={plan}
           listExplorerChildren={listExplorerChildren}
+          gitRevision={gitRevision}
           selectedEntryKey={selectedEntryKey}
           expandDirectoryPath={fileRevealDirectoryOnly ? fileRevealPath : ""}
           expandDirectoryNonce={fileRevealDirectoryOnly ? autoRevealFileNonce : 0}

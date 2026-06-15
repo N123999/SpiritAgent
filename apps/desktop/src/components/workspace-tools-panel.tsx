@@ -687,6 +687,7 @@ function WorkspaceToolsDockInner({
                         workspaceRoot={workspaceRoot}
                         plan={plan}
                         listExplorerChildren={listExplorerChildren}
+                        gitRevision={gitSnapshot?.revision}
                         readWorkspaceTextFile={readWorkspaceTextFile}
                         writeWorkspaceTextFile={writeWorkspaceTextFile}
                         readHostTextFile={readHostTextFile}
