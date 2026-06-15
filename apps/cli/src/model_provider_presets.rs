@@ -35,6 +35,16 @@ pub(crate) fn model_add_preset_api_base_by_choice_index(selected: usize) -> Opti
     p.preset_api_base_by_provider.get(id).cloned()
 }
 
+pub(crate) fn model_add_preset_api_base_by_provider(provider: crate::model_registry::ModelProvider) -> Option<String> {
+    if provider == crate::model_registry::ModelProvider::Custom {
+        return None;
+    }
+    presets()
+        .preset_api_base_by_provider
+        .get(provider.as_str())
+        .cloned()
+}
+
 pub(crate) fn model_add_default_custom_api_base(
     transport_kind: ModelTransportKind,
 ) -> String {
@@ -102,6 +112,19 @@ mod tests {
             Some("https://ark.cn-beijing.volces.com/api/v3")
         );
         assert!(model_add_preset_api_base_by_choice_index(11).is_none());
+    }
+
+    #[test]
+    fn preset_api_base_by_provider_returns_google_openai_compat_base() {
+        assert_eq!(
+            super::model_add_preset_api_base_by_provider(crate::model_registry::ModelProvider::Google)
+                .as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta/openai")
+        );
+        assert!(super::model_add_preset_api_base_by_provider(
+            crate::model_registry::ModelProvider::Custom
+        )
+        .is_none());
     }
 
     #[test]
