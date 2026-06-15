@@ -2,6 +2,8 @@ import { Buffer } from 'node:buffer';
 import { lstat, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { resolveWorkspaceExplorerIgnoreFlags } from '@spirit-agent/host-internal';
+
 import i18n from '../lib/i18n-host.js';
 import type {
   WorkspaceExplorerEntry,
@@ -98,6 +100,20 @@ export async function listWorkspaceExplorerChildren(
     }
     return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
   });
+
+  const normalizedParent = relativePath.replace(/\\/g, '/').trim();
+  let ignoreFlags: boolean[];
+  try {
+    ignoreFlags = await resolveWorkspaceExplorerIgnoreFlags(workspaceRoot, normalizedParent, entries);
+  } catch {
+    ignoreFlags = entries.map(() => false);
+  }
+  for (let index = 0; index < entries.length; index += 1) {
+    if (ignoreFlags[index]) {
+      entries[index]!.ignored = true;
+    }
+  }
+
   return { entries };
 }
 

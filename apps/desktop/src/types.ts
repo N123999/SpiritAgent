@@ -630,6 +630,8 @@ export type WorkspaceExplorerEntryKind = 'file' | 'dir';
 export interface WorkspaceExplorerEntry {
   name: string;
   kind: WorkspaceExplorerEntryKind;
+  /** Git / exclude 规则忽略时为 true；缺省或 false 时按正常色展示。 */
+  ignored?: boolean;
 }
 
 export interface WorkspaceExplorerListResult {
