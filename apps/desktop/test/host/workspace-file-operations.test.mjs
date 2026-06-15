@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
 import {
+  forceDeleteWorkspaceEntry,
   isDescendantOrSelf,
   moveWorkspaceEntry,
   renameWorkspaceEntry,
+  trashWorkspaceEntry,
   validateEntryName,
 } from '../../dist-electron/src/host/workspace-file-operations.js';
 
@@ -22,7 +24,7 @@ test('isDescendantOrSelf detects self and nested paths', () => {
   assert.equal(isDescendantOrSelf('src', 'src'), true);
   assert.equal(isDescendantOrSelf('src', 'src/components'), true);
   assert.equal(isDescendantOrSelf('src/components', 'src'), false);
-  assert.equal(isDescendantOrSelf('', 'src'), true);
+  assert.equal(isDescendantOrSelf('', 'src'), false);
 });
 
 test('renameWorkspaceEntry renames a file within the workspace', async () => {
@@ -73,6 +75,48 @@ test('moveWorkspaceEntry rejects moving a directory into itself', async () => {
     await assert.rejects(
       () => moveWorkspaceEntry(workspaceRoot, 'src', 'src/components'),
       /Cannot move a folder into itself|无法将文件夹移动到自身/u,
+    );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('renameWorkspaceEntry renames a directory', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'spirit-ws-rename-dir-'));
+  await mkdir(path.join(workspaceRoot, 'src'), { recursive: true });
+  await writeFile(path.join(workspaceRoot, 'src', 'App.tsx'), 'export {}', 'utf8');
+
+  try {
+    const result = await renameWorkspaceEntry(workspaceRoot, 'src', 'lib');
+    assert.equal(result.relativePath, 'lib');
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('forceDeleteWorkspaceEntry removes a file and a directory tree', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'spirit-ws-force-delete-'));
+  await mkdir(path.join(workspaceRoot, 'src', 'nested'), { recursive: true });
+  await writeFile(path.join(workspaceRoot, 'App.tsx'), 'export {}', 'utf8');
+  await writeFile(path.join(workspaceRoot, 'src', 'nested', 'x.txt'), 'x', 'utf8');
+
+  try {
+    await forceDeleteWorkspaceEntry(workspaceRoot, 'App.tsx');
+    await assert.rejects(() => access(path.join(workspaceRoot, 'App.tsx')));
+    await forceDeleteWorkspaceEntry(workspaceRoot, 'src');
+    await assert.rejects(() => access(path.join(workspaceRoot, 'src')));
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('trashWorkspaceEntry rejects empty relative path before shell', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'spirit-ws-trash-invalid-'));
+
+  try {
+    await assert.rejects(
+      () => trashWorkspaceEntry(workspaceRoot, ''),
+      /Invalid path|无效路径/u,
     );
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
