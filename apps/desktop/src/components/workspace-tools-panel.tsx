@@ -128,6 +128,7 @@ export type WorkspaceToolsDockProps = {
   onFileSnippetAddToSession?: (
     attachment: import("@/lib/file-snippet-attachment").FileSnippetAttachment,
   ) => void;
+  onWorkspaceFileAddToSession?: (relativePath: string) => void;
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
   browserTabEnabled?: boolean;
@@ -211,6 +212,7 @@ function WorkspaceToolsDockInner({
   onPrDiffAddToSession,
   onTerminalAddToSession,
   onFileSnippetAddToSession,
+  onWorkspaceFileAddToSession,
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   prTabEnabled = false,
@@ -667,6 +669,7 @@ function WorkspaceToolsDockInner({
                         fileRevealDirectoryOnly={fileRevealDirectoryOnly}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                         onFileSnippetAddToSession={onFileSnippetAddToSession}
+                        onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
                       />
                     </div>
                   ) : item.kind === "shell" ? (
