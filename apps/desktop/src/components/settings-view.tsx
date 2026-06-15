@@ -100,6 +100,10 @@ import {
   resolveProviderConnectApiBase,
 } from "@/host/provider-presets";
 import { bedrockApiBaseFromRegion } from "@spirit-agent/host-internal/bedrock-region";
+import {
+  bedrockMantleApiBaseFromRegion,
+  isBedrockMantleOpenAiModel,
+} from "@spirit-agent/host-internal/bedrock-mantle";
 import { hasBedrockIamCredentials } from "@/host/provider-api-key";
 import { AgentsSettingsPanel } from "@/components/agents-settings-panel";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -2854,7 +2858,9 @@ function ModelsSettingsPanel({
     }
     await onAddModel({
       name,
-      apiBase: bedrockApiBaseFromRegion(awsRegion),
+      apiBase: isBedrockMantleOpenAiModel(name)
+        ? bedrockMantleApiBaseFromRegion(awsRegion)
+        : bedrockApiBaseFromRegion(awsRegion),
       apiKey: connectApiKey,
       provider: "amazon-bedrock",
       transportKind: "bedrock",
