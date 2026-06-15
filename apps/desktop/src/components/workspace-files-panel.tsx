@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useHostApi } from "@/hooks/useHostApi";
+import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 import { evictRecordKeysUnderPrefix } from "@/lib/workspace-entry-path-sync";
 import { cn } from "@/lib/utils";
@@ -291,15 +292,41 @@ export function WorkspaceFilesPanel({
     null,
   );
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceExplorerContextTarget | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [forceDeleteReason, setForceDeleteReason] = useState("");
   const [forceDeleteBusy, setForceDeleteBusy] = useState(false);
+  const [forceDeleteDialogOpen, setForceDeleteDialogOpen] = useState(false);
   const [dragOverDirectory, setDragOverDirectory] = useState<string | null>(null);
   const [moveTarget, setMoveTarget] = useState<PendingMoveTarget | null>(null);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [revealError, setRevealError] = useState("");
   const renameCommitInFlightRef = useRef(false);
+
+  const dismissDeleteDialog = useCallback(() => {
+    setDeleteDialogOpen(false);
+    runAfterRadixOverlayClose(() => {
+      setDeleteTarget(null);
+    });
+  }, []);
+
+  const dismissMoveDialog = useCallback(() => {
+    setMoveDialogOpen(false);
+    runAfterRadixOverlayClose(() => {
+      setMoveTarget(null);
+      setMoveError("");
+    });
+  }, []);
+
+  const dismissForceDeleteDialog = useCallback(() => {
+    setForceDeleteDialogOpen(false);
+    runAfterRadixOverlayClose(() => {
+      setForceDeleteTarget(null);
+      setForceDeleteReason("");
+    });
+  }, []);
 
   const workspaceRootLabel = fileBasename(workspaceRoot.trim()) || workspaceRoot.trim();
 
@@ -464,6 +491,7 @@ export function WorkspaceFilesPanel({
 
   const handleDeleteRequest = useCallback((target: WorkspaceExplorerContextTarget) => {
     setDeleteTarget(target);
+    setDeleteDialogOpen(true);
   }, []);
 
   const handleConfirmMoveToTrash = useCallback(async () => {
@@ -480,15 +508,19 @@ export function WorkspaceFilesPanel({
       invalidateDir(parentRel);
       evictExplorerPathPrefix(target.relativePath);
       onWorkspaceEntryDeleted?.(target.relativePath);
-      setDeleteTarget(null);
+      dismissDeleteDialog();
     } catch (error) {
-      setDeleteTarget(null);
+      setDeleteDialogOpen(false);
+      runAfterRadixOverlayClose(() => {
+        setDeleteTarget(null);
+      });
       setForceDeleteTarget(target);
       setForceDeleteReason(describeError(error));
+      setForceDeleteDialogOpen(true);
     } finally {
       setDeleteBusy(false);
     }
-  }, [api, deleteTarget, evictExplorerPathPrefix, invalidateDir, onWorkspaceEntryDeleted]);
+  }, [api, deleteTarget, dismissDeleteDialog, evictExplorerPathPrefix, invalidateDir, onWorkspaceEntryDeleted]);
 
   const handleForceDelete = useCallback(async () => {
     const target = forceDeleteTarget;
@@ -504,14 +536,13 @@ export function WorkspaceFilesPanel({
       invalidateDir(parentRel);
       evictExplorerPathPrefix(target.relativePath);
       onWorkspaceEntryDeleted?.(target.relativePath);
-      setForceDeleteTarget(null);
-      setForceDeleteReason("");
+      dismissForceDeleteDialog();
     } catch (error) {
       setForceDeleteReason(describeError(error));
     } finally {
       setForceDeleteBusy(false);
     }
-  }, [api, evictExplorerPathPrefix, forceDeleteTarget, invalidateDir, onWorkspaceEntryDeleted]);
+  }, [api, dismissForceDeleteDialog, evictExplorerPathPrefix, forceDeleteTarget, invalidateDir, onWorkspaceEntryDeleted]);
 
   const handleAddToSession = useCallback(
     (target: WorkspaceExplorerContextTarget) => {
@@ -536,7 +567,7 @@ export function WorkspaceFilesPanel({
         pending.targetDirectoryRel,
       );
       if (result.relativePath === pending.sourceRelativePath) {
-        setMoveTarget(null);
+        dismissMoveDialog();
         return;
       }
       const sourceParent = pending.sourceRelativePath.includes("/")
@@ -546,14 +577,14 @@ export function WorkspaceFilesPanel({
       invalidateDir(pending.targetDirectoryRel);
       evictExplorerPathPrefix(pending.sourceRelativePath);
       onWorkspaceEntryMoved?.(pending.sourceRelativePath, result.relativePath);
-      setMoveTarget(null);
+      dismissMoveDialog();
     } catch (error) {
       setMoveError(describeError(error));
       return;
     } finally {
       setMoveBusy(false);
     }
-  }, [api, evictExplorerPathPrefix, invalidateDir, moveTarget, onWorkspaceEntryMoved]);
+  }, [api, dismissMoveDialog, evictExplorerPathPrefix, invalidateDir, moveTarget, onWorkspaceEntryMoved]);
 
   const handleDragStart = useCallback(
     (event: DragEvent<HTMLButtonElement>, target: WorkspaceExplorerContextTarget) => {
@@ -607,6 +638,7 @@ export function WorkspaceFilesPanel({
         targetDirectoryLabel: targetDir === "" ? workspaceRootLabel : targetDir,
       });
       setMoveError("");
+      setMoveDialogOpen(true);
     },
     [workspaceRootLabel],
   );
@@ -785,10 +817,12 @@ export function WorkspaceFilesPanel({
       )}
 
       <Dialog
-        open={deleteTarget !== null}
+        open={deleteDialogOpen}
         onOpenChange={(open) => {
-          if (!open && !deleteBusy) {
-            setDeleteTarget(null);
+          if (open) {
+            setDeleteDialogOpen(true);
+          } else if (!deleteBusy) {
+            dismissDeleteDialog();
           }
         }}
       >
@@ -805,7 +839,11 @@ export function WorkspaceFilesPanel({
               variant="outline"
               size="sm"
               disabled={deleteBusy}
-              onClick={() => setDeleteTarget(null)}
+              onClick={() => {
+                if (!deleteBusy) {
+                  dismissDeleteDialog();
+                }
+              }}
             >
               {t("common.cancel")}
             </Button>
@@ -823,11 +861,12 @@ export function WorkspaceFilesPanel({
       </Dialog>
 
       <Dialog
-        open={moveTarget !== null}
+        open={moveDialogOpen}
         onOpenChange={(open) => {
-          if (!open && !moveBusy) {
-            setMoveTarget(null);
-            setMoveError("");
+          if (open) {
+            setMoveDialogOpen(true);
+          } else if (!moveBusy) {
+            dismissMoveDialog();
           }
         }}
       >
@@ -852,7 +891,11 @@ export function WorkspaceFilesPanel({
               variant="outline"
               size="sm"
               disabled={moveBusy}
-              onClick={() => setMoveTarget(null)}
+              onClick={() => {
+                if (!moveBusy) {
+                  dismissMoveDialog();
+                }
+              }}
             >
               {t("common.cancel")}
             </Button>
@@ -868,49 +911,49 @@ export function WorkspaceFilesPanel({
         </DialogContent>
       </Dialog>
 
-      {forceDeleteTarget ? (
-        <Dialog
-          open
-          onOpenChange={(open) => {
-            if (!open && !forceDeleteBusy) {
-              setForceDeleteTarget(null);
-              setForceDeleteReason("");
-            }
-          }}
-        >
-          <DialogContent className="sm:max-w-md" showCloseButton>
-            <DialogHeader>
-              <DialogTitle>{t("workspace.forceDelete")}</DialogTitle>
-              <DialogDescription>
-                {t("workspace.forceDeleteConfirm", { reason: forceDeleteReason })}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={forceDeleteBusy}
-                onClick={() => {
-                  setForceDeleteTarget(null);
-                  setForceDeleteReason("");
-                }}
-              >
-                {t("common.cancel")}
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                disabled={forceDeleteBusy}
-                onClick={() => void handleForceDelete()}
-              >
-                {t("workspace.forceDelete")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      ) : null}
+      <Dialog
+        open={forceDeleteDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setForceDeleteDialogOpen(true);
+          } else if (!forceDeleteBusy) {
+            dismissForceDeleteDialog();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>{t("workspace.forceDelete")}</DialogTitle>
+            <DialogDescription>
+              {t("workspace.forceDeleteConfirm", { reason: forceDeleteReason })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={forceDeleteBusy}
+              onClick={() => {
+                if (!forceDeleteBusy) {
+                  dismissForceDeleteDialog();
+                }
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={forceDeleteBusy}
+              onClick={() => void handleForceDelete()}
+            >
+              {t("workspace.forceDelete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
