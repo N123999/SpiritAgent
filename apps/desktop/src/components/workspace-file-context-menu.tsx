@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderOpen } from "lucide-react";
 
 import {
   ContextMenu,
@@ -69,7 +68,6 @@ export function WorkspaceFileContextMenu({
             onReveal?.(target);
           }}
         >
-          <FolderOpen aria-hidden />
           {revealLabel}
         </ContextMenuItem>
         {onAddToSession ? (
