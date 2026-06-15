@@ -288,6 +288,8 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
     case "openai":
     case "xai":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.responsesApi];
+    case "google":
+      return [connectTransportOptionCatalog.chatCompletions];
     case "minimax":
     case "deepseek":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.messagesApi];
