@@ -311,11 +311,9 @@ export async function listWorkspaceExplorerChildrenCommand(
   ctx: HostWorkspaceGitCommandContext,
   relativePath: string,
 ): Promise<WorkspaceExplorerListResult> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const state = ctx.requireState();
-    return listWorkspaceExplorerChildrenFromDisk(state.workspaceRoot, relativePath);
-  });
+  await ctx.ensureInitialized(undefined, { fastPath: true });
+  const state = ctx.requireState();
+  return listWorkspaceExplorerChildrenFromDisk(state.workspaceRoot, relativePath);
 }
 
 export async function readGitWorkingTreeCommand(
@@ -343,23 +341,21 @@ export async function listWorkspaceFileReferenceSuggestionsCommand(
   ctx: HostWorkspaceGitCommandContext,
   request: QueryWorkspaceFileReferenceSuggestionsRequest,
 ): Promise<WorkspaceFileReferenceSuggestionsResponse> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const state = ctx.requireState();
-    return (
-      (await listWorkspaceFileReferenceSuggestionsFromHostInternal(
-        state.workspaceRoot,
-        request.input,
-        request.cursorChars,
-      )) ?? null
-    );
-  });
+  await ctx.ensureInitialized(undefined, { fastPath: true });
+  const state = ctx.requireState();
+  return (
+    (await listWorkspaceFileReferenceSuggestionsFromHostInternal(
+      state.workspaceRoot,
+      request.input,
+      request.cursorChars,
+    )) ?? null
+  );
 }
 
 export async function primeWorkspaceFileReferenceIndexCommand(
   ctx: HostWorkspaceGitCommandContext,
 ): Promise<void> {
-  await ctx.ensureInitialized();
+  await ctx.ensureInitialized(undefined, { fastPath: true });
   const state = ctx.requireState();
   await primeWorkspaceFileReferenceIndexCache(state.workspaceRoot);
 }
@@ -367,7 +363,7 @@ export async function primeWorkspaceFileReferenceIndexCommand(
 export async function getWorkspaceFileReferenceIndexCommand(
   ctx: HostWorkspaceGitCommandContext,
 ): Promise<WorkspaceFileReferenceIndexSnapshot> {
-  await ctx.ensureInitialized();
+  await ctx.ensureInitialized(undefined, { fastPath: true });
   const state = ctx.requireState();
   return getWorkspaceFileReferenceIndexSnapshot(state.workspaceRoot);
 }
@@ -376,11 +372,9 @@ export async function readWorkspaceTextFileCommand(
   ctx: HostWorkspaceGitCommandContext,
   relativePath: string,
 ): Promise<WorkspaceReadTextFileResult> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const state = ctx.requireState();
-    return readWorkspaceTextFileFromDisk(state.workspaceRoot, relativePath);
-  });
+  await ctx.ensureInitialized(undefined, { fastPath: true });
+  const state = ctx.requireState();
+  return readWorkspaceTextFileFromDisk(state.workspaceRoot, relativePath);
 }
 
 export async function writeWorkspaceTextFileCommand(
@@ -398,11 +392,9 @@ export async function readHostTextFileCommand(
   ctx: HostWorkspaceGitCommandContext,
   absolutePath: string,
 ): Promise<WorkspaceReadTextFileResult> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const { readHostTextFile } = await import('./host-text-file.js');
-    return readHostTextFile(absolutePath);
-  });
+  await ctx.ensureInitialized(undefined, { fastPath: true });
+  const { readHostTextFile } = await import('./host-text-file.js');
+  return readHostTextFile(absolutePath);
 }
 
 export async function writeHostTextFileCommand(
@@ -420,11 +412,9 @@ export async function statHostTextFileCommand(
   ctx: HostWorkspaceGitCommandContext,
   absolutePath: string,
 ): Promise<HostTextFileStatResult> {
-  return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
-    const { statHostTextFile } = await import('./host-text-file.js');
-    return statHostTextFile(absolutePath);
-  });
+  await ctx.ensureInitialized(undefined, { fastPath: true });
+  const { statHostTextFile } = await import('./host-text-file.js');
+  return statHostTextFile(absolutePath);
 }
 
 export async function refreshGitSnapshotCommand(
