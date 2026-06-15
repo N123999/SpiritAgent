@@ -696,6 +696,7 @@
     },
     "rename": "重命名",
     "delete": "删除",
+    "deleteEntryConfirm": "确定删除「{{name}}」吗？",
     "moveToTrash": {
       "win32": "移到回收站",
       "darwin": "移到废纸篓",
