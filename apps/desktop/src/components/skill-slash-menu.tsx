@@ -21,7 +21,7 @@ type SkillSlashMenuProps = {
 
 function SlashSuggestionIcon({ kind }: { kind: SkillSlashSuggestionKind }) {
   const Icon = SLASH_SUGGESTION_ICONS[kind]
-  return <Icon className="size-3.5 shrink-0 text-muted-foreground/75" aria-hidden />
+  return <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
 }
 
 export function SkillSlashMenu({
