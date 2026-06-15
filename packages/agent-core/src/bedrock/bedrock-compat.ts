@@ -62,11 +62,28 @@ export function isAnthropicClaudeBedrockModel(model: string): boolean {
   return normalized.includes('anthropic.claude') || normalized.includes('.anthropic.claude');
 }
 
+export function isDeepSeekReasoningBedrockModel(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized.includes('deepseek.r1');
+}
+
+export function bedrockSupportsReasoningConfig(model: string): boolean {
+  return (
+    isAnthropicClaudeBedrockModel(model)
+    || isAmazonNovaBedrockModel(model)
+    || isDeepSeekReasoningBedrockModel(model)
+  );
+}
+
 export function bedrockReasoningConfigFromEffort(
   model: string,
   effort: BedrockReasoningEffort | undefined,
 ): JsonObject | undefined {
   if (effort === undefined || effort === 'default' || effort === 'none' || effort === 'minimal') {
+    return undefined;
+  }
+
+  if (!bedrockSupportsReasoningConfig(model)) {
     return undefined;
   }
 
