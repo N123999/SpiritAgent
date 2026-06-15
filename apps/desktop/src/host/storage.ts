@@ -12,8 +12,12 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Entry } from '@napi-rs/keyring';
 import i18n from '../lib/i18n-host.js';
+import {
+  deleteKeyringPassword,
+  getKeyringPassword,
+  setKeyringPassword,
+} from './keyring-secret.js';
 import { normalizeLightweightChatModel } from './lightweight-chat-model.js';
 import {
   configureLlmClientVersion,
@@ -225,43 +229,27 @@ export function configFilePath(): string {
 }
 
 function readModelKeyFromKeyring(modelName: string): string | undefined {
-  try {
-    const value = new Entry(KEYRING_SERVICE, modelKeyAccount(modelName)).getPassword();
-    const trimmed = value?.trim();
-    return trimmed || undefined;
-  } catch {
-    return undefined;
-  }
+  const value = getKeyringPassword(KEYRING_SERVICE, modelKeyAccount(modelName));
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 function readGlobalKeyFromKeyring(): string | undefined {
-  try {
-    const value = new Entry(KEYRING_SERVICE, KEYRING_GLOBAL_ACCOUNT).getPassword();
-    const trimmed = value?.trim();
-    return trimmed || undefined;
-  } catch {
-    return undefined;
-  }
+  const value = getKeyringPassword(KEYRING_SERVICE, KEYRING_GLOBAL_ACCOUNT);
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 export function readProviderAccessKeyIdFromKeyring(providerId: string): string | undefined {
-  try {
-    const value = new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).getPassword();
-    const trimmed = value?.trim();
-    return trimmed || undefined;
-  } catch {
-    return undefined;
-  }
+  const value = getKeyringPassword(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId));
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 export function readProviderSecretAccessKeyFromKeyring(providerId: string): string | undefined {
-  try {
-    const value = new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).getPassword();
-    const trimmed = value?.trim();
-    return trimmed || undefined;
-  } catch {
-    return undefined;
-  }
+  const value = getKeyringPassword(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId));
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 export function readBedrockProviderCredentialsFromKeyring(
@@ -287,45 +275,29 @@ export async function saveBedrockProviderCredentialsForProvider(
 
   const accessKeyId = credentials.accessKeyId?.trim();
   if (accessKeyId) {
-    new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).setPassword(accessKeyId);
+    setKeyringPassword(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId), accessKeyId);
   } else {
-    try {
-      new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).deletePassword();
-    } catch {
-      /* 无条目时忽略 */
-    }
+    deleteKeyringPassword(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId));
   }
 
   const secretAccessKey = credentials.secretAccessKey?.trim();
   if (secretAccessKey) {
-    new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).setPassword(secretAccessKey);
+    setKeyringPassword(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId), secretAccessKey);
   } else {
-    try {
-      new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).deletePassword();
-    } catch {
-      /* 无条目时忽略 */
-    }
+    deleteKeyringPassword(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId));
   }
 }
 
 export async function removeBedrockProviderCredentials(providerId: DesktopModelProvider): Promise<void> {
   await removeProviderApiKey(providerId);
-  try {
-    new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).deletePassword();
-    new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).deletePassword();
-  } catch {
-    /* 无条目时忽略 */
-  }
+  deleteKeyringPassword(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId));
+  deleteKeyringPassword(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId));
 }
 
 export function readProviderKeyFromKeyring(providerId: string): string | undefined {
-  try {
-    const value = new Entry(KEYRING_SERVICE, providerKeyAccount(providerId)).getPassword();
-    const trimmed = value?.trim();
-    return trimmed || undefined;
-  } catch {
-    return undefined;
-  }
+  const value = getKeyringPassword(KEYRING_SERVICE, providerKeyAccount(providerId));
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 export function defaultNewSessionPath(): string {
@@ -472,34 +444,24 @@ export async function modelSecretKeyPresence(
 }
 
 export async function saveApiKeyForModel(modelName: string, apiKey: string): Promise<void> {
-  const trimmed = apiKey.trim();
-  new Entry(KEYRING_SERVICE, modelKeyAccount(modelName)).setPassword(trimmed);
+  setKeyringPassword(KEYRING_SERVICE, modelKeyAccount(modelName), apiKey.trim());
 }
 
 export async function saveApiKeyForProvider(
   providerId: DesktopModelProvider,
   apiKey: string,
 ): Promise<void> {
-  const trimmed = apiKey.trim();
-  new Entry(KEYRING_SERVICE, providerKeyAccount(providerId)).setPassword(trimmed);
+  setKeyringPassword(KEYRING_SERVICE, providerKeyAccount(providerId), apiKey.trim());
 }
 
 /** 删除提供商在钥匙串中的共享 API Key 条目。 */
 export async function removeProviderApiKey(providerId: DesktopModelProvider): Promise<void> {
-  try {
-    new Entry(KEYRING_SERVICE, providerKeyAccount(providerId)).deletePassword();
-  } catch {
-    /* 无条目时忽略 */
-  }
+  deleteKeyringPassword(KEYRING_SERVICE, providerKeyAccount(providerId));
 }
 
 /** 与 CLI `remove_model_api_key` 一致：删除该模型在钥匙串中的专属条目。 */
 export async function removeModelApiKey(modelName: string): Promise<void> {
-  try {
-    new Entry(KEYRING_SERVICE, modelKeyAccount(modelName)).deletePassword();
-  } catch {
-    /* 无条目时与 CLI 行为一致 */
-  }
+  deleteKeyringPassword(KEYRING_SERVICE, modelKeyAccount(modelName));
 }
 
 export function createDesktopExtensionStateStore(
@@ -515,31 +477,19 @@ export function createDesktopExtensionStateStore(
       return fileStore.saveSettings(extensionId, values);
     },
     async loadSecret(extensionId, key) {
-      try {
-        const value = new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).getPassword();
-        const trimmed = value?.trim();
-        return trimmed || undefined;
-      } catch {
-        return undefined;
-      }
+      const value = getKeyringPassword(KEYRING_SERVICE, extensionSecretAccount(extensionId, key));
+      const trimmed = value?.trim();
+      return trimmed || undefined;
     },
     async saveSecret(extensionId, key, value) {
-      new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).setPassword(value.trim());
+      setKeyringPassword(KEYRING_SERVICE, extensionSecretAccount(extensionId, key), value.trim());
     },
     async deleteSecret(extensionId, key) {
-      try {
-        new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).deletePassword();
-      } catch {
-        /* 与模型 keyring 删除行为一致 */
-      }
+      deleteKeyringPassword(KEYRING_SERVICE, extensionSecretAccount(extensionId, key));
     },
     async hasSecret(extensionId, key) {
-      try {
-        const value = new Entry(KEYRING_SERVICE, extensionSecretAccount(extensionId, key)).getPassword();
-        return Boolean(value?.trim());
-      } catch {
-        return false;
-      }
+      const value = getKeyringPassword(KEYRING_SERVICE, extensionSecretAccount(extensionId, key));
+      return Boolean(value?.trim());
     },
   };
 }
