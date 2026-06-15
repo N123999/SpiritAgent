@@ -721,6 +721,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertTerminalSnippet,
         insertFileSnippet,
         insertWorkspaceFileReference,
+        insertWorkspaceFileAtCaret,
         replaceSkillSlashQuery,
         removeSkillSlashQuery,
         insertPlainTextAtCaret,
