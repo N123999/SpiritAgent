@@ -1973,10 +1973,7 @@ impl TsBridgeRuntime {
                 }
             }
             if let Some(image_profile) = config.image_generation_model_profile() {
-                if image_profile.supports_image_generation()
-                    && image_profile.transport_kind()
-                        == crate::model_registry::ModelTransportKind::OpenAiCompatible
-                {
+                if image_profile.supports_image_generation() {
                     if let Some(image_api_key) = self
                         .resolve_optional_key_from_store(&image_profile.name, image_profile.provider)?
                     {
