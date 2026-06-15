@@ -6,7 +6,7 @@ import {
   normalizeAwsRegion,
   extractAwsRegionFromBedrockApiBase,
 } from './bedrock-region.js';
-import { parseBedrockFoundationModelSummaries } from './bedrock-models.js';
+import { listBedrockModels, parseBedrockFoundationModelSummaries } from './bedrock-models.js';
 
 test('bedrock region helpers normalize and derive api base', () => {
   assert.equal(normalizeAwsRegion(' US-East-1 '), 'us-east-1');
@@ -55,5 +55,19 @@ test('extractAwsRegionFromBedrockApiBase parses region from catalog cache base',
   assert.equal(
     extractAwsRegionFromBedrockApiBase('https://bedrock.ap-southeast-1.amazonaws.com'),
     'ap-southeast-1',
+  );
+});
+
+test('listBedrockModels rejects missing IAM credentials', async () => {
+  await assert.rejects(
+    () => listBedrockModels({ region: 'us-east-1' }),
+    /requires IAM Access Key ID and Secret Access Key/,
+  );
+});
+
+test('listBedrockModels rejects bearer-only credentials', async () => {
+  await assert.rejects(
+    () => listBedrockModels({ region: 'us-east-1', apiKey: 'bedrock-api-key' }),
+    /Bearer API Key cannot list Bedrock models/,
   );
 });

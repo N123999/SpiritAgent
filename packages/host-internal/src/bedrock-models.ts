@@ -107,7 +107,9 @@ function resolveBedrockClientConfig(options: ListBedrockModelsOptions): { region
     );
   }
 
-  return { region };
+  throw new Error(
+    'ListFoundationModels requires IAM Access Key ID and Secret Access Key.',
+  );
 }
 
 export async function listBedrockModels(
