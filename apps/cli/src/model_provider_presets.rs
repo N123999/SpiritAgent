@@ -58,6 +58,11 @@ pub(crate) fn model_add_default_custom_api_base(
             .get("anthropic")
             .cloned()
             .unwrap_or_else(|| p.default_custom_api_base.clone()),
+        ModelTransportKind::Bedrock => p
+            .preset_api_base_by_provider
+            .get("amazon-bedrock")
+            .cloned()
+            .unwrap_or_else(|| p.default_custom_api_base.clone()),
     }
 }
 

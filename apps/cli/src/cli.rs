@@ -178,6 +178,14 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                         ModelTransportKind::Anthropic => {
                             model_add_default_custom_api_base(ModelTransportKind::Anthropic)
                         }
+                        ModelTransportKind::Bedrock => {
+                            if let Some(provider) = provider {
+                                if let Some(preset) = model_add_preset_api_base_by_provider(provider) {
+                                    return preset;
+                                }
+                            }
+                            "https://bedrock.us-east-1.amazonaws.com".to_string()
+                        }
                         ModelTransportKind::OpenResponses | ModelTransportKind::OpenAiCompatible => {
                             DEFAULT_API_BASE.to_string()
                         }
@@ -204,6 +212,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 }
                 if transport_kind == ModelTransportKind::Anthropic
                     || transport_kind == ModelTransportKind::OpenResponses
+                    || transport_kind == ModelTransportKind::Bedrock
                 {
                     extra.insert(
                         "transportKind".to_string(),
@@ -425,6 +434,7 @@ fn parse_model_transport_kind(
             .map_err(|err: String| anyhow!(err))?,
         None => match provider {
             Some(ModelProvider::Anthropic) => ModelTransportKind::Anthropic,
+            Some(ModelProvider::AmazonBedrock) => ModelTransportKind::Bedrock,
             _ => ModelTransportKind::OpenAiCompatible,
         },
     };
@@ -444,6 +454,12 @@ fn parse_model_transport_kind(
         }
         (Some(ModelProvider::Google), ModelTransportKind::OpenResponses | ModelTransportKind::Anthropic) => {
             Err(anyhow!("provider=google 仅支持 openai-compatible transport-kind"))
+        }
+        (Some(ModelProvider::AmazonBedrock), transport_kind) if transport_kind != ModelTransportKind::Bedrock => {
+            Err(anyhow!("provider=amazon-bedrock 仅支持 bedrock transport-kind"))
+        }
+        (Some(ModelProvider::Anthropic | ModelProvider::Openai | ModelProvider::Google | ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::Minimax | ModelProvider::Alibaba | ModelProvider::Xai | ModelProvider::VercelAiGateway | ModelProvider::Openrouter | ModelProvider::Volcengine | ModelProvider::Custom), ModelTransportKind::Bedrock) => {
+            Err(anyhow!("只有 provider=amazon-bedrock 时可以选择 bedrock transport-kind"))
         }
         (None, ModelTransportKind::Anthropic) => {
             Err(anyhow!("transport-kind=anthropic 需要同时指定 --provider custom 或 --provider anthropic"))
@@ -470,7 +486,9 @@ fn parse_model_reasoning_effort(
         ModelTransportKind::Anthropic => {
             &["default", "low", "medium", "high", "xhigh", "max"][..]
         }
-        ModelTransportKind::OpenResponses | ModelTransportKind::OpenAiCompatible => match provider {
+        ModelTransportKind::Bedrock
+        | ModelTransportKind::OpenResponses
+        | ModelTransportKind::OpenAiCompatible => match provider {
             Some(ModelProvider::Deepseek) if is_deepseek_v4_reasoning_model(model_name) => {
                 &["default", "high", "max"]
             }

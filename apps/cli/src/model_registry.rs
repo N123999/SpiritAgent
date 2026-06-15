@@ -205,6 +205,16 @@ impl ModelProfile {
             Some(capabilities)
         }
     }
+
+    pub fn aws_region(&self) -> Option<String> {
+        self.extra
+            .get("awsRegion")
+            .or_else(|| self.extra.get("aws_region"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -429,7 +439,10 @@ fn normalize_transport_kind(model: &mut ModelProfile) {
     model.extra.remove("transportKind");
     model.extra.remove("transport_kind");
 
-    if transport_kind == ModelTransportKind::Anthropic || transport_kind == ModelTransportKind::OpenResponses {
+    if transport_kind == ModelTransportKind::Anthropic
+        || transport_kind == ModelTransportKind::OpenResponses
+        || transport_kind == ModelTransportKind::Bedrock
+    {
         model.extra.insert(
             "transportKind".to_string(),
             Value::String(transport_kind.as_str().to_string()),
@@ -451,7 +464,9 @@ pub(crate) fn normalize_reasoning_effort_value(
             "none" | "minimal" => "default".to_string(),
             _ => "default".to_string(),
         },
-        ModelTransportKind::OpenResponses | ModelTransportKind::OpenAiCompatible => match provider {
+        ModelTransportKind::Bedrock
+        | ModelTransportKind::OpenResponses
+        | ModelTransportKind::OpenAiCompatible => match provider {
             Some(ModelProvider::Deepseek) if is_deepseek_v4_reasoning_model(model_name) => {
                 match normalized.as_str() {
                     "default" | "high" | "max" => normalized,
@@ -998,6 +1013,46 @@ pub fn load_provider_api_key_from_keyring(provider_id: &str) -> Result<String> {
     entry
         .get_password()
         .with_context(|| format!("读取 provider {} 的 API Key 失败", provider_id))
+}
+
+fn provider_access_key_id_account(provider_id: &str) -> String {
+    format!("provider::{provider_id}::access-key-id")
+}
+
+fn provider_secret_access_key_account(provider_id: &str) -> String {
+    format!("provider::{provider_id}::secret-access-key")
+}
+
+pub fn load_provider_access_key_id_from_keyring(provider_id: &str) -> Result<String> {
+    let entry = keyring_entry_for_account(&provider_access_key_id_account(provider_id))?;
+    entry.get_password().with_context(|| {
+        format!("读取 provider {provider_id} 的 IAM Access Key ID 失败")
+    })
+}
+
+pub fn load_provider_secret_access_key_from_keyring(provider_id: &str) -> Result<String> {
+    let entry = keyring_entry_for_account(&provider_secret_access_key_account(provider_id))?;
+    entry.get_password().with_context(|| {
+        format!("读取 provider {provider_id} 的 IAM Secret Access Key 失败")
+    })
+}
+
+pub fn has_bedrock_runtime_credentials_in_keyring() -> Result<bool> {
+    if load_provider_api_key_from_keyring(ModelProvider::AmazonBedrock.as_str())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return Ok(true);
+    }
+
+    let access_key_id = load_provider_access_key_id_from_keyring(ModelProvider::AmazonBedrock.as_str())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let secret_access_key =
+        load_provider_secret_access_key_from_keyring(ModelProvider::AmazonBedrock.as_str())
+            .map(|value| !value.trim().is_empty())
+            .unwrap_or(false);
+    Ok(access_key_id && secret_access_key)
 }
 
 pub fn save_model_api_key(model_name: &str, api_key: &str) -> Result<()> {

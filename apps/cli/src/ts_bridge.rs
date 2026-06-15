@@ -29,7 +29,10 @@ use crate::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
     },
-    model_registry::{AppConfig, ModelProvider, normalize_reasoning_effort_value},
+    model_registry::{
+        AppConfig, ModelProvider, load_provider_access_key_id_from_keyring,
+        load_provider_secret_access_key_from_keyring, normalize_reasoning_effort_value,
+    },
     plan::{self, PlanMetadata},
     ports::{
         ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
@@ -1923,6 +1926,42 @@ impl TsBridgeRuntime {
                     }
                 }
                 transport
+            } else if active.transport_kind() == crate::model_registry::ModelTransportKind::Bedrock {
+                let region = active.aws_region().ok_or_else(|| {
+                    anyhow!("Amazon Bedrock 模型缺少 awsRegion 配置，请使用 Desktop 连接向导导入或手动写入 config.json")
+                })?;
+                let mut transport = serde_json::json!({
+                    "transportKind": "bedrock",
+                    "model": active.name,
+                    "region": region,
+                    "baseUrl": api_base,
+                    "workspaceRoot": self.workspace_root,
+                });
+                if !api_key.trim().is_empty() {
+                    if let Some(obj) = transport.as_object_mut() {
+                        obj.insert("apiKey".to_string(), json!(api_key));
+                    }
+                }
+                if let Ok(access_key_id) =
+                    load_provider_access_key_id_from_keyring(ModelProvider::AmazonBedrock.as_str())
+                {
+                    if let Ok(secret_access_key) = load_provider_secret_access_key_from_keyring(
+                        ModelProvider::AmazonBedrock.as_str(),
+                    ) {
+                        let access_key_id = access_key_id.trim();
+                        let secret_access_key = secret_access_key.trim();
+                        if !access_key_id.is_empty() && !secret_access_key.is_empty() {
+                            if let Some(obj) = transport.as_object_mut() {
+                                obj.insert("accessKeyId".to_string(), json!(access_key_id));
+                                obj.insert(
+                                    "secretAccessKey".to_string(),
+                                    json!(secret_access_key),
+                                );
+                            }
+                        }
+                    }
+                }
+                transport
             } else {
                 serde_json::json!({
                     "apiKey": api_key,
@@ -1953,6 +1992,12 @@ impl TsBridgeRuntime {
                     );
                 }
             }
+            if let Some(reasoning_effort) = normalized_reasoning_effort.as_deref() {
+                if let Some(obj) = transport.as_object_mut() {
+                    obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
+                }
+            }
+        } else if active.transport_kind() == crate::model_registry::ModelTransportKind::Bedrock {
             if let Some(reasoning_effort) = normalized_reasoning_effort.as_deref() {
                 if let Some(obj) = transport.as_object_mut() {
                     obj.insert("reasoningEffort".to_string(), json!(reasoning_effort));
@@ -2142,7 +2187,19 @@ impl TsBridgeRuntime {
         model_name: &str,
         provider: Option<crate::model_registry::ModelProvider>,
     ) -> Result<String> {
-        if let Some(provider) = provider {
+        if provider == Some(ModelProvider::AmazonBedrock) {
+            if let Ok(value) =
+                crate::model_registry::load_provider_api_key_from_keyring(ModelProvider::AmazonBedrock.as_str())
+            {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    return Ok(trimmed.to_string());
+                }
+            }
+            if crate::model_registry::has_bedrock_runtime_credentials_in_keyring()? {
+                return Ok(String::new());
+            }
+        } else if let Some(provider) = provider {
             if let Ok(value) =
                 crate::model_registry::load_provider_api_key_from_keyring(provider.as_str())
             {
@@ -2157,6 +2214,13 @@ impl TsBridgeRuntime {
         }
         if let Some(value) = self.secret_store.load_global_api_key()? {
             return Ok(value);
+        }
+
+        if provider == Some(ModelProvider::AmazonBedrock) {
+            return Err(anyhow!(
+                "未检测到 Amazon Bedrock 凭证。请在 Desktop 连接向导配置 Bearer API Key 或 IAM 凭证，或设置环境变量 {}",
+                ENV_API_KEY
+            ));
         }
 
         Err(anyhow!(
@@ -3301,6 +3365,9 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::Openai => "openai",
         ModelProvider::Google => "google",
         ModelProvider::Volcengine => "volcengine",
+        ModelProvider::AmazonBedrock => {
+            unreachable!("Amazon Bedrock 不应映射到 openai-compatible llmVendor")
+        }
         ModelProvider::Custom => "custom",
     }
 }

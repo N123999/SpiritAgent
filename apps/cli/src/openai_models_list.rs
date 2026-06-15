@@ -174,6 +174,10 @@ pub fn list_model_ids(
             list_openai_compatible_model_ids(api_base, api_key)
         }
         ModelTransportKind::Anthropic => list_anthropic_model_ids(api_base, api_key),
+        ModelTransportKind::Bedrock => Err(
+            "Amazon Bedrock 模型列表请使用 Desktop 连接向导导入，或读取 Desktop 写入的 catalog cache"
+                .to_string(),
+        ),
     }
 }
 

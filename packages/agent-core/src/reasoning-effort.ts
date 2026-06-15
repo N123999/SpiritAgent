@@ -14,6 +14,7 @@ export type ModelReasoningProvider =
   | 'openai'
   | 'google'
   | 'volcengine'
+  | 'amazon-bedrock'
   | 'custom';
 
 export type ModelReasoningEffort = string;
