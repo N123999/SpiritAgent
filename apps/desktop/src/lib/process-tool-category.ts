@@ -27,15 +27,12 @@ export const PROCESS_TOOL_CATEGORY_ORDER: readonly ProcessToolCategory[] = [
   'other',
 ];
 
-/** 过程卡片摘要：读文件 / 搜索 / 匹配 / 列目录等探索类工具统一为「探索」。 */
+/** 过程卡片摘要：读文件 / 搜索 / 匹配 / 列目录 / 抓取网页 / 联网搜索 / 梦境与 TODO 列表等探索类工具统一为「探索」。 */
 const EXPLORE_TOOLS = new Set([
   'read_file',
   'list_directory_files',
   'grep',
   'glob',
-]);
-
-const VIEW_TOOLS = new Set([
   'web_fetch',
   'web_search',
   'dream_read',
@@ -121,9 +118,6 @@ export function classifyProcessToolCategory(
   }
   if (toolName === 'apply_patch') {
     return classifyApplyPatch(headline);
-  }
-  if (VIEW_TOOLS.has(toolName)) {
-    return 'view';
   }
   if (CREATE_TOOLS.has(toolName)) {
     return 'create';
