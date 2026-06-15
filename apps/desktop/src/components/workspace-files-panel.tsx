@@ -297,6 +297,7 @@ export function WorkspaceFilesPanel({
   const [moveTarget, setMoveTarget] = useState<PendingMoveTarget | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState("");
+  const [revealError, setRevealError] = useState("");
   const renameCommitInFlightRef = useRef(false);
 
   const workspaceRootLabel = fileBasename(workspaceRoot.trim()) || workspaceRoot.trim();
@@ -399,7 +400,12 @@ export function WorkspaceFilesPanel({
       if (!api) {
         return;
       }
-      await api.revealWorkspaceEntry(target.relativePath);
+      setRevealError("");
+      try {
+        await api.revealWorkspaceEntry(target.relativePath);
+      } catch (error) {
+        setRevealError(describeError(error));
+      }
     },
     [api],
   );
@@ -731,6 +737,11 @@ export function WorkspaceFilesPanel({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-xs">
+      {revealError ? (
+        <p className="mb-1 shrink-0 text-destructive/90" role="alert">
+          {revealError}
+        </p>
+      ) : null}
       <WorkspaceFileContextMenu
         target={rootTarget}
         isElectron={isElectron}
