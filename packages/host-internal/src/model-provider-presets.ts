@@ -325,17 +325,16 @@ export function resolveProviderConnectApiBase(
   transportKind: ProviderModelTransportKind,
   customApiBaseTrimmed = '',
 ): string {
-  const trimmedOverride = customApiBaseTrimmed.trim();
-  if (trimmedOverride.length > 0) {
-    return trimmedOverride;
+  if (provider === 'custom') {
+    const trimmedOverride = customApiBaseTrimmed.trim();
+    if (trimmedOverride.length > 0) {
+      return trimmedOverride;
+    }
+    return DEFAULT_CUSTOM_API_BASE;
   }
 
   if (provider === 'openai') {
     return PROVIDER_PRESET_API_BASE.openai;
-  }
-
-  if (provider === 'custom') {
-    return DEFAULT_CUSTOM_API_BASE;
   }
 
   const transportBases = raw.presetApiBaseByTransport[provider as PresetModelProviderId];

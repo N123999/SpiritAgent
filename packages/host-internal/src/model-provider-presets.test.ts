@@ -96,9 +96,20 @@ test('resolveProviderConnectApiBase returns OpenRouter preset base', () => {
   );
 });
 
-test('resolveProviderConnectApiBase prefers custom override', () => {
+test('resolveProviderConnectApiBase ignores endpoint override for preset providers', () => {
   assert.equal(
     resolveProviderConnectApiBase('deepseek', 'anthropic', 'https://custom.example/v1'),
+    'https://api.deepseek.com/anthropic',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('google', 'openai-compatible', 'https://api.openai.com/v1'),
+    'https://generativelanguage.googleapis.com/v1beta/openai',
+  );
+});
+
+test('resolveProviderConnectApiBase accepts override only for custom provider', () => {
+  assert.equal(
+    resolveProviderConnectApiBase('custom', 'openai-compatible', 'https://custom.example/v1'),
     'https://custom.example/v1',
   );
 });

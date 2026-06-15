@@ -2701,9 +2701,8 @@ function ModelsSettingsPanel({
           ? resolveProviderConnectApiBase(
               selectedProvider,
               connectTransportKindForRequest,
-              connectApiBase,
             )
-          : resolveConnectApiBase(selectedProvider, connectApiBase);
+          : resolveConnectApiBase(selectedProvider);
 
   const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {

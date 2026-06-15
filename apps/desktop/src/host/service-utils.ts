@@ -29,6 +29,7 @@ import {
   mergeRecentWorkspaceRoots,
   resolveDesktopHomeDirectory,
 } from './storage.js';
+import { resolveProfileApiBase } from './model-config.js';
 import {
   DESKTOP_WEB_HOST_POLICY,
   getDesktopWebHostRuntimeStatus,
@@ -215,11 +216,12 @@ export function buildWebHostSnapshot(config: DesktopWebHostConfigFile): DesktopW
 }
 
 export function currentApiBase(config: DesktopConfigFile): string {
-  return (
-    config.models.find((model) => model.name === config.activeModel)?.apiBase ||
-    config.models[0]?.apiBase ||
-    ''
-  );
+  const profile =
+    config.models.find((model) => model.name === config.activeModel) ?? config.models[0];
+  if (!profile) {
+    return '';
+  }
+  return resolveProfileApiBase(profile);
 }
 
 export function cloneChatArchive(archive: ChatArchive): ChatArchive {
