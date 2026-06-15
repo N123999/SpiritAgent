@@ -598,7 +598,8 @@ function buildAiSdkRequestTrace(
     !isMoonshotOfficialAiSdkProvider(config) &&
     !isAlibabaOfficialAiSdkProvider(config) &&
     !isVercelAiGatewayProvider(config) &&
-    !isOpenAiOfficialAiSdkProvider(config)
+    !isOpenAiOfficialAiSdkProvider(config) &&
+    !isGoogleOpenAiCompatProvider(config)
   ) {
     return requestTrace;
   }
@@ -618,7 +619,9 @@ function buildAiSdkRequestTrace(
           ? 'alibaba_sdk_chat_completions'
           : isVercelAiGatewayProvider(config)
             ? 'gateway_sdk_chat_completions'
-            : 'openai_official_sdk_chat_completions';
+            : isGoogleOpenAiCompatProvider(config)
+              ? 'google_openai_compat_chat_completions'
+              : 'openai_official_sdk_chat_completions';
 
   const alibabaExtraBody = isAlibabaOfficialAiSdkProvider(config)
     && shouldUseAlibabaChatCompletionsBuiltInTools(config)
@@ -1597,6 +1600,10 @@ function isVercelAiGatewayImageConfig(
 
 function isOpenAiOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'openai';
+}
+
+function isGoogleOpenAiCompatProvider(config: OpenAiTransportConfig): boolean {
+  return config.llmVendor === 'google';
 }
 
 function xaiChatReasoningEffort(
