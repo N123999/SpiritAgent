@@ -30,8 +30,11 @@ export function isDescendantOrSelf(ancestorRel: string, candidateRel: string): b
   if (ancestor === candidate) {
     return true;
   }
-  const prefix = ancestor === '' ? '' : `${ancestor}/`;
-  return candidate.startsWith(prefix);
+  // 空 ancestor 仅匹配自身；moveIntoSelf 校验时 sourceRel 已保证非空。
+  if (ancestor === '') {
+    return false;
+  }
+  return candidate.startsWith(`${ancestor}/`);
 }
 
 async function assertTargetDoesNotExist(
