@@ -6,6 +6,8 @@ export const GOOGLE_GEMINI_OPENAI_COMPAT_BASE =
 export const GOOGLE_GEMINI_NATIVE_API_ROOT =
   'https://generativelanguage.googleapis.com/v1beta';
 
+// 本机/CI 通常无法直连 generativelanguage.googleapis.com；联调需在有网络的环境手动验证连接向导。
+
 const GOOGLE_GEMINI_HOST = 'generativelanguage.googleapis.com';
 
 function trimTrailingSlashes(value: string): string {

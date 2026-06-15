@@ -279,7 +279,7 @@ export async function updateConfigCommand(
   });
 }
 
-function assertProviderConnectApiBase(provider: DesktopModelProvider, apiBase: string): void {
+function assertProviderConnectApiBase(provider: DesktopModelProvider | undefined, apiBase: string): void {
   if (provider === 'google') {
     assertGoogleGeminiApiBase(apiBase);
   }

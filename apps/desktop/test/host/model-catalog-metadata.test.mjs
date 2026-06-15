@@ -241,6 +241,7 @@ test('volcengine provider maps domain-derived traits to catalog capabilities', (
       id: 'doubao-1-5-pro-32k-250115',
       displayName: 'doubao-1-5-pro-32k',
       capabilities: ['chat'],
+      contextLength: 131072,
     },
     {
       id: 'doubao-seed-1-6-250615',
@@ -256,6 +257,33 @@ test('volcengine provider maps domain-derived traits to catalog capabilities', (
       id: 'doubao-seedream-4-0-250828',
       displayName: 'Doubao Seedream 4 0 250828',
       capabilities: ['imageGeneration'],
+    },
+  ]);
+});
+
+test('google provider uses upstream display metadata from native models catalog', () => {
+  assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'google' }), true);
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'google',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'gemini-3.1-pro-preview',
+        displayName: 'Gemini 3.1 Pro Preview',
+        description: 'Preview model for advanced reasoning.',
+        contextLength: 1048576 + 8192,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'gemini-3.1-pro-preview',
+      displayName: 'Gemini 3.1 Pro Preview',
+      description: 'Preview model for advanced reasoning.',
+      capabilities: ['chat'],
+      contextLength: 1048576 + 8192,
     },
   ]);
 });
