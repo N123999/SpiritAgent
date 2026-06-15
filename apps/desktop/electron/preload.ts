@@ -312,6 +312,24 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   writeWorkspaceTextFile(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'writeWorkspaceTextFile', { request });
   },
+  revealWorkspaceEntry(relativePath: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'revealWorkspaceEntry', { relativePath });
+  },
+  renameWorkspaceEntry(relativePath: string, newName: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'renameWorkspaceEntry', { relativePath, newName });
+  },
+  moveWorkspaceEntry(relativePath: string, targetDirectoryRel: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'moveWorkspaceEntry', {
+      relativePath,
+      targetDirectoryRel,
+    });
+  },
+  trashWorkspaceEntry(relativePath: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'trashWorkspaceEntry', { relativePath });
+  },
+  forceDeleteWorkspaceEntry(relativePath: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'forceDeleteWorkspaceEntry', { relativePath });
+  },
   readHostTextFile(absolutePath: string) {
     return ipcRenderer.invoke('desktop:invoke', 'readHostTextFile', { absolutePath });
   },

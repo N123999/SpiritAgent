@@ -347,6 +347,31 @@ export function createWebHostApi(): HostApi {
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest) {
       return post<void>(baseUrl, '/api/workspace/file/write', request);
     },
+    revealWorkspaceEntry() {
+      return Promise.reject(
+        new Error('Workspace file shell actions are only available in the Electron desktop app.'),
+      );
+    },
+    renameWorkspaceEntry() {
+      return Promise.reject(
+        new Error('Workspace file shell actions are only available in the Electron desktop app.'),
+      );
+    },
+    moveWorkspaceEntry() {
+      return Promise.reject(
+        new Error('Workspace file shell actions are only available in the Electron desktop app.'),
+      );
+    },
+    trashWorkspaceEntry() {
+      return Promise.reject(
+        new Error('Workspace file shell actions are only available in the Electron desktop app.'),
+      );
+    },
+    forceDeleteWorkspaceEntry() {
+      return Promise.reject(
+        new Error('Workspace file shell actions are only available in the Electron desktop app.'),
+      );
+    },
     readHostTextFile(absolutePath: string) {
       return post<WorkspaceReadTextFileResult>(baseUrl, '/api/host/file', { absolutePath });
     },
