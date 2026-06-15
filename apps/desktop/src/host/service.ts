@@ -184,6 +184,11 @@ import {
   statHostTextFileCommand,
   writeHostTextFileCommand,
   writeWorkspaceTextFileCommand,
+  revealWorkspaceEntryCommand,
+  renameWorkspaceEntryCommand,
+  moveWorkspaceEntryCommand,
+  trashWorkspaceEntryCommand,
+  forceDeleteWorkspaceEntryCommand,
   type HostWorkspaceGitCommandContext,
 } from './host-workspace-git-commands.js';
 import {
@@ -1775,6 +1780,36 @@ class DesktopHostService {
 
   async writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void> {
     return writeWorkspaceTextFileCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async revealWorkspaceEntry(relativePath: string): Promise<void> {
+    return revealWorkspaceEntryCommand(this.workspaceGitCommandContext(), relativePath);
+  }
+
+  async renameWorkspaceEntry(
+    relativePath: string,
+    newName: string,
+  ): Promise<{ relativePath: string }> {
+    return renameWorkspaceEntryCommand(this.workspaceGitCommandContext(), relativePath, newName);
+  }
+
+  async moveWorkspaceEntry(
+    relativePath: string,
+    targetDirectoryRel: string,
+  ): Promise<{ relativePath: string }> {
+    return moveWorkspaceEntryCommand(
+      this.workspaceGitCommandContext(),
+      relativePath,
+      targetDirectoryRel,
+    );
+  }
+
+  async trashWorkspaceEntry(relativePath: string): Promise<void> {
+    return trashWorkspaceEntryCommand(this.workspaceGitCommandContext(), relativePath);
+  }
+
+  async forceDeleteWorkspaceEntry(relativePath: string): Promise<void> {
+    return forceDeleteWorkspaceEntryCommand(this.workspaceGitCommandContext(), relativePath);
   }
 
   async readHostTextFile(absolutePath: string): Promise<WorkspaceReadTextFileResult> {

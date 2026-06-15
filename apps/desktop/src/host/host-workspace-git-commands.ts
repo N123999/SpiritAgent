@@ -47,6 +47,13 @@ import {
   writeWorkspaceTextFile as writeWorkspaceTextFileToDisk,
 } from './workspace-files.js';
 import {
+  forceDeleteWorkspaceEntry as forceDeleteWorkspaceEntryOnDisk,
+  moveWorkspaceEntry as moveWorkspaceEntryOnDisk,
+  renameWorkspaceEntry as renameWorkspaceEntryOnDisk,
+  revealWorkspaceEntry as revealWorkspaceEntryOnDisk,
+  trashWorkspaceEntry as trashWorkspaceEntryOnDisk,
+} from './workspace-file-operations.js';
+import {
   listStoredSessions,
   mergeRecentWorkspaceRoots,
   removeRecentWorkspaceRoot,
@@ -385,6 +392,61 @@ export async function writeWorkspaceTextFileCommand(
     await ctx.ensureInitialized();
     const state = ctx.requireState();
     await writeWorkspaceTextFileToDisk(state.workspaceRoot, request);
+  });
+}
+
+export async function revealWorkspaceEntryCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  relativePath: string,
+): Promise<void> {
+  await ctx.ensureInitialized(undefined, { fastPath: true });
+  const state = ctx.requireState();
+  await revealWorkspaceEntryOnDisk(state.workspaceRoot, relativePath);
+}
+
+export async function renameWorkspaceEntryCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  relativePath: string,
+  newName: string,
+): Promise<{ relativePath: string }> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    return renameWorkspaceEntryOnDisk(state.workspaceRoot, relativePath, newName);
+  });
+}
+
+export async function moveWorkspaceEntryCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  relativePath: string,
+  targetDirectoryRel: string,
+): Promise<{ relativePath: string }> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    return moveWorkspaceEntryOnDisk(state.workspaceRoot, relativePath, targetDirectoryRel);
+  });
+}
+
+export async function trashWorkspaceEntryCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  relativePath: string,
+): Promise<void> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    await trashWorkspaceEntryOnDisk(state.workspaceRoot, relativePath);
+  });
+}
+
+export async function forceDeleteWorkspaceEntryCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  relativePath: string,
+): Promise<void> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    await forceDeleteWorkspaceEntryOnDisk(state.workspaceRoot, relativePath);
   });
 }
 

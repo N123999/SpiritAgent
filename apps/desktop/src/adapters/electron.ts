@@ -294,6 +294,21 @@ export async function createElectronHostApi(): Promise<HostApi> {
     writeWorkspaceTextFile(request) {
       return bridge.writeWorkspaceTextFile(request);
     },
+    revealWorkspaceEntry(relativePath) {
+      return bridge.revealWorkspaceEntry(relativePath);
+    },
+    renameWorkspaceEntry(relativePath, newName) {
+      return bridge.renameWorkspaceEntry(relativePath, newName);
+    },
+    moveWorkspaceEntry(relativePath, targetDirectoryRel) {
+      return bridge.moveWorkspaceEntry(relativePath, targetDirectoryRel);
+    },
+    trashWorkspaceEntry(relativePath) {
+      return bridge.trashWorkspaceEntry(relativePath);
+    },
+    forceDeleteWorkspaceEntry(relativePath) {
+      return bridge.forceDeleteWorkspaceEntry(relativePath);
+    },
     readHostTextFile(absolutePath) {
       return bridge.readHostTextFile(absolutePath);
     },

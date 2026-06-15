@@ -99,6 +99,17 @@ export interface HostCommandDelegate {
   markGitHubPullRequestReady(request: CommandPayloads['markGitHubPullRequestReady']['request']): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
+  revealWorkspaceEntry(relativePath: string): Promise<unknown>;
+  renameWorkspaceEntry(
+    relativePath: string,
+    newName: string,
+  ): Promise<unknown>;
+  moveWorkspaceEntry(
+    relativePath: string,
+    targetDirectoryRel: string,
+  ): Promise<unknown>;
+  trashWorkspaceEntry(relativePath: string): Promise<unknown>;
+  forceDeleteWorkspaceEntry(relativePath: string): Promise<unknown>;
   readHostTextFile(absolutePath: string): Promise<unknown>;
   writeHostTextFile(request: CommandPayloads['writeHostTextFile']['request']): Promise<unknown>;
   statHostTextFile(absolutePath: string): Promise<unknown>;
@@ -207,6 +218,14 @@ const hostCommandDispatch = {
   markGitHubPullRequestReady: (host, payload) => host.markGitHubPullRequestReady(payload.request),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
+  revealWorkspaceEntry: (host, payload) => host.revealWorkspaceEntry(payload.relativePath),
+  renameWorkspaceEntry: (host, payload) =>
+    host.renameWorkspaceEntry(payload.relativePath, payload.newName),
+  moveWorkspaceEntry: (host, payload) =>
+    host.moveWorkspaceEntry(payload.relativePath, payload.targetDirectoryRel),
+  trashWorkspaceEntry: (host, payload) => host.trashWorkspaceEntry(payload.relativePath),
+  forceDeleteWorkspaceEntry: (host, payload) =>
+    host.forceDeleteWorkspaceEntry(payload.relativePath),
   readHostTextFile: (host, payload) => host.readHostTextFile(payload.absolutePath),
   writeHostTextFile: (host, payload) => host.writeHostTextFile(payload.request),
   statHostTextFile: (host, payload) => host.statHostTextFile(payload.absolutePath),
