@@ -17,9 +17,6 @@ const t = (key, options) => {
   if (key === 'process.thought' && options?.count === 4) {
     return '4 Thoughts';
   }
-  if (key === 'process.compacted' && options?.count === 1) {
-    return '1 Compacted';
-  }
   if (key === 'process.separator') {
     return ', ';
   }

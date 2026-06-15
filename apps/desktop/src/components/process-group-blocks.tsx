@@ -9,7 +9,6 @@ import {
   AnimatedCollapseTrigger,
 } from "@/components/ui/animated-collapse";
 import {
-  isGenericPendingCompactionStatusText,
   isGenericPendingThinkingStatusText,
 } from "@/lib/subagent-display";
 import { cn } from "@/lib/utils";
@@ -110,35 +109,6 @@ export function ProcessGroupThinkingBlock({
       idleLabel="Thought"
       body={thinking}
       streaming={thinkingActive}
-      readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
-      readManagedVideoPreviewUrl={readManagedVideoPreviewUrl}
-    />
-  );
-}
-
-export function ProcessGroupCompactionBlock({
-  message,
-  compactionActive,
-  readManagedImagePreviewDataUrl,
-  readManagedVideoPreviewUrl,
-}: {
-  message: ConversationMessageSnapshot;
-  compactionActive: boolean;
-  readManagedImagePreviewDataUrl: ReadManagedImagePreview;
-  readManagedVideoPreviewUrl: ReadManagedVideoPreview;
-}) {
-  const compaction = message.aux?.compaction?.trim() ?? "";
-  if (!compaction || isGenericPendingCompactionStatusText(compaction)) {
-    return null;
-  }
-
-  return (
-    <ProcessGroupReasoningBlock
-      labelActive={compactionActive}
-      activeLabel="Compacting"
-      idleLabel="Compacted"
-      body={compaction}
-      streaming={compactionActive}
       readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
       readManagedVideoPreviewUrl={readManagedVideoPreviewUrl}
     />

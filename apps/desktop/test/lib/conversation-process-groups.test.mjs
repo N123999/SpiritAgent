@@ -33,6 +33,16 @@ test('isProcessEligibleMetaMessage accepts tools and standalone thinking', () =>
   );
   assert.equal(
     isProcessEligibleMetaMessage({
+      id: 8,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      aux: { compaction: 'compressed context' },
+    }),
+    false,
+  );
+  assert.equal(
+    isProcessEligibleMetaMessage({
       id: 3,
       role: 'assistant',
       content: 'answer',
@@ -144,7 +154,7 @@ test('buildConversationRenderItems seals meta run before assistant body text', (
     return;
   }
   assert.deepEqual(group.messageIndices, [1, 2, 3]);
-  assert.equal(group.toolCounts.read, 1);
+  assert.equal(group.toolCounts.explore, 1);
   assert.equal(group.toolCounts.edit, 1);
   assert.equal(isMessageHiddenByProcessGroup(items, 2), true);
   assert.equal(isMessageHiddenByProcessGroup(items, 5), false);
@@ -173,15 +183,37 @@ test('buildConversationRenderItems supports body then tools then body in one tur
   const items = buildConversationRenderItems(messages, scopeKey);
   assert.deepEqual(
     items.map((item) => item.kind),
-    ['message', 'message', 'process-group', 'message'],
+    ['message', 'message', 'process-group', 'message', 'message'],
   );
   const group = items[2];
   assert.equal(group.kind, 'process-group');
   if (group.kind !== 'process-group') {
     return;
   }
-  assert.deepEqual(group.messageIndices, [2, 3]);
-  assert.deepEqual(group.toolCounts, { ...emptyProcessToolCounts(), view: 1 });
+  assert.deepEqual(group.messageIndices, [2]);
+  assert.deepEqual(group.toolCounts, { ...emptyProcessToolCounts(), explore: 1 });
+  assert.equal(isMessageHiddenByProcessGroup(items, 2), true);
+  assert.equal(isMessageHiddenByProcessGroup(items, 3), false);
+});
+
+test('buildConversationRenderItems keeps compaction as standalone message', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'hi', pending: false },
+    {
+      id: 2,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      aux: { compaction: '## Context compressed\n\n- summary' },
+    },
+    { id: 3, role: 'assistant', content: 'Continued.', pending: false },
+  ];
+  const items = buildConversationRenderItems(messages, scopeKey);
+  assert.deepEqual(
+    items.map((item) => item.kind),
+    ['message', 'message', 'message'],
+  );
+  assert.equal(isMessageHiddenByProcessGroup(items, 1), false);
 });
 
 test('buildConversationRenderItems uses scope key in group id', () => {

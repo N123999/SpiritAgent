@@ -1076,9 +1076,7 @@
     "other_one": "1 次其它",
     "other_other": "{{count}} 次其它",
     "thought_one": "1 次思考",
-    "thought_other": "{{count}} 次思考",
-    "compacted_one": "1 次压缩",
-    "compacted_other": "{{count}} 次压缩"
+    "thought_other": "{{count}} 次思考"
   },
   "demo": {
     "compactionUserText": "请继续实现 Desktop 连接向导：在上下文接近上限时自动压缩历史，并保留最近一轮工具结果。",

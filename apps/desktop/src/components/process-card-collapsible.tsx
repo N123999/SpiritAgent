@@ -4,7 +4,6 @@ import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
-  ProcessGroupCompactionBlock,
   ProcessGroupThinkingBlock,
 } from "@/components/process-group-blocks";
 import {
@@ -14,7 +13,6 @@ import {
 } from "@/components/ui/animated-collapse";
 import { formatProcessGroupSummary } from "@/lib/process-summary-format";
 import type { ProcessToolCounts } from "@/lib/process-tool-category";
-import { assistantCompactionLive } from "@/lib/conversation-compaction-ui";
 import { isAssistantReasoningLive } from "@/lib/conversation-thinking-ui";
 import { cn } from "@/lib/utils";
 import type { ConversationMessageSnapshot, PendingAssistantAux } from "@/types";
@@ -141,23 +139,13 @@ export function ProcessCardCollapsible({
               />
             ) : null;
 
-            const compactionNode = message.aux?.compaction?.trim() ? (
-              <ProcessGroupCompactionBlock
-                message={message}
-                compactionActive={assistantCompactionLive(message, pendingAuxState)}
-                readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
-                readManagedVideoPreviewUrl={readManagedVideoPreviewUrl}
-              />
-            ) : null;
+            const standaloneThinking =
+              !message.tool && !message.content.trim() && thinkingNode;
 
-            const standaloneThinkingOrCompaction =
-              !message.tool && !message.content.trim() && (thinkingNode || compactionNode);
-
-            if (standaloneThinkingOrCompaction) {
+            if (standaloneThinking) {
               return (
                 <div key={`${groupId}-${messageIndex}-aux`} className="pb-3 last:pb-0">
                   {thinkingNode}
-                  {compactionNode}
                 </div>
               );
             }
@@ -170,11 +158,10 @@ export function ProcessCardCollapsible({
               );
             }
 
-            if (thinkingNode || compactionNode) {
+            if (thinkingNode) {
               return (
                 <div key={`${groupId}-${messageIndex}-inline-aux`} className="pb-3 last:pb-0">
                   {thinkingNode}
-                  {compactionNode}
                 </div>
               );
             }

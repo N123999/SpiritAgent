@@ -28,7 +28,7 @@ function isProcessEligibleMetaMessage(message: ConversationMessageSnapshot | und
   if (message.tool) {
     return !isProcessGroupExcludedToolName(message.tool.toolName);
   }
-  return Boolean(message.aux?.thinking?.trim() || message.aux?.compaction?.trim());
+  return Boolean(message.aux?.thinking?.trim());
 }
 
 function lastUserMessageIndex(messages: readonly ConversationMessageSnapshot[]): number {

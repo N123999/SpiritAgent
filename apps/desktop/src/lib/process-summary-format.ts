@@ -56,22 +56,18 @@ export function formatProcessSummary(
 export function countProcessAuxMessages(
   messages: readonly ConversationMessageSnapshot[],
   messageIndices: readonly number[],
-): { thoughtCount: number; compactCount: number } {
+): { thoughtCount: number } {
   let thoughtCount = 0;
-  let compactCount = 0;
   for (const index of messageIndices) {
     const message = messages[index];
     if (message?.aux?.thinking?.trim()) {
       thoughtCount += 1;
     }
-    if (message?.aux?.compaction?.trim()) {
-      compactCount += 1;
-    }
   }
-  return { thoughtCount, compactCount };
+  return { thoughtCount };
 }
 
-/** Tool counts first; otherwise summarize sealed thinking/compaction rows in the group. */
+/** Tool counts first; otherwise summarize sealed thinking rows in the group. */
 export function formatProcessGroupSummary(
   t: TFunction,
   counts: ProcessToolCounts,
@@ -83,13 +79,9 @@ export function formatProcessGroupSummary(
     return toolSummary;
   }
 
-  const { thoughtCount, compactCount } = countProcessAuxMessages(messages, messageIndices);
-  const parts: string[] = [];
+  const { thoughtCount } = countProcessAuxMessages(messages, messageIndices);
   if (thoughtCount > 0) {
-    parts.push(t('process.thought', { count: thoughtCount }));
+    return t('process.thought', { count: thoughtCount });
   }
-  if (compactCount > 0) {
-    parts.push(t('process.compacted', { count: compactCount }));
-  }
-  return parts.join(t('process.separator'));
+  return '';
 }

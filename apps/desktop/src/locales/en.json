@@ -1130,9 +1130,7 @@
     "other_one": "1 Other",
     "other_other": "{{count}} Other",
     "thought_one": "1 Thought",
-    "thought_other": "{{count}} Thoughts",
-    "compacted_one": "1 Compacted",
-    "compacted_other": "{{count}} Compacted"
+    "thought_other": "{{count}} Thoughts"
   },
   "demo": {
     "compactionUserText": "Please continue implementing the Desktop connection wizard: automatically compress history when context approaches the limit, and retain the most recent round of tool results.",
