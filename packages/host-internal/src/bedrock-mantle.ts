@@ -2,7 +2,7 @@
 
 import { normalizeAwsRegion } from './bedrock-region.js';
 
-/** Bedrock Mantle OpenAI frontier 模型 ID，如 `openai.gpt-5.5`。 */
+/** Bedrock Mantle OpenAI 模型 ID（含 frontier 与 OSS，如 `openai.gpt-5.5`、`openai.gpt-oss-120b`）。 */
 export function isBedrockMantleOpenAiModel(modelId: string): boolean {
   return /^openai\.gpt-/i.test(modelId.trim());
 }

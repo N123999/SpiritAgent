@@ -12,6 +12,11 @@ test('isBedrockMantleOpenAiModel detects openai.gpt frontier ids', () => {
   assert.equal(isBedrockMantleOpenAiModel('anthropic.claude-3-5-sonnet-20241022-v2:0'), false);
 });
 
+test('isBedrockMantleOpenAiModel includes openai.gpt-oss models on Mantle', () => {
+  assert.equal(isBedrockMantleOpenAiModel('openai.gpt-oss-120b'), true);
+  assert.equal(isBedrockMantleOpenAiModel('openai.gpt-oss-20b'), true);
+});
+
 test('bedrockMantleApiBaseFromRegion uses bedrock-mantle /openai/v1 base', () => {
   assert.equal(
     bedrockMantleApiBaseFromRegion('us-east-2'),
