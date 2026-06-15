@@ -21,6 +21,7 @@ import {
   segmentsEqual,
 } from "../src/lib/composer-segment-model.ts";
 import {
+  ensureLoopChipTypingTail,
   ensureLoopPinned,
   hasLoopSegment,
   insertLoopSegment,
@@ -304,6 +305,31 @@ test("insertLoopSegment appends loop after existing agent mode chip", () => {
 
 test("insertLoopSegment adds trailing space after loop when composer empty", () => {
   const { segments, caret } = insertLoopSegment(emptySegments());
+  assert.deepEqual(segments, [
+    { kind: "loop" },
+    { kind: "text", value: " " },
+  ]);
+  assert.equal(caret.segmentIndex, 1);
+  assert.equal(caret.offset, 1);
+});
+
+test("ensureLoopChipTypingTail restores typed tail spacer after slash removal leaves loop only", () => {
+  const pinned = ensureLoopChipTypingTail([{ kind: "loop" }]);
+  assert.deepEqual(pinned, [
+    { kind: "loop" },
+    { kind: "text", value: " " },
+  ]);
+});
+
+test("applyLoopSlash order: remove slash then insert loop on empty composer", () => {
+  const slashQuery = { start: 0, end: 5, raw: "/loop" };
+  const afterRemove = replaceSkillSlashQueryInSegments(
+    [{ kind: "text", value: "/loop" }],
+    slashQuery,
+    "",
+    false,
+  );
+  const { segments, caret } = insertLoopSegment(afterRemove.segments);
   assert.deepEqual(segments, [
     { kind: "loop" },
     { kind: "text", value: " " },

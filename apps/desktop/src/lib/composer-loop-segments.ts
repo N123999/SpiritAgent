@@ -176,6 +176,30 @@ export function isCaretAtLoopRemovalPoint(
   return caret.segmentIndex === loopIndex + 1 && caret.offset === 0;
 }
 
+/** 无正文时保证 loop chip 后有可输入的空格段（与 insertLoopSegment 一致）。 */
+export function ensureLoopChipTypingTail(segs: RichSegment[]): RichSegment[] {
+  const merged = mergeAdjacentTextSegments(segs);
+  const loopIndex = loopChipIndex(merged);
+  if (loopIndex < 0) {
+    return merged;
+  }
+  let afterIndex = loopIndex + 1;
+  while (afterIndex < merged.length && isAgentModeKind(merged[afterIndex]?.kind)) {
+    afterIndex += 1;
+  }
+  const rest = merged.slice(afterIndex);
+  const hasNonEmptyBody = rest.some(
+    (s) => s.kind !== "text" || s.value.trim().length > 0,
+  );
+  if (hasNonEmptyBody) {
+    return merged;
+  }
+  return mergeAdjacentTextSegments([
+    ...merged.slice(0, afterIndex),
+    ...tailAfterLoopChip(rest),
+  ]);
+}
+
 export function emptySegmentsWithOptionalLoop(loopEnabled: boolean): RichSegment[] {
   return loopEnabled ? insertLoopSegment(emptySegments()).segments : emptySegments();
 }

@@ -40,6 +40,7 @@ import {
   domToSegments,
   emptySegments,
   caretAfterAgentModeChip,
+  ensureLoopChipTypingTail,
   ensureLoopPinned,
   hasAgentModeSegment,
   hasLoopSegment,
@@ -279,10 +280,12 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       };
     }, []);
 
-    /** Plan/Ask chip 增删的唯一入口（与 loop pin 正交）。 */
     const applyComposerPolicy = useCallback(
       (next: RichSegment[]): RichSegment[] =>
-        applyAgentModeChipPolicy(ensureLoopPinned(mergeAdjacentTextSegments(next)), chipPolicy()),
+        applyAgentModeChipPolicy(
+          ensureLoopChipTypingTail(ensureLoopPinned(mergeAdjacentTextSegments(next))),
+          chipPolicy(),
+        ),
       [chipPolicy],
     );
 
@@ -347,7 +350,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       ) => {
         const merged = applyComposerPolicy(next);
         let resolvedCaret = caret ?? null;
-        if (shouldPinAgentModeChip(chipPolicy()) && hasAgentModeSegment(merged)) {
+        if (
+          hasLoopSegment(merged)
+          || (shouldPinAgentModeChip(chipPolicy()) && hasAgentModeSegment(merged))
+        ) {
           resolvedCaret = normalizeCaretForComposer(merged, resolvedCaret);
         }
         segmentsRef.current = merged;
@@ -825,6 +831,13 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         const caret = normalizeCaretForComposer(segments, pendingCaretRef.current);
         caretToDomRange(div, segments, caret);
         pendingCaretRef.current = null;
+        reportSelectionChange();
+      } else if (
+        hasLoopSegment(segments) &&
+        isComposerPlainEmpty(segmentsToPlainText(segments))
+      ) {
+        const caret = normalizeCaretForComposer(segments, selectionToCaret(div, segments));
+        caretToDomRange(div, segments, caret);
         reportSelectionChange();
       } else if (
         shouldPinAgentModeChip(chipPolicy()) &&

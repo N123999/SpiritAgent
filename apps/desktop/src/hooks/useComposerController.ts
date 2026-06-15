@@ -292,10 +292,10 @@ export function useComposerController({
     setSlashSelectedIndex(-1);
     setDismissedSlashQueryKey(null);
     void runtime.setLoopEnabled(true);
-    composerRichInputRef.current?.insertLoopChip({ clearText: false });
     if (slashQuery) {
       composerRichInputRef.current?.removeSkillSlashQuery(slashQuery);
     }
+    composerRichInputRef.current?.insertLoopChip({ clearText: false });
   }, [runtime, slashQuery]);
 
   const applyPlanSlash = useCallback(() => {

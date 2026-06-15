@@ -34,6 +34,7 @@ export {
 } from "@/lib/composer-segment-model";
 
 export {
+  ensureLoopChipTypingTail,
   ensureLoopPinned,
   hasLoopSegment,
   insertLoopSegment,
