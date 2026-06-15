@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -123,6 +123,24 @@ function ExplorerRow({
   onDrop,
   children,
 }: ExplorerRowProps) {
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const pendingRenameFocusRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!renaming) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const input = renameInputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [renaming, target.relativePath]);
+
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -135,17 +153,40 @@ function ExplorerRow({
     }
   };
 
-  const rowButton = (
+  const rowClassName = cn(
+    "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
+    "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+    selected && "bg-foreground/[0.08] dark:bg-foreground/12",
+    dropHighlight && "bg-primary/15 ring-1 ring-primary/40",
+  );
+  const rowStyle = { paddingLeft: `${depth * 12 + 4}px` };
+
+  const renameInput = (
+    <input
+      ref={renameInputRef}
+      type="text"
+      className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1 py-0 text-xs outline-none focus:border-ring"
+      value={renameValue}
+      aria-invalid={renameError ? true : undefined}
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => onRenameValueChange(event.target.value)}
+      onBlur={() => onRenameCommit()}
+      onKeyDown={handleRenameKeyDown}
+    />
+  );
+
+  const rowTrigger = renaming ? (
+    <div className={rowClassName} style={rowStyle} role="treeitem">
+      {leading}
+      <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+      {renameInput}
+    </div>
+  ) : (
     <button
       type="button"
       draggable={draggable}
-      className={cn(
-        "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
-        "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
-        selected && "bg-foreground/[0.08] dark:bg-foreground/12",
-        dropHighlight && "bg-primary/15 ring-1 ring-primary/40",
-      )}
-      style={{ paddingLeft: `${depth * 12 + 4}px` }}
+      className={rowClassName}
+      style={rowStyle}
       aria-current={selected ? "true" : undefined}
       onClick={onClick}
       onDragStart={onDragStart}
@@ -155,23 +196,22 @@ function ExplorerRow({
     >
       {leading}
       <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
-      {renaming ? (
-        <input
-          type="text"
-          className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1 py-0 text-xs outline-none focus:border-ring"
-          value={renameValue}
-          autoFocus
-          aria-invalid={renameError ? true : undefined}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => onRenameValueChange(event.target.value)}
-          onBlur={() => onRenameCommit()}
-          onKeyDown={handleRenameKeyDown}
-        />
-      ) : (
-        <span className="min-w-0 truncate">{target.name}</span>
-      )}
+      <span className="min-w-0 truncate">{target.name}</span>
     </button>
   );
+
+  const handleContextMenuCloseAutoFocus = (event: Event) => {
+    if (!pendingRenameFocusRef.current && !renaming) {
+      return;
+    }
+    event.preventDefault();
+    pendingRenameFocusRef.current = false;
+  };
+
+  const handleRenameStartFromMenu = (entry: WorkspaceExplorerContextTarget) => {
+    pendingRenameFocusRef.current = true;
+    onRenameStart?.(entry);
+  };
 
   return (
     <li className="min-w-0">
@@ -179,11 +219,12 @@ function ExplorerRow({
         target={target}
         isElectron={isElectron}
         onReveal={onReveal}
-        onRename={onRenameStart}
+        onRename={onRenameStart ? handleRenameStartFromMenu : undefined}
         onDelete={onDelete}
         onAddToSession={onAddToSession}
+        onCloseAutoFocus={handleContextMenuCloseAutoFocus}
       >
-        {rowButton}
+        {rowTrigger}
       </WorkspaceFileContextMenu>
       {renaming && renameError ? (
         <p className="py-0.5 pl-1 text-destructive/90" style={{ paddingLeft: `${depth * 12 + 4}px` }}>
@@ -321,14 +362,7 @@ export function WorkspaceFilesPanel({
       if (!api) {
         return;
       }
-      try {
-        await api.revealWorkspaceEntry(target.relativePath);
-      } catch (error) {
-        console.debug("[WorkspaceFilesPanel] reveal failed", {
-          relativePath: target.relativePath,
-          error: describeError(error),
-        });
-      }
+      await api.revealWorkspaceEntry(target.relativePath);
     },
     [api],
   );
@@ -491,12 +525,8 @@ export function WorkspaceFilesPanel({
         invalidateDir(sourceParent);
         invalidateDir(targetDir);
         onWorkspaceEntryMoved?.(sourceRel, result.relativePath);
-      } catch (error) {
-        console.debug("[WorkspaceFilesPanel] move failed", {
-          relativePath: payload.relativePath,
-          targetDirectoryRel,
-          error: describeError(error),
-        });
+      } catch {
+        return;
       }
     },
     [api, invalidateDir, onWorkspaceEntryMoved],

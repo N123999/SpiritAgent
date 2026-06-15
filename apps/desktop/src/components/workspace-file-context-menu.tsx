@@ -40,6 +40,7 @@ export type WorkspaceFileContextMenuProps = {
   onRename?: (target: WorkspaceExplorerContextTarget) => void;
   onDelete?: (target: WorkspaceExplorerContextTarget) => void;
   onAddToSession?: (target: WorkspaceExplorerContextTarget) => void;
+  onCloseAutoFocus?: (event: Event) => void;
   children: ReactNode;
 };
 
@@ -50,6 +51,7 @@ export function WorkspaceFileContextMenu({
   onRename,
   onDelete,
   onAddToSession,
+  onCloseAutoFocus,
   children,
 }: WorkspaceFileContextMenuProps) {
   const { t } = useTranslation();
@@ -60,7 +62,10 @@ export function WorkspaceFileContextMenu({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent aria-label={t("workspace.fileActions")}>
+      <ContextMenuContent
+        aria-label={t("workspace.fileActions")}
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <ContextMenuItem
           disabled={!shellActionsEnabled}
           title={!isElectron ? t("workspace.shellElectronOnly") : undefined}
