@@ -161,6 +161,16 @@ export const DESKTOP_OVERLAY_LIST_DETAIL_WIDTH =
 export const DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL =
   "flex h-[min(24rem,var(--radix-dropdown-menu-content-available-height))] w-[min(24rem,calc(100vw-1.25rem))] max-w-[min(19rem,calc(100vw-1.25rem))] flex-col overflow-hidden p-0 text-xs";
 
+/** Composer 输入框半透明底（暗色叠加 input 淡层）；PR 粘性头等浮层同源 */
+export const DESKTOP_COMPOSER_SURFACE_BACKDROP =
+  "bg-background/55 backdrop-blur-xl dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+
+/** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）外壳 */
+export const DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE = cn(
+  "overflow-hidden rounded-2xl border border-border/50 shadow-sm dark:border-white/10",
+  DESKTOP_COMPOSER_SURFACE_BACKDROP,
+);
+
 /** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）滚动视口高度 */
 export const DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT =
   "no-scrollbar max-h-[min(16rem,34vh)] overscroll-contain overflow-x-hidden overflow-y-auto outline-none";

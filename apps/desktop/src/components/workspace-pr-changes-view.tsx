@@ -26,6 +26,7 @@ import {
   writePrChangesTreeWidthPx,
 } from "@/lib/layout-prefs";
 import { useWorkspaceToolsShellRowDividers } from "@/lib/use-workspace-tools-shell-row-dividers";
+import { DESKTOP_COMPOSER_SURFACE_BACKDROP } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 import type { GitHubPullRequestChangedFile } from "@/types";
 
@@ -182,8 +183,7 @@ function scrollAreaViewport(root: ComponentRef<typeof ScrollArea> | null): HTMLE
 }
 
 /** Matches composer-surface backdrop (without border/radius). */
-const PR_STICKY_PINNED_BACKDROP_CLASS =
-  "bg-background/55 backdrop-blur-xl dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+const PR_STICKY_PINNED_BACKDROP_CLASS = DESKTOP_COMPOSER_SURFACE_BACKDROP;
 
 function useStickyHeaderPinned(
   sentinelRef: RefObject<HTMLElement | null>,

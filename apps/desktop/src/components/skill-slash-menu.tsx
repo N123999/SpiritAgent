@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT,
+  DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE,
   instantHoverMotionClass,
 } from '@/lib/desktop-chrome'
 import { SLASH_SUGGESTION_ICONS } from '@/lib/slash-command-icons'
@@ -42,7 +43,7 @@ export function SkillSlashMenu({
   }, [selectedIndex, suggestions])
 
   return (
-    <div className="w-full min-w-0 overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/40">
+    <div className={cn('w-full min-w-0', DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE)}>
       <div ref={scrollViewportRef} className={DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT}>
         {suggestions.length > 0 ? (
           <div className="grid w-full min-w-0 gap-0.5 p-1.5" onMouseLeave={() => onSelectIndex(-1)}>

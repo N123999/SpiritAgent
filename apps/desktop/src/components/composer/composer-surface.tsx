@@ -27,7 +27,10 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
-import { instantHoverMotionClass } from "@/lib/desktop-chrome";
+import {
+  DESKTOP_COMPOSER_SURFACE_BACKDROP,
+  instantHoverMotionClass,
+} from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 import type { DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
 
@@ -115,7 +118,10 @@ export function ComposerSurface({
   return (
     <div
       data-spirit-surface="composer-surface"
-      className="relative overflow-hidden rounded-2xl border border-border/50 bg-background/55 shadow-sm backdrop-blur-xl focus-within:ring-0 hover:border-ring/60 focus-within:border-ring/60 dark:border-white/10 dark:hover:border-white/12 dark:focus-within:border-white/12 dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25"
+      className={cn(
+        "relative overflow-hidden rounded-2xl border border-border/50 shadow-sm focus-within:ring-0 hover:border-ring/60 focus-within:border-ring/60 dark:border-white/10 dark:hover:border-white/12 dark:focus-within:border-white/12",
+        DESKTOP_COMPOSER_SURFACE_BACKDROP,
+      )}
     >
       <ComposerLocalFileStrip
         attachments={localFileAttachments}

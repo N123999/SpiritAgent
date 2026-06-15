@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/command'
 import {
   DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT,
+  DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE,
   instantHoverMotionClass,
 } from '@/lib/desktop-chrome'
 import { cn } from '@/lib/utils'
@@ -45,7 +46,7 @@ export function WorkspaceFileReferenceMenu({
     <Command
       shouldFilter={false}
       aria-label={t('workspace.fileReferenceCandidates')}
-      className="overflow-hidden rounded-2xl border border-border/50 bg-background/85 p-1.5 shadow-lg backdrop-blur-xl dark:border-white/12 supports-[backdrop-filter]:bg-background/70"
+      className={cn('p-1.5', DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE)}
     >
       <div
         ref={scrollViewportRef}
