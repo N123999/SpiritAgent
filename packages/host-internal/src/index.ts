@@ -29,5 +29,6 @@ export * from './managed-generated-asset.js';
 export * from './tools.js';
 export * from './workspace-file-reference-query.js';
 export * from './workspace-file-references.js';
+export * from './workspace-ignore.js';
 export * from './hooks/index.js';
 export * from './lsp/index.js';
