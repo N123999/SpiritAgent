@@ -104,6 +104,7 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock": "^3.1068.0",
     "@spirit-agent/core": "file:../agent-core",
     "fast-glob": "^3.3.3",
     "fflate": "^0.8.2",

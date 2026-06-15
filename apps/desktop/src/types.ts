@@ -111,7 +111,7 @@ export interface DesktopDreamConfigUpdate {
 /** 模型提供方（与 `packages/host-internal` 中 `ModelProviderId` 同源）。 */
 export type DesktopModelProvider = ModelProviderId;
 
-export type DesktopTransportKind = 'openai-compatible' | 'open-responses' | 'anthropic';
+export type DesktopTransportKind = 'openai-compatible' | 'open-responses' | 'anthropic' | 'bedrock';
 
 /** 模型推理强度字符串；具体允许值由 provider / transportKind 在 agent-core 中约束。 */
 export type DesktopModelReasoningEffort = ModelReasoningEffort;
@@ -1032,6 +1032,8 @@ export interface ModelProfileSnapshot {
   provider?: DesktopModelProvider;
   /** 传输族；当前主要用于区分 Anthropic 与 OpenAI-compatible。 */
   transportKind?: DesktopTransportKind;
+  /** Amazon Bedrock AWS 区域（如 `us-east-1`）；仅 `amazon-bedrock` 使用。 */
+  awsRegion?: string;
   /** 用户配置的模型上下文长度（token）；优先于 catalog 解析。 */
   contextLength?: number;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */

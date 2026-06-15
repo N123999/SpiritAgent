@@ -80,6 +80,7 @@
   },
   "dependencies": {
     "@ai-sdk/alibaba": "^1.0.22",
+    "@ai-sdk/amazon-bedrock": "^4.0.117",
     "@ai-sdk/anthropic": "^2.0.79",
     "@ai-sdk/deepseek": "^2.0.32",
     "@ai-sdk/gateway": "^3.0.121",

@@ -30,6 +30,8 @@ pub enum ModelProvider {
     Openai,
     Google,
     Volcengine,
+    #[serde(rename = "amazon-bedrock")]
+    AmazonBedrock,
     Custom,
 }
 
@@ -47,6 +49,7 @@ impl ModelProvider {
             Self::Openai => "openai",
             Self::Google => "google",
             Self::Volcengine => "volcengine",
+            Self::AmazonBedrock => "amazon-bedrock",
             Self::Custom => "custom",
         }
     }
@@ -68,6 +71,7 @@ impl FromStr for ModelProvider {
             "openai" => Ok(Self::Openai),
             "google" => Ok(Self::Google),
             "volcengine" => Ok(Self::Volcengine),
+            "amazon-bedrock" => Ok(Self::AmazonBedrock),
             "custom" => Ok(Self::Custom),
             other => Err(format!("不支持的 provider: {other}")),
         }
@@ -79,6 +83,7 @@ pub enum ModelTransportKind {
     OpenAiCompatible,
     OpenResponses,
     Anthropic,
+    Bedrock,
 }
 
 impl ModelTransportKind {
@@ -87,6 +92,7 @@ impl ModelTransportKind {
             Self::OpenAiCompatible => "openai-compatible",
             Self::OpenResponses => "open-responses",
             Self::Anthropic => "anthropic",
+            Self::Bedrock => "bedrock",
         }
     }
 }
@@ -99,6 +105,7 @@ impl FromStr for ModelTransportKind {
             "openai-compatible" => Ok(Self::OpenAiCompatible),
             "open-responses" => Ok(Self::OpenResponses),
             "anthropic" => Ok(Self::Anthropic),
+            "bedrock" => Ok(Self::Bedrock),
             other => Err(format!("不支持的 transport kind: {other}")),
         }
     }
@@ -137,6 +144,7 @@ impl ModelProfile {
             .and_then(|value| value.parse().ok())
             .unwrap_or_else(|| match self.provider {
                 Some(ModelProvider::Anthropic) => ModelTransportKind::Anthropic,
+                Some(ModelProvider::AmazonBedrock) => ModelTransportKind::Bedrock,
                 _ => ModelTransportKind::OpenAiCompatible,
             })
     }
@@ -160,6 +168,7 @@ impl ModelProfile {
             | Some(ModelProvider::Openai)
             | Some(ModelProvider::Google)
             | Some(ModelProvider::Volcengine)
+            | Some(ModelProvider::AmazonBedrock)
             | Some(ModelProvider::Custom)
             | None => true,
         }

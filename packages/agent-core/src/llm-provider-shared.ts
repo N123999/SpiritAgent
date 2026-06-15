@@ -1,4 +1,4 @@
-export type LlmTransportKind = 'openai-compatible' | 'open-responses' | 'anthropic';
+export type LlmTransportKind = 'openai-compatible' | 'open-responses' | 'anthropic' | 'bedrock';
 
 export interface LlmModelCapabilities {
   chat?: true;

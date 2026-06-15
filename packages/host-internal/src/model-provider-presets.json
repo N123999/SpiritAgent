@@ -11,7 +11,8 @@
     "openrouter": "https://openrouter.ai/api/v1",
     "openai": "https://api.openai.com/v1",
     "google": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "volcengine": "https://ark.cn-beijing.volces.com/api/v3"
+    "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
+    "amazon-bedrock": "https://bedrock.us-east-1.amazonaws.com"
   },
   "presetApiBaseByTransport": {
     "minimax": {
@@ -26,9 +27,12 @@
       "openai-compatible": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "anthropic": "https://dashscope.aliyuncs.com/apps/anthropic",
       "open-responses": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    "amazon-bedrock": {
+      "bedrock": "https://bedrock.us-east-1.amazonaws.com"
     }
   },
-  "pickerOrder": ["openai", "google", "xai", "anthropic", "deepseek", "vercel-ai-gateway", "openrouter", "moonshot-ai", "alibaba", "minimax", "volcengine", "custom"],
+  "pickerOrder": ["openai", "google", "xai", "anthropic", "deepseek", "vercel-ai-gateway", "openrouter", "moonshot-ai", "alibaba", "minimax", "volcengine", "amazon-bedrock", "custom"],
   "pickerLabels": {
     "deepseek": {
       "labelKey": "providers.deepseek",
@@ -73,6 +77,10 @@
     "volcengine": {
       "labelKey": "providers.volcengine",
       "fallbackLabel": "Volcengine"
+    },
+    "amazon-bedrock": {
+      "labelKey": "providers.amazonBedrock",
+      "fallbackLabel": "Amazon Bedrock"
     },
     "custom": {
       "labelKey": "providers.custom",

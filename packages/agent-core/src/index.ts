@@ -10,6 +10,7 @@ export * from './llm-fetch.js';
 export * from './transport-factory.js';
 export * from './openai/index.js';
 export * from './anthropic/index.js';
+export * from './bedrock/index.js';
 export * from './open-responses/index.js';
 export * from './host-tools.js';
 export * from './shell-tool-result.js';
