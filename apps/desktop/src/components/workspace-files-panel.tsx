@@ -295,6 +295,7 @@ export function WorkspaceFilesPanel({
   const [dragOverDirectory, setDragOverDirectory] = useState<string | null>(null);
   const [moveTarget, setMoveTarget] = useState<PendingMoveTarget | null>(null);
   const [moveBusy, setMoveBusy] = useState(false);
+  const [moveError, setMoveError] = useState("");
   const renameCommitInFlightRef = useRef(false);
 
   const workspaceRootLabel = fileBasename(workspaceRoot.trim()) || workspaceRoot.trim();
@@ -511,6 +512,7 @@ export function WorkspaceFilesPanel({
       return;
     }
     setMoveBusy(true);
+    setMoveError("");
     try {
       const result = await api.moveWorkspaceEntry(
         pending.sourceRelativePath,
@@ -527,7 +529,8 @@ export function WorkspaceFilesPanel({
       invalidateDir(pending.targetDirectoryRel);
       onWorkspaceEntryMoved?.(pending.sourceRelativePath, result.relativePath);
       setMoveTarget(null);
-    } catch {
+    } catch (error) {
+      setMoveError(describeError(error));
       return;
     } finally {
       setMoveBusy(false);
@@ -585,6 +588,7 @@ export function WorkspaceFilesPanel({
         targetDirectoryRel: targetDir,
         targetDirectoryLabel: targetDir === "" ? workspaceRootLabel : targetDir,
       });
+      setMoveError("");
     },
     [workspaceRootLabel],
   );
@@ -799,6 +803,7 @@ export function WorkspaceFilesPanel({
         onOpenChange={(open) => {
           if (!open && !moveBusy) {
             setMoveTarget(null);
+            setMoveError("");
           }
         }}
       >
@@ -812,6 +817,11 @@ export function WorkspaceFilesPanel({
               })}
             </DialogDescription>
           </DialogHeader>
+          {moveError ? (
+            <p className="text-sm text-destructive/90" role="alert">
+              {moveError}
+            </p>
+          ) : null}
           <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
             <Button
               type="button"
