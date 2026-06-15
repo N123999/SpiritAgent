@@ -689,6 +689,24 @@
     "prCheckStatePending": "Not started",
     "prChangesViewOnGitHub": "View on GitHub",
     "addSelectionToSession": "Add to Session",
+    "addFileToSession": "Add to Session",
+    "fileActions": "File actions",
+    "revealInExplorer": {
+      "win32": "Reveal in File Explorer",
+      "darwin": "Reveal in Finder",
+      "linux": "Reveal in File Manager"
+    },
+    "rename": "Rename",
+    "delete": "Delete",
+    "moveToTrash": {
+      "win32": "Move to Recycle Bin",
+      "darwin": "Move to Trash",
+      "linux": "Move to Trash"
+    },
+    "forceDelete": "Delete Permanently",
+    "forceDeleteConfirm": "Could not move to trash: {{reason}}. Delete permanently instead? This cannot be undone.",
+    "renameInvalidName": "Invalid file name",
+    "moveIntoSelf": "Cannot move a folder into itself or one of its subfolders",
     "prFileStatusAdded": "Added",
     "prFileStatusRemoved": "Removed",
     "prFileStatusModified": "Modified",

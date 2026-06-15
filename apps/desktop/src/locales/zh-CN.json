@@ -687,6 +687,24 @@
     "prCheckStatePending": "未开始",
     "prChangesViewOnGitHub": "在 GitHub 查看",
     "addSelectionToSession": "添加到会话",
+    "addFileToSession": "添加到会话",
+    "fileActions": "文件操作",
+    "revealInExplorer": {
+      "win32": "在文件资源管理器中显示",
+      "darwin": "在访达中显示",
+      "linux": "在文件管理器中显示"
+    },
+    "rename": "重命名",
+    "delete": "删除",
+    "moveToTrash": {
+      "win32": "移到回收站",
+      "darwin": "移到废纸篓",
+      "linux": "移到回收站"
+    },
+    "forceDelete": "永久删除",
+    "forceDeleteConfirm": "无法移到回收站：{{reason}}。是否改为永久删除？此操作无法撤销。",
+    "renameInvalidName": "无效文件名",
+    "moveIntoSelf": "无法将文件夹移动到自身或其子文件夹内",
     "prFileStatusAdded": "新增",
     "prFileStatusRemoved": "删除",
     "prFileStatusModified": "修改",
