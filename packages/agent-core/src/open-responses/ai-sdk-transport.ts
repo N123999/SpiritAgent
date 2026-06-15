@@ -3,8 +3,11 @@ import { generateObject, generateText, jsonSchema, streamText } from 'ai';
 import { readAiSdkUsage } from '../ai-sdk-usage.js';
 
 import type {
+  GeneratedImageFile,
+  GeneratedImageSaveRequest,
   GeneratedVideoFile,
   GeneratedVideoSaveRequest,
+  ImageGenerationRequest,
   JsonObject,
   JsonValue,
   LlmMessage,
@@ -70,6 +73,9 @@ import {
 } from './responses-compat.js';
 import { createDeferred, responsesEventStreamToRuntimeEvents } from './streaming.js';
 import { generateVideoWithRouter } from '../video-generation/router.js';
+import { AiSdkOpenAiCompatibleTransport } from '../openai/ai-sdk-transport.js';
+
+const openAiCompatibleImageTransport = new AiSdkOpenAiCompatibleTransport();
 
 function saturatingSub(value: number, delta: number): number {
   return Math.max(0, value - delta);
@@ -88,6 +94,30 @@ export class AiSdkOpenResponsesTransport
     LlmTransport<OpenResponsesTransportConfig, ToolAgentState>,
     JsonSchemaTransport
 {
+  async generateImage(
+    config: OpenResponsesTransportConfig,
+    request: ImageGenerationRequest,
+    saveGeneratedImage: (request: GeneratedImageSaveRequest) => Promise<GeneratedImageFile>,
+  ): Promise<ToolExecutionOutput> {
+    const imageConfig = config.imageGeneration;
+    if (!imageConfig) {
+      throw new Error('No image generation model is configured.');
+    }
+
+    return openAiCompatibleImageTransport.generateImage(
+      {
+        transportKind: 'openai-compatible',
+        apiKey: config.apiKey,
+        model: config.model,
+        baseUrl: config.baseUrl ?? '',
+        imageGeneration: imageConfig,
+        ...(config.workspaceRoot ? { workspaceRoot: config.workspaceRoot } : {}),
+      },
+      request,
+      saveGeneratedImage,
+    );
+  }
+
   async generateVideo(
     config: OpenResponsesTransportConfig,
     request: VideoGenerationRequest,

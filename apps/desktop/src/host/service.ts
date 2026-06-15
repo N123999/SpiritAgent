@@ -19,7 +19,6 @@ import {
   buildSkillsCatalogSystemMessage,
   buildToolAgentHostPrompt,
   createLlmTransport,
-  isOpenAiCompatibleTransportConfig,
   type AssistantAuxArchiveEntry,
   type ChatArchive,
   type LlmEnabledRule,
@@ -314,13 +313,11 @@ import {
   resolveModelContextLength,
 } from '../lib/context-usage.js';
 import {
+  attachImageGenerationToTransportConfig,
   attachVideoGenerationToTransportConfig,
   buildPrimaryTransportConfig,
   loadPreviewModelsForTransport,
-  modelCapabilitiesFromConfig,
-  openAiCompatibleVendorFromProvider,
   resolveDesktopTransportKind,
-  supportsImageGeneration,
 } from './model-config.js';
 import {
   DEFAULT_API_BASE,
@@ -1921,27 +1918,10 @@ class DesktopHostService {
       profile: activeProfile,
       agentMode: resolveDesktopAgentMode(state.config),
     });
-    if (
-      isOpenAiCompatibleTransportConfig(runtimeTransportConfig)
-      && imageGenerationProfile
-      && imageGenerationApiKey
-      && supportsImageGeneration(imageGenerationProfile)
-      && resolveDesktopTransportKind(imageGenerationProfile) === 'openai-compatible'
-    ) {
-      const imageGenerationVendor = openAiCompatibleVendorFromProvider(imageGenerationProfile.provider);
-      runtimeTransportConfig = {
-        ...runtimeTransportConfig,
-        imageGeneration: {
-          apiKey: imageGenerationApiKey,
-          model: imageGenerationProfile.name,
-          baseUrl: imageGenerationProfile.apiBase || DEFAULT_API_BASE,
-          ...(imageGenerationVendor ? { llmVendor: imageGenerationVendor } : {}),
-          ...(imageGenerationProfile.capabilities
-            ? { modelCapabilities: modelCapabilitiesFromConfig(imageGenerationProfile.capabilities) }
-            : {}),
-        },
-      };
-    }
+    runtimeTransportConfig = attachImageGenerationToTransportConfig(runtimeTransportConfig, {
+      profile: imageGenerationProfile,
+      apiKey: imageGenerationApiKey,
+    });
     runtimeTransportConfig = attachVideoGenerationToTransportConfig(runtimeTransportConfig, {
       profile: videoGenerationProfile,
       apiKey: videoGenerationApiKey,

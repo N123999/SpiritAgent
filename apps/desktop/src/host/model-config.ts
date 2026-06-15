@@ -323,6 +323,29 @@ export function attachVideoGenerationToTransportConfig(
   } as LlmTransportConfig;
 }
 
+export function attachImageGenerationToTransportConfig(
+  transportConfig: LlmTransportConfig,
+  input: {
+    profile?: ModelProfileSnapshot;
+    apiKey?: string;
+  },
+): LlmTransportConfig {
+  if (!input.profile || !input.apiKey || !supportsImageGeneration(input.profile)) {
+    return transportConfig;
+  }
+  if (transportConfig.transportKind === 'anthropic') {
+    return transportConfig;
+  }
+
+  return {
+    ...transportConfig,
+    imageGeneration: buildImageGenerationSubConfig({
+      profile: input.profile,
+      apiKey: input.apiKey,
+    }),
+  } as LlmTransportConfig;
+}
+
 interface LoadedPreviewModelsResult {
   modelIds: string[];
   modelCatalog?: PreviewModelCatalogEntry[];
