@@ -54,6 +54,7 @@
     "alibaba": "Alibaba",
     "minimax": "MiniMax",
     "volcengine": "Volcengine",
+    "amazonBedrock": "Amazon Bedrock",
     "custom": "Custom"
   },
   "settings": {
@@ -295,6 +296,14 @@
     "addThisModel": "Add This Model",
     "addProvider": "Add Provider",
     "apiKeyRequired": "API Key cannot be empty.",
+    "bedrockRegion": "AWS Region",
+    "bedrockRegionPlaceholder": "e.g. us-east-1",
+    "bedrockRegionRequired": "AWS Region is required for Amazon Bedrock.",
+    "bedrockCredentialsRequired": "Provide a Bearer API Key or both IAM Access Key ID and Secret Access Key.",
+    "bedrockApiKeyLabel": "Bearer API Key (optional)",
+    "bedrockApiKeyPriorityHint": "If set, the Bearer API Key is used before IAM credentials.",
+    "bedrockAccessKeyId": "IAM Access Key ID (optional)",
+    "bedrockSecretAccessKey": "IAM Secret Access Key (optional)",
     "noModelsReturned": "No models returned. Please check the key or endpoint.",
     "modelNameRequired": "Model name cannot be empty.",
     "modelNameExample": "e.g. my-model",

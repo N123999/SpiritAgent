@@ -54,6 +54,7 @@
     "alibaba": "Alibaba",
     "minimax": "MiniMax",
     "volcengine": "火山引擎",
+    "amazonBedrock": "Amazon Bedrock",
     "custom": "自定义"
   },
   "settings": {
@@ -295,6 +296,14 @@
     "addThisModel": "添加此模型",
     "addProvider": "添加提供商",
     "apiKeyRequired": "API Key 不能为空。",
+    "bedrockRegion": "AWS 区域",
+    "bedrockRegionPlaceholder": "例如 us-east-1",
+    "bedrockRegionRequired": "Amazon Bedrock 必须填写 AWS 区域。",
+    "bedrockCredentialsRequired": "请填写 Bearer API Key，或同时填写 IAM Access Key ID 与 Secret Access Key。",
+    "bedrockApiKeyLabel": "Bearer API Key（可选）",
+    "bedrockApiKeyPriorityHint": "若填写 Bearer API Key，将优先于 IAM 凭证使用。",
+    "bedrockAccessKeyId": "IAM Access Key ID（可选）",
+    "bedrockSecretAccessKey": "IAM Secret Access Key（可选）",
     "noModelsReturned": "未返回任何模型，请检查密钥或端点。",
     "modelNameRequired": "模型名称不能为空。",
     "modelNameExample": "例如 my-model",
