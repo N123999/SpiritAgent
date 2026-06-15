@@ -18,6 +18,10 @@ import {
   type WorkspaceMonacoEditorHandle,
 } from "@/components/workspace-monaco-editor";
 import { cn } from "@/lib/utils";
+import {
+  isUnderWorkspaceEntryPath,
+  remapWorkspaceEntryPath,
+} from "@/lib/workspace-entry-path-sync";
 import type {
   EditorFileTarget,
   WorkspaceEditorViewMode,
@@ -433,22 +437,35 @@ export function WorkspaceFilesTab({
             setSelectedEntry({ kind: "plan" });
           }}
           onWorkspaceEntryRenamed={(oldRelativePath, newRelativePath) => {
-            setSelectedEntry((current) =>
-              current?.kind === "workspace" && current.relativePath === oldRelativePath
-                ? { kind: "workspace", relativePath: newRelativePath }
-                : current,
-            );
+            setSelectedEntry((current) => {
+              if (current?.kind !== "workspace") {
+                return current;
+              }
+              const nextPath = remapWorkspaceEntryPath(
+                oldRelativePath,
+                newRelativePath,
+                current.relativePath,
+              );
+              return nextPath ? { kind: "workspace", relativePath: nextPath } : current;
+            });
           }}
           onWorkspaceEntryMoved={(oldRelativePath, newRelativePath) => {
-            setSelectedEntry((current) =>
-              current?.kind === "workspace" && current.relativePath === oldRelativePath
-                ? { kind: "workspace", relativePath: newRelativePath }
-                : current,
-            );
+            setSelectedEntry((current) => {
+              if (current?.kind !== "workspace") {
+                return current;
+              }
+              const nextPath = remapWorkspaceEntryPath(
+                oldRelativePath,
+                newRelativePath,
+                current.relativePath,
+              );
+              return nextPath ? { kind: "workspace", relativePath: nextPath } : current;
+            });
           }}
           onWorkspaceEntryDeleted={(relativePath) => {
             setSelectedEntry((current) =>
-              current?.kind === "workspace" && current.relativePath === relativePath
+              current?.kind === "workspace" &&
+              isUnderWorkspaceEntryPath(relativePath, current.relativePath)
                 ? null
                 : current,
             );
