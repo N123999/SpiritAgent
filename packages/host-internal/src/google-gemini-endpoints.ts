@@ -22,7 +22,7 @@ export function isGoogleGeminiGenerativeLanguageApiBase(baseUrl: string): boolea
   }
   try {
     const url = new URL(trimTrailingSlashes(trimmed));
-    return url.hostname === GOOGLE_GEMINI_HOST;
+    return url.protocol === 'https:' && url.hostname === GOOGLE_GEMINI_HOST;
   } catch {
     return false;
   }

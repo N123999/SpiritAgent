@@ -17,6 +17,7 @@ test('isGoogleGeminiGenerativeLanguageApiBase accepts Gemini preset and native r
 
 test('isGoogleGeminiGenerativeLanguageApiBase rejects non-Google hosts', () => {
   assert.equal(isGoogleGeminiGenerativeLanguageApiBase('https://api.openai.com/v1'), false);
+  assert.equal(isGoogleGeminiGenerativeLanguageApiBase('http://generativelanguage.googleapis.com/v1beta/openai'), false);
   assert.equal(isGoogleGeminiGenerativeLanguageApiBase(''), false);
   assert.equal(isGoogleGeminiGenerativeLanguageApiBase('not-a-url'), false);
 });
