@@ -1,5 +1,6 @@
 import {
   resolveClangdOnPath,
+  resolveCommandOnPath,
   resolveGoplsOnPath,
   resolvePyrightOnPath,
   resolveRustAnalyzerOnPath,
@@ -143,13 +144,16 @@ export async function discoverLspProvider(
   id: LspProviderId,
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
+  options: { lightweight?: boolean } = {},
 ): Promise<LspProviderDiscoveryResult> {
   const resolver = PROVIDER_RESOLVERS[id];
   if (!resolver) {
     return { id, status: 'not_found' };
   }
 
-  const resolved = await resolver(env, platform);
+  const resolved = id === 'rust-analyzer' && options.lightweight === true
+    ? await resolveCommandOnPath('rust-analyzer', env, platform, [])
+    : await resolver(env, platform);
   if (!resolved) {
     return { id, status: 'not_found' };
   }
@@ -165,8 +169,11 @@ export async function discoverLspProvider(
 export async function discoverAllLspProviders(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
+  options: { lightweight?: boolean } = {},
 ): Promise<LspProviderDiscoveryResult[]> {
-  return Promise.all(LSP_PROVIDERS.map((provider) => discoverLspProvider(provider.id, env, platform)));
+  return Promise.all(
+    LSP_PROVIDERS.map((provider) => discoverLspProvider(provider.id, env, platform, options)),
+  );
 }
 
 /** Register a provider resolver (used when adding new language servers). */

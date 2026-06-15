@@ -44,7 +44,9 @@ export async function buildDesktopLspSnapshot(config: DesktopConfigFile): Promis
     };
   }
 
-  const discoveries = await discoverAllLspProviders();
+  const discoveries = await discoverAllLspProviders(process.env, process.platform, {
+    lightweight: true,
+  });
   const discoveryById = new Map(discoveries.map((item) => [item.id, item]));
 
   const providers: DesktopLspProviderSnapshot[] = LSP_PROVIDERS.map((provider) => {

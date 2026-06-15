@@ -19,12 +19,42 @@ export interface ResolvedLanguageServerCommand {
   args: string[];
 }
 
+async function resolveCommandViaWindowsWhere(
+  command: string,
+  args: string[],
+): Promise<ResolvedLanguageServerCommand | undefined> {
+  try {
+    const result = await execFileAsync('where.exe', [command], {
+      timeout: 2_000,
+      windowsHide: true,
+    });
+    const firstLine = String(result.stdout)
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean);
+    if (!firstLine) {
+      return undefined;
+    }
+    await access(firstLine, constants.F_OK);
+    return { command: firstLine, args };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function resolveCommandOnPath(
   command: string,
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
   args: string[] = [],
 ): Promise<ResolvedLanguageServerCommand | undefined> {
+  if (isWindowsPlatform(platform) && !command.includes('\\') && !command.includes('/')) {
+    const fromWhere = await resolveCommandViaWindowsWhere(command, args);
+    if (fromWhere) {
+      return fromWhere;
+    }
+  }
+
   const candidates = buildCommandCandidates(command, env, platform);
   for (const candidate of candidates) {
     try {
