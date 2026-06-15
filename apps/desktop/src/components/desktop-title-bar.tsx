@@ -5,6 +5,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { spiritAgentTitleBarIconSrc } from "@/lib/brand-icon";
 import { sessionSidebarShellWidth } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
+import { isViteDev } from "@/lib/vite-dev";
 import {
   Menubar,
   MenubarContent,
@@ -64,7 +65,7 @@ function TitleBarAppIcon({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
 
 function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
   const { t } = useTranslation();
-  const isDevChrome = import.meta.env.DEV;
+  const isDevChrome = isViteDev;
   return (
     <div className="electron-no-drag flex shrink-0 items-center gap-1">
       <TitleBarAppIcon useMicaBackdrop={useMicaBackdrop} />

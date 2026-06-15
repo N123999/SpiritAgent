@@ -65,6 +65,7 @@ import {
   writeWorkspaceSidebarExpandedById,
 } from "@/lib/layout-prefs";
 import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
+import { isViteDev } from "@/lib/vite-dev";
 import { cn } from "@/lib/utils";
 import { shortcutLabel } from "@/lib/desktop-shell";
 import i18n from "@/lib/i18n";
@@ -717,11 +718,15 @@ const settingsTabs: Array<{
     labelKey: "settings.integrations",
     icon: Link2,
   },
-  {
-    id: "developer",
-    labelKey: "settings.developer",
-    icon: Code2,
-  },
+  ...(isViteDev
+    ? [
+        {
+          id: "developer" as const,
+          labelKey: "settings.developer",
+          icon: Code2,
+        },
+      ]
+    : []),
 ];
 
 const sidebarInteractionMotionClass =
@@ -845,6 +850,13 @@ function SessionSidebarInner({
 }: SessionSidebarProps) {
   const { t, i18n } = useTranslation();
   const settingsMode = mode === "settings";
+
+  useEffect(() => {
+    if (settingsMode && settingsTab === "developer" && !isViteDev) {
+      onSettingsTabChange?.("models");
+    }
+  }, [settingsMode, settingsTab, onSettingsTabChange]);
+
   const { bound, unbound } = useMemo(
     () => partitionSessionsForSidebar(sessions, userHomeDirectory),
     [sessions, userHomeDirectory],

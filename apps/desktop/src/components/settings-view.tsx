@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNo
 import { useTranslation } from "react-i18next";
 
 import i18n from "@/lib/i18n";
+import { isViteDev } from "@/lib/vite-dev";
 import { ChevronsUpDown, LoaderCircle, RefreshCw, Sparkles, X } from "lucide-react";
 
 import { DreamGraphCard } from "@/components/dream-graph-card";
@@ -4375,7 +4376,7 @@ export function SettingsView({
                 onUpdateExtensionSettings={onUpdateExtensionSettings}
                 onUpdateExtensionSecret={onUpdateExtensionSecret}
               />
-            ) : tab === "developer" ? (
+            ) : tab === "developer" && isViteDev ? (
               <DeveloperSettingsPanel onStartCompactionUiDemo={onStartCompactionUiDemo} />
             ) : tab === "dreams" ? (
               <DreamSettingsPanel
