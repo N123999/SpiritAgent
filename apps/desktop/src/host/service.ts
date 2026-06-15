@@ -327,6 +327,7 @@ import {
   loadHostMetadata,
   loadStoredSession,
   modelSecretKeyPresence,
+  readBedrockProviderCredentialsFromKeyring,
   resolveApiKeyForConfigModel,
   createDesktopExtensionStateStore,
   saveConfig,
@@ -336,6 +337,10 @@ import {
   type DesktopWorkspaceBinding,
   type HostMetadataSummary,
 } from './storage.js';
+import {
+  hasBedrockRuntimeCredentials,
+  modelProviderKeyScope,
+} from './provider-api-key.js';
 import { DesktopToolExecutor } from './tool-executor.js';
 import {
   buildDesktopRuntimeBasicInfo,
@@ -1883,10 +1888,22 @@ class DesktopHostService {
     await this.syncPlanStateForBundle(bundle);
     await this.ensureToolExecutor(bundle);
     // 保留 bundle.currentTurnSkills：斜杠激活的 turn skill 须在 promote/refresh 后仍进入 createRuntime。
-    const apiKey = await resolveApiKeyForConfigModel(state.config, state.config.activeModel);
-    this.activeApiKeyConfigured = Boolean(apiKey);
-    const extensionSystemPrompts = this.extensionWarmup.systemPromptsCache;
     const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
+    const activeTransportKind = resolveDesktopTransportKind(activeProfile);
+    const bedrockCredentials = activeTransportKind === 'bedrock' && activeProfile?.provider
+      ? readBedrockProviderCredentialsFromKeyring(modelProviderKeyScope(activeProfile.provider))
+      : undefined;
+    const apiKey = await resolveApiKeyForConfigModel(state.config, state.config.activeModel);
+    const runtimeAuthReady = activeTransportKind === 'bedrock'
+      ? Boolean(activeProfile?.awsRegion?.trim())
+        && hasBedrockRuntimeCredentials({
+          apiKey,
+          accessKeyId: bedrockCredentials?.accessKeyId,
+          secretAccessKey: bedrockCredentials?.secretAccessKey,
+        })
+      : Boolean(apiKey);
+    this.activeApiKeyConfigured = runtimeAuthReady;
+    const extensionSystemPrompts = this.extensionWarmup.systemPromptsCache;
     const imageGenerationProfile = state.config.imageGenerationModel
       ? state.config.models.find((model) => model.name === state.config.imageGenerationModel)
       : undefined;
@@ -1900,7 +1917,7 @@ class DesktopHostService {
       ? await resolveApiKeyForConfigModel(state.config, videoGenerationProfile.name)
       : undefined;
     bundle.runtimeTransport = createLlmTransport();
-    if (!apiKey) {
+    if (!runtimeAuthReady) {
       bundle.runtime = undefined;
       if (bundle.id === this.sessionRegistry.activeSessionId()) {
         this.runtime = undefined;
@@ -1911,12 +1928,15 @@ class DesktopHostService {
     }
 
     let runtimeTransportConfig = buildPrimaryTransportConfig({
-      apiKey,
+      apiKey: apiKey ?? bedrockCredentials?.apiKey ?? '',
       model: state.config.activeModel,
       baseUrl: currentApiBase(state.config),
       workspaceRoot: bundle.workspaceRoot || state.workspaceRoot,
       profile: activeProfile,
       agentMode: resolveDesktopAgentMode(state.config),
+      ...(activeTransportKind === 'bedrock' && bedrockCredentials
+        ? { bedrockCredentials: { ...bedrockCredentials, apiKey: apiKey ?? bedrockCredentials.apiKey } }
+        : {}),
     });
     runtimeTransportConfig = attachImageGenerationToTransportConfig(runtimeTransportConfig, {
       profile: imageGenerationProfile,
@@ -2414,17 +2434,44 @@ class DesktopHostService {
       return;
     }
     const apiKey = await resolveApiKeyForConfigModel(state.config, activeModel.name);
-    if (!apiKey?.trim()) {
-      return;
-    }
     const transportKind = resolveDesktopTransportKind(activeModel);
-    await loadPreviewModelsForTransport({
-      provider: activeModel.provider,
-      transportKind,
-      apiBase: activeModel.apiBase.trim() || DEFAULT_API_BASE,
-      apiKey: apiKey.trim(),
-      forceRefresh: true,
-    });
+    const profile = state.config.models.find((model) => model.name === activeModel.name);
+    if (transportKind === 'bedrock') {
+      const bedrockCredentials = readBedrockProviderCredentialsFromKeyring(
+        modelProviderKeyScope(activeModel.provider),
+      );
+      if (
+        !profile?.awsRegion?.trim()
+        || !hasBedrockRuntimeCredentials({
+          apiKey,
+          accessKeyId: bedrockCredentials.accessKeyId,
+          secretAccessKey: bedrockCredentials.secretAccessKey,
+        })
+      ) {
+        return;
+      }
+      await loadPreviewModelsForTransport({
+        provider: activeModel.provider,
+        transportKind,
+        apiBase: activeModel.apiBase.trim() || DEFAULT_API_BASE,
+        apiKey: apiKey?.trim() ?? bedrockCredentials.apiKey?.trim() ?? '',
+        awsRegion: profile.awsRegion,
+        accessKeyId: bedrockCredentials.accessKeyId,
+        secretAccessKey: bedrockCredentials.secretAccessKey,
+        forceRefresh: true,
+      });
+    } else {
+      if (!apiKey?.trim()) {
+        return;
+      }
+      await loadPreviewModelsForTransport({
+        provider: activeModel.provider,
+        transportKind,
+        apiBase: activeModel.apiBase.trim() || DEFAULT_API_BASE,
+        apiKey: apiKey.trim(),
+        forceRefresh: true,
+      });
+    }
     const contextLength = resolveModelContextLength(
       activeModel,
       buildModelCatalogHints(state.config),

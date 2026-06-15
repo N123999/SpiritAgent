@@ -54,8 +54,12 @@ import type {
 import type { StoredDesktopSession } from './contracts.js';
 import {
   buildModelSecretKeyPresence,
+  hasBedrockRuntimeCredentials,
   modelProviderKeyScope,
+  providerAccessKeyIdAccount,
   providerKeyAccount,
+  providerSecretAccessKeyAccount,
+  type BedrockProviderCredentials,
   type ModelKeyPresenceProfile,
 } from './provider-api-key.js';
 import { normalizeDesktopRewindMetadata } from './rewind.js';
@@ -63,6 +67,7 @@ import { normalizeDesktopRewindMetadata } from './rewind.js';
 export type { ModelKeyPresenceProfile } from './provider-api-key.js';
 export {
   buildModelSecretKeyPresence,
+  hasBedrockRuntimeCredentials,
   modelProviderKeyScope,
   providerKeyAccount,
 } from './provider-api-key.js';
@@ -239,6 +244,80 @@ function readGlobalKeyFromKeyring(): string | undefined {
   }
 }
 
+export function readProviderAccessKeyIdFromKeyring(providerId: string): string | undefined {
+  try {
+    const value = new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).getPassword();
+    const trimmed = value?.trim();
+    return trimmed || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function readProviderSecretAccessKeyFromKeyring(providerId: string): string | undefined {
+  try {
+    const value = new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).getPassword();
+    const trimmed = value?.trim();
+    return trimmed || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function readBedrockProviderCredentialsFromKeyring(
+  providerId: DesktopModelProvider,
+): BedrockProviderCredentials {
+  return {
+    apiKey: readProviderKeyFromKeyring(providerId),
+    accessKeyId: readProviderAccessKeyIdFromKeyring(providerId),
+    secretAccessKey: readProviderSecretAccessKeyFromKeyring(providerId),
+  };
+}
+
+export async function saveBedrockProviderCredentialsForProvider(
+  providerId: DesktopModelProvider,
+  credentials: BedrockProviderCredentials,
+): Promise<void> {
+  const apiKey = credentials.apiKey?.trim();
+  if (apiKey) {
+    await saveApiKeyForProvider(providerId, apiKey);
+  } else {
+    await removeProviderApiKey(providerId);
+  }
+
+  const accessKeyId = credentials.accessKeyId?.trim();
+  if (accessKeyId) {
+    new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).setPassword(accessKeyId);
+  } else {
+    try {
+      new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).deletePassword();
+    } catch {
+      /* 无条目时忽略 */
+    }
+  }
+
+  const secretAccessKey = credentials.secretAccessKey?.trim();
+  if (secretAccessKey) {
+    new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).setPassword(secretAccessKey);
+  } else {
+    try {
+      new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).deletePassword();
+    } catch {
+      /* 无条目时忽略 */
+    }
+  }
+}
+
+export async function removeBedrockProviderCredentials(providerId: DesktopModelProvider): Promise<void> {
+  await removeProviderApiKey(providerId);
+  try {
+    new Entry(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId)).deletePassword();
+    new Entry(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId)).deletePassword();
+  } catch {
+    /* 无条目时忽略 */
+  }
+}
+
 export function readProviderKeyFromKeyring(providerId: string): string | undefined {
   try {
     const value = new Entry(KEYRING_SERVICE, providerKeyAccount(providerId)).getPassword();
@@ -370,6 +449,16 @@ function normalizePresenceProfiles(
   return profilesOrNames as ModelKeyPresenceProfile[];
 }
 
+function hasProviderSecretInKeyring(providerId: string): boolean {
+  if (readProviderKeyFromKeyring(providerId)) {
+    return true;
+  }
+  if (providerId === 'amazon-bedrock') {
+    return hasBedrockRuntimeCredentials(readBedrockProviderCredentialsFromKeyring('amazon-bedrock'));
+  }
+  return false;
+}
+
 /** 各模型是否在钥匙串中有提供商级或遗留模型级条目（不含环境变量与全局回退）。 */
 export async function modelSecretKeyPresence(
   profilesOrNames: string[] | ModelKeyPresenceProfile[],
@@ -377,7 +466,7 @@ export async function modelSecretKeyPresence(
   const profiles = normalizePresenceProfiles(profilesOrNames);
   return buildModelSecretKeyPresence(
     profiles,
-    (providerId) => Boolean(readProviderKeyFromKeyring(providerId)),
+    hasProviderSecretInKeyring,
     (modelName) => Boolean(readModelKeyFromKeyring(modelName)),
   );
 }
@@ -703,6 +792,10 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
           const capabilities = normalizeModelCapabilities(model.capabilities);
           const supportedReasoningEfforts = normalizeSupportedReasoningEfforts(model.supportedReasoningEfforts);
           const contextLength = parseModelContextLength(model.contextLength);
+          const awsRegion =
+            typeof model.awsRegion === 'string' && model.awsRegion.trim().length > 0
+              ? model.awsRegion.trim()
+              : undefined;
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
@@ -716,6 +809,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(capabilities ? { capabilities } : {}),
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
+            ...(awsRegion ? { awsRegion } : {}),
             ...(contextLength !== undefined ? { contextLength } : {}),
           };
         })
@@ -797,11 +891,23 @@ function normalizeDesktopTransportKind(
   value: unknown,
   provider?: DesktopModelProvider,
 ): DesktopTransportKind | undefined {
-  if (value === 'openai-compatible' || value === 'open-responses' || value === 'anthropic') {
+  if (
+    value === 'openai-compatible'
+    || value === 'open-responses'
+    || value === 'anthropic'
+    || value === 'bedrock'
+  ) {
     return value;
   }
 
-  return provider === 'anthropic' ? 'anthropic' : undefined;
+  if (provider === 'anthropic') {
+    return 'anthropic';
+  }
+  if (provider === 'amazon-bedrock') {
+    return 'bedrock';
+  }
+
+  return undefined;
 }
 
 export function normalizeModelCapabilities(

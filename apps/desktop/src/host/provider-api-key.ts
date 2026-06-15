@@ -5,6 +5,27 @@ export function providerKeyAccount(providerId: string): string {
   return `provider::${providerId}`;
 }
 
+export function providerAccessKeyIdAccount(providerId: string): string {
+  return `provider::${providerId}::access-key-id`;
+}
+
+export function providerSecretAccessKeyAccount(providerId: string): string {
+  return `provider::${providerId}::secret-access-key`;
+}
+
+export interface BedrockProviderCredentials {
+  apiKey?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}
+
+export function hasBedrockRuntimeCredentials(credentials: BedrockProviderCredentials): boolean {
+  if (credentials.apiKey?.trim()) {
+    return true;
+  }
+  return Boolean(credentials.accessKeyId?.trim() && credentials.secretAccessKey?.trim());
+}
+
 /** Config profiles without `provider` are treated as custom-scoped keys. */
 export function modelProviderKeyScope(provider?: DesktopModelProvider): DesktopModelProvider {
   return provider ?? 'custom';

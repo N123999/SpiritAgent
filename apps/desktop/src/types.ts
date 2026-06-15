@@ -141,6 +141,9 @@ export interface PreviewModelsRequest {
   apiKey: string;
   provider?: DesktopModelProvider;
   transportKind?: DesktopTransportKind;
+  awsRegion?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
   /** 为 true 时忽略 TTL，强制请求上游。 */
   forceRefresh?: boolean;
 }
@@ -159,6 +162,9 @@ export interface AddProviderModelsRequest {
   modelCatalog?: PreviewModelCatalogEntry[];
   provider?: DesktopModelProvider;
   transportKind?: DesktopTransportKind;
+  awsRegion?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
 }
 
 /** 快照附带：某 apiBase 在本地 `model-catalog-cache` 中的最近一次列模型结果（供主界面分组与排序）。 */

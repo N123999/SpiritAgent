@@ -37,6 +37,7 @@ import {
   supportsImageGeneration,
   supportsVideoGeneration,
 } from './model-config.js';
+import { bedrockApiBaseFromRegion } from '@spirit-agent/host-internal';
 import { modelSupportsChat } from './lightweight-chat-model.js';
 import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
 import {
@@ -53,11 +54,14 @@ import {
   removeProviderApiKey,
   saveApiKeyForModel,
   saveApiKeyForProvider,
+  saveBedrockProviderCredentialsForProvider,
   saveConfig,
+  readBedrockProviderCredentialsFromKeyring,
   type DesktopConfigFile,
   type DesktopWorkspaceBinding,
   type HostMetadataSummary,
 } from './storage.js';
+import { hasBedrockRuntimeCredentials } from './provider-api-key.js';
 import { currentApiBase } from './service-utils.js';
 
 interface HostModelState {
@@ -289,12 +293,33 @@ function resolveManagedConnectApiBase(
   provider: DesktopModelProvider | undefined,
   transportKind: DesktopTransportKind,
   requestApiBase: string,
+  awsRegion?: string,
 ): string {
+  if (provider === 'amazon-bedrock') {
+    const region = awsRegion?.trim();
+    if (region) {
+      return bedrockApiBaseFromRegion(region);
+    }
+  }
   if (!provider || provider === 'custom') {
     const trimmed = requestApiBase.trim();
     return trimmed || defaultApiBaseForTransport('custom', transportKind);
   }
   return defaultApiBaseForTransport(provider, transportKind);
+}
+
+function assertBedrockConnectCredentials(input: {
+  apiKey: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}): void {
+  const apiKey = input.apiKey.trim();
+  const accessKeyId = input.accessKeyId?.trim();
+  const secretAccessKey = input.secretAccessKey?.trim();
+  if (hasBedrockRuntimeCredentials({ apiKey, accessKeyId, secretAccessKey })) {
+    return;
+  }
+  throw new Error(i18n.t('error.bedrockCredentialsRequired'));
 }
 
 export async function previewModelsCommand(request: PreviewModelsRequest): Promise<PreviewModelsResponse> {
@@ -303,9 +328,17 @@ export async function previewModelsCommand(request: PreviewModelsRequest): Promi
     provider,
     transportKind: request.transportKind,
   });
-  const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase);
+  const awsRegion = request.awsRegion?.trim();
+  if (provider === 'amazon-bedrock' && !awsRegion) {
+    throw new Error(i18n.t('error.bedrockRegionRequired'));
+  }
+  const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion);
   const apiKey = request.apiKey.trim();
-  if (!apiKey) {
+  const accessKeyId = request.accessKeyId?.trim();
+  const secretAccessKey = request.secretAccessKey?.trim();
+  if (provider === 'amazon-bedrock') {
+    assertBedrockConnectCredentials({ apiKey, accessKeyId, secretAccessKey });
+  } else if (!apiKey) {
     throw new Error(i18n.t('error.apiKeyRequired'));
   }
   const result = await loadPreviewModelsForTransport({
@@ -313,6 +346,9 @@ export async function previewModelsCommand(request: PreviewModelsRequest): Promi
     transportKind,
     apiBase,
     apiKey,
+    ...(awsRegion ? { awsRegion } : {}),
+    ...(accessKeyId ? { accessKeyId } : {}),
+    ...(secretAccessKey ? { secretAccessKey } : {}),
     forceRefresh: request.forceRefresh === true,
   });
   return {
@@ -339,9 +375,17 @@ export async function addProviderModelsCommand(
       provider,
       transportKind: request.transportKind,
     });
-    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase);
+    const awsRegion = request.awsRegion?.trim();
+    if (provider === 'amazon-bedrock' && !awsRegion) {
+      throw new Error(i18n.t('error.bedrockRegionRequired'));
+    }
+    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion);
     const apiKey = request.apiKey.trim();
-    if (!apiKey) {
+    const accessKeyId = request.accessKeyId?.trim();
+    const secretAccessKey = request.secretAccessKey?.trim();
+    if (provider === 'amazon-bedrock') {
+      assertBedrockConnectCredentials({ apiKey, accessKeyId, secretAccessKey });
+    } else if (!apiKey) {
       throw new Error(i18n.t('error.apiKeyRequired'));
     }
 
@@ -359,6 +403,7 @@ export async function addProviderModelsCommand(
       capabilities?: DesktopModelCapability[];
       provider?: DesktopModelProvider;
       transportKind?: DesktopTransportKind;
+      awsRegion?: string;
     };
     const catalogEntries = previewCatalogMapForAddProviderRequest(request, provider, transportKind);
     const toAdd: NewProfile[] = [];
@@ -388,8 +433,11 @@ export async function addProviderModelsCommand(
       }
       if (provider !== undefined) {
         profile.provider = provider;
-        if (transportKind === 'anthropic' || transportKind === 'open-responses') {
+        if (transportKind === 'anthropic' || transportKind === 'open-responses' || transportKind === 'bedrock') {
           profile.transportKind = transportKind;
+        }
+        if (provider === 'amazon-bedrock' && awsRegion) {
+          profile.awsRegion = awsRegion;
         }
       }
       toAdd.push(profile);
@@ -401,9 +449,21 @@ export async function addProviderModelsCommand(
 
     const providerKeyScope = modelProviderKeyScope(provider);
     try {
-      await saveApiKeyForProvider(providerKeyScope, apiKey);
+      if (provider === 'amazon-bedrock') {
+        await saveBedrockProviderCredentialsForProvider(providerKeyScope, {
+          apiKey,
+          accessKeyId,
+          secretAccessKey,
+        });
+      } else {
+        await saveApiKeyForProvider(providerKeyScope, apiKey);
+      }
     } catch (err) {
-      await removeProviderApiKey(providerKeyScope);
+      if (provider === 'amazon-bedrock') {
+        await saveBedrockProviderCredentialsForProvider(providerKeyScope, {});
+      } else {
+        await removeProviderApiKey(providerKeyScope);
+      }
       throw err;
     }
 

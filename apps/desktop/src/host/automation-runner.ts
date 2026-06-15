@@ -3,15 +3,9 @@ import path from 'node:path';
 
 import {
   createLlmTransport,
-  type AnthropicTransportConfig,
-  type LlmModelCapabilities,
   type LlmPlanMetadata,
   type LlmTransportConfig,
 } from '@spirit-agent/core';
-import {
-  resolveAnthropicTransportReasoningEffortForContext,
-  resolveOpenAiTransportReasoningEffortForContext,
-} from '@spirit-agent/core/reasoning-effort';
 import {
   buildAutomationTriggerMessage,
   createHostAutomationStore,
@@ -26,12 +20,14 @@ import {
   runAutomationStreamingTurn,
 } from './automation-conversation-projection.js';
 
-import type { DesktopModelCapability } from '../types.js';
 import { createDesktopRewindMetadata } from './rewind.js';
 import { buildStoredDesktopSession } from './sessions.js';
+import { buildPrimaryTransportConfig, resolveDesktopTransportKind } from './model-config.js';
+import { modelProviderKeyScope } from './provider-api-key.js';
 import {
   chatsDirPath,
   loadHostMetadata,
+  readBedrockProviderCredentialsFromKeyring,
   resolveApiKeyForConfigModel,
   saveStoredSession,
   spiritAgentDataDir,
@@ -311,89 +307,22 @@ function buildAutomationTransportConfig(input: {
   profile?: DesktopConfigFile['models'][number];
   reasoningEffort?: DesktopConfigFile['models'][number]['reasoningEffort'];
 }): LlmTransportConfig {
-  const transportKind = input.profile?.transportKind
-    ?? (input.profile?.provider === 'anthropic' ? 'anthropic' : 'openai-compatible');
-  if (transportKind === 'anthropic') {
-    const supportedAnthropicEfforts = normalizeAnthropicSupportedEfforts(
-      input.profile?.supportedReasoningEfforts,
-    );
-    const anthropicEffort = resolveAnthropicTransportReasoningEffortForContext(
-      input.reasoningEffort ?? input.profile?.reasoningEffort,
-      {
-        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-        ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-        ...(input.profile?.supportedReasoningEfforts !== undefined
-          ? { supportedEfforts: input.profile.supportedReasoningEfforts }
-          : {}),
-        model: input.model,
-      },
-    );
-    return {
-      transportKind: 'anthropic',
-      apiKey: input.apiKey,
-      model: input.model,
-      baseUrl: input.baseUrl,
-      workspaceRoot: input.workspaceRoot,
-      ...(input.profile?.capabilities
-        ? { modelCapabilities: automationModelCapabilities(input.profile.capabilities) }
-        : {}),
-      ...(supportedAnthropicEfforts !== undefined
-        ? { supportedEfforts: supportedAnthropicEfforts }
-        : {}),
-      ...(anthropicEffort ? { effort: anthropicEffort } : {}),
-    };
-  }
-
-  const llmVendor = input.profile?.provider && input.profile.provider !== 'anthropic'
-    ? input.profile.provider
+  const transportKind = resolveDesktopTransportKind(input.profile);
+  const bedrockCredentials = transportKind === 'bedrock' && input.profile?.provider
+    ? readBedrockProviderCredentialsFromKeyring(modelProviderKeyScope(input.profile.provider))
     : undefined;
-  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
-    input.reasoningEffort ?? input.profile?.reasoningEffort,
-    {
-      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-      ...(input.profile?.supportedReasoningEfforts !== undefined
-        ? { supportedEfforts: input.profile.supportedReasoningEfforts }
-        : {}),
-      model: input.model,
-    },
-  );
-  return {
+  const profile = input.profile && input.reasoningEffort !== undefined
+    ? { ...input.profile, reasoningEffort: input.reasoningEffort }
+    : input.profile;
+
+  return buildPrimaryTransportConfig({
     apiKey: input.apiKey,
     model: input.model,
     baseUrl: input.baseUrl,
     workspaceRoot: input.workspaceRoot,
-    ...(llmVendor ? { llmVendor } : {}),
-    ...(input.profile?.capabilities
-      ? { modelCapabilities: automationModelCapabilities(input.profile.capabilities) }
-      : {}),
-    ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
-  };
-}
-
-function normalizeAnthropicSupportedEfforts(
-  efforts?: readonly string[],
-): AnthropicTransportConfig['supportedEfforts'] {
-  if (efforts === undefined) {
-    return undefined;
-  }
-  return efforts.filter((effort): effort is NonNullable<AnthropicTransportConfig['supportedEfforts']>[number] => (
-    effort === 'low'
-    || effort === 'medium'
-    || effort === 'high'
-    || effort === 'xhigh'
-    || effort === 'max'
-  ));
-}
-
-function automationModelCapabilities(
-  capabilities: readonly DesktopModelCapability[],
-): LlmModelCapabilities {
-  return {
-    ...(capabilities.includes('chat') ? { chat: true } : {}),
-    ...(capabilities.includes('image') ? { imageInput: true } : {}),
-    ...(capabilities.includes('imageGeneration') ? { imageGeneration: true } : {}),
-  };
+    profile,
+    bedrockCredentials,
+  });
 }
 
 function formatRunTimestamp(unixMs: number): string {

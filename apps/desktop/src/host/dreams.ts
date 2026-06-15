@@ -5,21 +5,14 @@ import path from 'node:path';
 import i18n from '../lib/i18n-host.js';
 import type {
   AgentRuntime,
-  AnthropicTransportConfig,
-  LlmModelCapabilities,
   LlmPlanMetadata,
   LlmToolAgentState,
   LlmTransportConfig,
-  OpenAiTransportConfig,
 } from '@spirit-agent/core';
 import {
   llmMessageTextContent,
   normalizeStoredLlmMessage,
 } from '@spirit-agent/core';
-import {
-  resolveAnthropicTransportReasoningEffortForContext,
-  resolveOpenAiTransportReasoningEffortForContext,
-} from '@spirit-agent/core/reasoning-effort';
 import {
   createHostDreamStore,
   DREAM_RETENTION_MS as HOST_DREAM_RETENTION_MS,
@@ -30,15 +23,17 @@ import {
 
 import type {
   ConversationMessageSnapshot,
-  DesktopModelCapability,
   DesktopDreamCollectorSnapshot,
   SessionListItem,
 } from '../types.js';
 import type { DesktopToolRequest, StoredDesktopSession } from './contracts.js';
+import { buildPrimaryTransportConfig, resolveDesktopTransportKind } from './model-config.js';
+import { modelProviderKeyScope } from './provider-api-key.js';
 import {
   chatsDirPath,
   listStoredSessions,
   loadStoredSession,
+  readBedrockProviderCredentialsFromKeyring,
   resolveApiKeyForConfigModel,
   saveStoredSession,
   spiritAgentDataDir,
@@ -657,90 +652,19 @@ function buildDreamCollectorTransportConfig(input: {
   workspaceRoot: string;
   profile?: DesktopConfigFile['models'][number];
 }): LlmTransportConfig {
-  const transportKind = input.profile?.transportKind
-    ?? (input.profile?.provider === 'anthropic' ? 'anthropic' : 'openai-compatible');
-  if (transportKind === 'anthropic') {
-    const supportedAnthropicEfforts = normalizeAnthropicSupportedEfforts(
-      input.profile?.supportedReasoningEfforts,
-    );
-    const anthropicEffort = resolveAnthropicTransportReasoningEffortForContext(
-      input.profile?.reasoningEffort,
-      {
-        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-        ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-        ...(input.profile?.supportedReasoningEfforts !== undefined
-          ? { supportedEfforts: input.profile.supportedReasoningEfforts }
-          : {}),
-        model: input.model,
-      },
-    );
-    return {
-      transportKind: 'anthropic',
-      apiKey: input.apiKey,
-      model: input.model,
-      baseUrl: input.baseUrl,
-      workspaceRoot: input.workspaceRoot,
-      ...(input.profile?.capabilities
-        ? { modelCapabilities: dreamCollectorModelCapabilities(input.profile.capabilities) }
-        : {}),
-      ...(supportedAnthropicEfforts !== undefined
-        ? { supportedEfforts: supportedAnthropicEfforts }
-        : {}),
-      ...(anthropicEffort ? { effort: anthropicEffort } : {}),
-    };
-  }
-
-  const llmVendor = input.profile?.provider && input.profile.provider !== 'anthropic'
-    ? input.profile.provider
+  const transportKind = resolveDesktopTransportKind(input.profile);
+  const bedrockCredentials = transportKind === 'bedrock' && input.profile?.provider
+    ? readBedrockProviderCredentialsFromKeyring(modelProviderKeyScope(input.profile.provider))
     : undefined;
-  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
-    input.profile?.reasoningEffort,
-    {
-      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-      ...(input.profile?.supportedReasoningEfforts !== undefined
-        ? { supportedEfforts: input.profile.supportedReasoningEfforts }
-        : {}),
-      model: input.model,
-    },
-  );
-  return {
+
+  return buildPrimaryTransportConfig({
     apiKey: input.apiKey,
     model: input.model,
     baseUrl: input.baseUrl,
     workspaceRoot: input.workspaceRoot,
-    ...(llmVendor ? { llmVendor } : {}),
-    ...(input.profile?.capabilities
-      ? { modelCapabilities: dreamCollectorModelCapabilities(input.profile.capabilities) }
-      : {}),
-    ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
-  };
-}
-
-function normalizeAnthropicSupportedEfforts(
-  efforts?: readonly string[],
-): AnthropicTransportConfig['supportedEfforts'] {
-  if (efforts === undefined) {
-    return undefined;
-  }
-
-  return efforts.filter((effort): effort is NonNullable<AnthropicTransportConfig['supportedEfforts']>[number] => (
-    effort === 'low'
-    || effort === 'medium'
-    || effort === 'high'
-    || effort === 'xhigh'
-    || effort === 'max'
-  ));
-}
-
-function dreamCollectorModelCapabilities(
-  capabilities: readonly DesktopModelCapability[],
-): LlmModelCapabilities {
-  return {
-    ...(capabilities.includes('chat') ? { chat: true } : {}),
-    ...(capabilities.includes('image') ? { imageInput: true } : {}),
-    ...(capabilities.includes('imageGeneration') ? { imageGeneration: true } : {}),
-  };
+    profile: input.profile,
+    bedrockCredentials,
+  });
 }
 
 function truncateText(value: string, maxChars: number): string {

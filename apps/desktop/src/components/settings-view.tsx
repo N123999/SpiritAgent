@@ -99,6 +99,8 @@ import {
   resolveConnectApiBase,
   resolveProviderConnectApiBase,
 } from "@/host/provider-presets";
+import { bedrockApiBaseFromRegion } from "@spirit-agent/host-internal";
+import { hasBedrockRuntimeCredentials } from "@/host/provider-api-key";
 import { AgentsSettingsPanel } from "@/components/agents-settings-panel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -272,6 +274,10 @@ const connectTransportOptionCatalog = {
     value: "anthropic" as const,
     label: "Messages API",
   },
+  bedrockApi: {
+    value: "bedrock" as const,
+    label: "Amazon Bedrock",
+  },
   responsesApi: {
     value: "open-responses" as const,
     label: "Responses API",
@@ -311,6 +317,8 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
         connectTransportOptionCatalog.chatCompletions,
         connectTransportOptionCatalog.responsesApi,
       ];
+    case "amazon-bedrock":
+      return [connectTransportOptionCatalog.bedrockApi];
     default:
       return [];
   }
@@ -319,6 +327,9 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
 function defaultConnectTransportKind(provider: DesktopModelProvider): DesktopTransportKind {
   if (provider === "vercel-ai-gateway") {
     return "open-responses";
+  }
+  if (provider === "amazon-bedrock") {
+    return "bedrock";
   }
 
   return connectTransportOptionsForProvider(provider)[0]?.value ?? "openai-compatible";
@@ -351,6 +362,9 @@ function resolveConnectTransportKindForProvider(
 ): DesktopTransportKind | undefined {
   if (provider === "vercel-ai-gateway") {
     return "open-responses";
+  }
+  if (provider === "amazon-bedrock") {
+    return "bedrock";
   }
 
   if (provider === null || !providerSupportsConnectTransportPicker(provider)) {
@@ -2413,6 +2427,9 @@ function ModelsSettingsPanel({
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<DesktopModelProvider | null>(null);
   const [connectApiKey, setConnectApiKey] = useState("");
+  const [connectAwsRegion, setConnectAwsRegion] = useState("");
+  const [connectAccessKeyId, setConnectAccessKeyId] = useState("");
+  const [connectSecretAccessKey, setConnectSecretAccessKey] = useState("");
   const [connectName, setConnectName] = useState("");
   const [connectApiBase, setConnectApiBase] = useState("");
   const [connectCapabilities, setConnectCapabilities] = useState<DesktopModelCapability[]>(
@@ -2508,6 +2525,9 @@ function ModelsSettingsPanel({
 
   const resetConnectWizard = () => {
     setConnectApiKey("");
+    setConnectAwsRegion("");
+    setConnectAccessKeyId("");
+    setConnectSecretAccessKey("");
     setConnectName("");
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
@@ -2530,6 +2550,9 @@ function ModelsSettingsPanel({
     setProviderDialogOpen(false);
     setSelectedProvider(id);
     setConnectApiKey("");
+    setConnectAwsRegion("");
+    setConnectAccessKeyId("");
+    setConnectSecretAccessKey("");
     setConnectName("");
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
@@ -2697,26 +2720,48 @@ function ModelsSettingsPanel({
   const effectiveApiBase =
     selectedProvider === null
       ? ""
-      : selectedProvider === "custom"
+      : selectedProvider === "amazon-bedrock"
+        ? bedrockApiBaseFromRegion(connectAwsRegion)
+        : selectedProvider === "custom"
         ? resolveCustomConnectApiBase(connectTransportKind, connectApiBase)
         : connectTransportKindForRequest !== undefined
           ? resolveProviderConnectApiBase(
               selectedProvider,
               connectTransportKindForRequest,
             )
-          : resolveConnectApiBase(selectedProvider);
+          : resolveConnectApiBase(selectedProvider, "");
+
+  const hasBedrockConnectCredentials = hasBedrockRuntimeCredentials({
+    apiKey: connectApiKey,
+    accessKeyId: connectAccessKeyId,
+    secretAccessKey: connectSecretAccessKey,
+  });
 
   const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {
       return;
     }
-    if (!connectApiKey.trim()) {
+    if (selectedProvider === "amazon-bedrock") {
+      if (!connectAwsRegion.trim()) {
+        throw new Error(t('settings.bedrockRegionRequired'));
+      }
+      if (!hasBedrockConnectCredentials) {
+        throw new Error(t('settings.bedrockCredentialsRequired'));
+      }
+    } else if (!connectApiKey.trim()) {
       throw new Error(t('settings.apiKeyRequired'));
     }
     const res = await onPreviewModels({
       apiBase: effectiveApiBase,
       apiKey: connectApiKey,
       provider: selectedProvider,
+      ...(selectedProvider === "amazon-bedrock"
+        ? {
+            awsRegion: connectAwsRegion.trim(),
+            accessKeyId: connectAccessKeyId.trim(),
+            secretAccessKey: connectSecretAccessKey.trim(),
+          }
+        : {}),
       ...(connectTransportKindForRequest !== undefined
         ? { transportKind: connectTransportKindForRequest }
         : {}),
@@ -2731,6 +2776,13 @@ function ModelsSettingsPanel({
       modelIds: res.modelIds,
       ...(res.models ? { modelCatalog: res.models } : {}),
       provider: selectedProvider,
+      ...(selectedProvider === "amazon-bedrock"
+        ? {
+            awsRegion: connectAwsRegion.trim(),
+            accessKeyId: connectAccessKeyId.trim(),
+            secretAccessKey: connectSecretAccessKey.trim(),
+          }
+        : {}),
       ...(connectTransportKindForRequest !== undefined
         ? { transportKind: connectTransportKindForRequest }
         : {}),
@@ -3525,8 +3577,24 @@ function ModelsSettingsPanel({
                 </p>
               </div>
             ) : null}
+            {selectedProvider === "amazon-bedrock" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-aws-region">{t('settings.bedrockRegion')}</Label>
+                <DesktopFormInput
+                  id="connect-aws-region"
+                  value={connectAwsRegion}
+                  onChange={(e) => setConnectAwsRegion(e.target.value)}
+                  placeholder={t('settings.bedrockRegionPlaceholder')}
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
             <div className="grid gap-2">
-              <Label htmlFor="connect-api-key">API Key</Label>
+              <Label htmlFor="connect-api-key">
+                {selectedProvider === "amazon-bedrock"
+                  ? t('settings.bedrockApiKeyLabel')
+                  : "API Key"}
+              </Label>
               <DesktopFormInput
                 id="connect-api-key"
                 type="password"
@@ -3535,7 +3603,37 @@ function ModelsSettingsPanel({
                 placeholder={t('settings.enterApiKey')}
                 autoComplete="off"
               />
+              {selectedProvider === "amazon-bedrock" ? (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {t('settings.bedrockApiKeyPriorityHint')}
+                </p>
+              ) : null}
             </div>
+            {selectedProvider === "amazon-bedrock" ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-access-key-id">{t('settings.bedrockAccessKeyId')}</Label>
+                  <DesktopFormInput
+                    id="connect-access-key-id"
+                    value={connectAccessKeyId}
+                    onChange={(e) => setConnectAccessKeyId(e.target.value)}
+                    placeholder={t('settings.optional')}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-secret-access-key">{t('settings.bedrockSecretAccessKey')}</Label>
+                  <DesktopFormInput
+                    id="connect-secret-access-key"
+                    type="password"
+                    value={connectSecretAccessKey}
+                    onChange={(e) => setConnectSecretAccessKey(e.target.value)}
+                    placeholder={t('settings.optional')}
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            ) : null}
             <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row sm:justify-between">
               <Button
                 type="button"
@@ -3598,7 +3696,13 @@ function ModelsSettingsPanel({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={modelsBusy || modelsPreviewBusy || !connectApiKey.trim()}
+                    disabled={
+                      modelsBusy
+                      || modelsPreviewBusy
+                      || (selectedProvider === "amazon-bedrock"
+                        ? !connectAwsRegion.trim() || !hasBedrockConnectCredentials
+                        : !connectApiKey.trim())
+                    }
                     onClick={() => {
                       void (async () => {
                         try {
