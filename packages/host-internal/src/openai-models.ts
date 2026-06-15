@@ -3,6 +3,10 @@
  */
 
 import type { ModelProviderId, ProviderModelTransportKind } from './model-provider-presets.js';
+import {
+  assertGoogleGeminiApiBase,
+  googleNativeModelsListUrl,
+} from './google-gemini-endpoints.js';
 
 export type { ProviderModelTransportKind };
 
@@ -75,6 +79,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
 
   if (provider === 'volcengine') {
     return parseVolcengineModelEntriesPayload(body);
+  }
+
+  if (provider === 'google') {
+    return parseGoogleModelEntriesPayload(body);
   }
 
   if (typeof body !== 'object' || body === null || !('data' in body)) {
@@ -225,6 +233,62 @@ export function parseVolcengineModelEntriesPayload(body: unknown): ProviderListe
       }
       default:
         break;
+    }
+
+    entries.push(modelEntry);
+  }
+  return entries;
+}
+
+/**
+ * Gemini API 原生 `GET /v1beta/models` 列表。
+ * 仅保留 `supportedGenerationMethods` 含 `generateContent` 的模型。
+ */
+export function parseGoogleModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('models' in body)) {
+    return [];
+  }
+  const raw = (body as { models?: unknown }).models;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+
+    const methods = record.supportedGenerationMethods;
+    if (Array.isArray(methods) && !methods.includes('generateContent')) {
+      continue;
+    }
+
+    const baseModelId = readOptionalTrimmedString(record.baseModelId);
+    const name = readOptionalTrimmedString(record.name);
+    let id = baseModelId;
+    if (!id && name) {
+      id = name.startsWith('models/') ? name.slice('models/'.length) : name;
+    }
+    if (!id) {
+      continue;
+    }
+
+    const modelEntry: ProviderListedModelEntry = { id };
+    const displayName = readOptionalTrimmedString(record.displayName);
+    const description = readOptionalTrimmedString(record.description);
+    if (displayName) {
+      modelEntry.displayName = displayName;
+    }
+    if (description) {
+      modelEntry.description = description;
+    }
+
+    const inputLimit = readPositiveIntegerModelTrait(record, 'inputTokenLimit');
+    const outputLimit = readPositiveIntegerModelTrait(record, 'outputTokenLimit');
+    if (inputLimit !== undefined && outputLimit !== undefined) {
+      modelEntry.contextLength = inputLimit + outputLimit;
     }
 
     entries.push(modelEntry);
@@ -626,6 +690,10 @@ export async function listProviderModels(
     return listVolcengineModels(options);
   }
 
+  if (options.provider === 'google') {
+    return listGoogleModels(options);
+  }
+
   return listOpenAiCompatibleModels(options);
 }
 
@@ -657,6 +725,44 @@ export async function listVolcengineModels(
   options: ListOpenAiCompatibleModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
   return listOpenAiCompatibleModelsForProvider(options, 'volcengine');
+}
+
+/**
+ * Google Gemini：模型目录走原生 `/v1beta/models`（非 OpenAI 兼容 `/openai/models`）。
+ * 本机/CI 通常无法直连 generativelanguage.googleapis.com；联调需在有网络的环境手动验证。
+ */
+export async function listGoogleModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  assertGoogleGeminiApiBase(options.baseUrl);
+  const key = options.apiKey.trim();
+  if (!key) {
+    throw new Error('API Key 不能为空。');
+  }
+
+  const allEntries: ProviderListedModelEntry[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = googleNativeModelsListUrl(options.baseUrl, pageToken);
+    const headers: Record<string, string> = {
+      'x-goog-api-key': key,
+    };
+    const init: RequestInit = { method: 'GET', headers };
+    if (options.signal !== undefined) {
+      init.signal = options.signal;
+    }
+
+    const json = await fetchModelsListJson(url, init);
+    allEntries.push(...parseGoogleModelEntriesPayload(json));
+
+    pageToken =
+      typeof json === 'object' && json !== null && 'nextPageToken' in json
+        ? readOptionalTrimmedString((json as { nextPageToken?: unknown }).nextPageToken)
+        : undefined;
+  } while (pageToken);
+
+  return dedupeProviderListedModelEntries(allEntries).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function listProviderModelIds(

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   moonshotSupportedReasoningEfforts,
   parseAnthropicModelEntriesPayload,
+  parseGoogleModelEntriesPayload,
   parseOpenAiCompatibleModelEntriesPayload,
   parseMoonshotModelEntriesPayload,
   parseOpenRouterModelEntriesPayload,
@@ -398,6 +399,85 @@ test('parseOpenRouterModelEntriesPayload maps context_length', () => {
     {
       id: 'anthropic/claude-sonnet-4',
       contextLength: 200000,
+    },
+  ]);
+});
+
+test('parseGoogleModelEntriesPayload maps displayName, description, and contextLength', () => {
+  const entries = parseGoogleModelEntriesPayload({
+    models: [
+      {
+        name: 'models/gemini-3.1-pro-preview',
+        version: '3.1-pro-preview',
+        displayName: 'Gemini 3.1 Pro Preview',
+        description: 'Preview model for advanced reasoning.',
+        inputTokenLimit: 1048576,
+        outputTokenLimit: 8192,
+        supportedGenerationMethods: ['generateContent', 'countTokens'],
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'gemini-3.1-pro-preview',
+      displayName: 'Gemini 3.1 Pro Preview',
+      description: 'Preview model for advanced reasoning.',
+      contextLength: 1048576 + 8192,
+    },
+  ]);
+});
+
+test('parseGoogleModelEntriesPayload prefers baseModelId and skips non-generateContent models', () => {
+  const entries = parseGoogleModelEntriesPayload({
+    models: [
+      {
+        name: 'models/embedding-001',
+        baseModelId: 'embedding-001',
+        displayName: 'Embedding',
+        supportedGenerationMethods: ['embedContent'],
+      },
+      {
+        name: 'models/gemini-2.0-flash',
+        baseModelId: 'gemini-2.0-flash',
+        displayName: 'Gemini 2.0 Flash',
+        inputTokenLimit: 1000,
+        outputTokenLimit: 500,
+        supportedGenerationMethods: ['generateContent'],
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'gemini-2.0-flash',
+      displayName: 'Gemini 2.0 Flash',
+      contextLength: 1500,
+    },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload routes google provider to native parser', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload(
+    {
+      models: [
+        {
+          name: 'models/gemini-2.5-flash',
+          displayName: 'Gemini 2.5 Flash',
+          inputTokenLimit: 100,
+          outputTokenLimit: 50,
+          supportedGenerationMethods: ['generateContent'],
+        },
+      ],
+    },
+    'google',
+  );
+
+  assert.deepEqual(entries, [
+    {
+      id: 'gemini-2.5-flash',
+      displayName: 'Gemini 2.5 Flash',
+      contextLength: 150,
     },
   ]);
 });

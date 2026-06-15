@@ -13,6 +13,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('vercel-ai-gateway'), 'vercel-ai-gateway');
   assert.equal(parseModelProviderId('openrouter'), 'openrouter');
   assert.equal(parseModelProviderId('openai'), 'openai');
+  assert.equal(parseModelProviderId('google'), 'google');
   assert.equal(parseModelProviderId('xai'), 'xai');
   assert.equal(parseModelProviderId('custom'), 'custom');
   assert.equal(parseModelProviderId('moonshot-ai'), 'moonshot-ai');
@@ -73,6 +74,10 @@ test('resolveProviderConnectApiBase uses transport-specific preset bases', () =>
   assert.equal(
     resolveProviderConnectApiBase('openai', 'open-responses'),
     'https://api.openai.com/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('google', 'openai-compatible'),
+    'https://generativelanguage.googleapis.com/v1beta/openai',
   );
 });
 
