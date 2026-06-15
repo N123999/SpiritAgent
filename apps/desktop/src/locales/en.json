@@ -698,6 +698,7 @@
     },
     "rename": "Rename",
     "delete": "Delete",
+    "deleteEntryConfirm": "Delete \"{{name}}\"?",
     "moveToTrash": {
       "win32": "Move to Recycle Bin",
       "darwin": "Move to Trash",

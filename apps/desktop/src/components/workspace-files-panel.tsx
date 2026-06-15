@@ -10,6 +10,7 @@ import {
 
 import {
   WorkspaceFileContextMenu,
+  useMoveToTrashLabel,
   type WorkspaceExplorerContextTarget,
 } from "@/components/workspace-file-context-menu";
 import {
@@ -19,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useHostApi } from "@/hooks/useHostApi";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 import { cn } from "@/lib/utils";
@@ -208,6 +210,7 @@ export function WorkspaceFilesPanel({
   onWorkspaceFileAddToSession,
 }: WorkspaceFilesPanelProps) {
   const { t } = useTranslation();
+  const moveToTrashLabel = useMoveToTrashLabel();
   const { api, kind } = useHostApi();
   const isElectron = kind === "electron";
   const [rootOpen, setRootOpen] = useState(true);
@@ -219,6 +222,8 @@ export function WorkspaceFilesPanel({
   const [forceDeleteTarget, setForceDeleteTarget] = useState<WorkspaceExplorerContextTarget | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceExplorerContextTarget | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [forceDeleteReason, setForceDeleteReason] = useState("");
   const [forceDeleteBusy, setForceDeleteBusy] = useState(false);
   const [dragOverDirectory, setDragOverDirectory] = useState<string | null>(null);
@@ -371,25 +376,32 @@ export function WorkspaceFilesPanel({
     renamingPath,
   ]);
 
-  const handleDelete = useCallback(
-    async (target: WorkspaceExplorerContextTarget) => {
-      if (!api) {
-        return;
-      }
-      try {
-        await api.trashWorkspaceEntry(target.relativePath);
-        const parentRel = target.relativePath.includes("/")
-          ? target.relativePath.slice(0, target.relativePath.lastIndexOf("/"))
-          : "";
-        invalidateDir(parentRel);
-        onWorkspaceEntryDeleted?.(target.relativePath);
-      } catch (error) {
-        setForceDeleteTarget(target);
-        setForceDeleteReason(describeError(error));
-      }
-    },
-    [api, invalidateDir, onWorkspaceEntryDeleted],
-  );
+  const handleDeleteRequest = useCallback((target: WorkspaceExplorerContextTarget) => {
+    setDeleteTarget(target);
+  }, []);
+
+  const handleConfirmMoveToTrash = useCallback(async () => {
+    const target = deleteTarget;
+    if (!target || !api) {
+      return;
+    }
+    setDeleteBusy(true);
+    try {
+      await api.trashWorkspaceEntry(target.relativePath);
+      const parentRel = target.relativePath.includes("/")
+        ? target.relativePath.slice(0, target.relativePath.lastIndexOf("/"))
+        : "";
+      invalidateDir(parentRel);
+      onWorkspaceEntryDeleted?.(target.relativePath);
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteTarget(null);
+      setForceDeleteTarget(target);
+      setForceDeleteReason(describeError(error));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [api, deleteTarget, invalidateDir, onWorkspaceEntryDeleted]);
 
   const handleForceDelete = useCallback(async () => {
     const target = forceDeleteTarget;
@@ -555,7 +567,7 @@ export function WorkspaceFilesPanel({
                 renameError={renamingPath === childRel ? renameError : ""}
                 onReveal={handleReveal}
                 onRenameStart={handleRenameStart}
-                onDelete={handleDelete}
+                onDelete={handleDeleteRequest}
                 onAddToSession={onWorkspaceFileAddToSession ? handleAddToSession : undefined}
                 onRenameValueChange={setRenameValue}
                 onRenameCommit={() => void handleRenameCommit()}
@@ -581,7 +593,7 @@ export function WorkspaceFilesPanel({
               renameError={renamingPath === childRel ? renameError : ""}
               onReveal={handleReveal}
               onRenameStart={handleRenameStart}
-              onDelete={handleDelete}
+              onDelete={handleDeleteRequest}
               onRenameValueChange={setRenameValue}
               onRenameCommit={() => void handleRenameCommit()}
               onRenameCancel={handleRenameCancel}
@@ -657,6 +669,44 @@ export function WorkspaceFilesPanel({
         <div className="mb-1">{renderPlanItem()}</div>
       )}
 
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>{t("workspace.delete")}</DialogTitle>
+            <DialogDescription>
+              {t("workspace.deleteEntryConfirm", { name: deleteTarget?.name ?? "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deleteBusy}
+              onClick={() => setDeleteTarget(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={deleteBusy}
+              onClick={() => void handleConfirmMoveToTrash()}
+            >
+              {moveToTrashLabel}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {forceDeleteTarget ? (
         <Dialog
           open
@@ -674,10 +724,11 @@ export function WorkspaceFilesPanel({
                 {t("workspace.forceDeleteConfirm", { reason: forceDeleteReason })}
               </DialogDescription>
             </DialogHeader>
-            <div className="flex justify-end gap-2">
-              <button
+            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+              <Button
                 type="button"
-                className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+                variant="outline"
+                size="sm"
                 disabled={forceDeleteBusy}
                 onClick={() => {
                   setForceDeleteTarget(null);
@@ -685,15 +736,16 @@ export function WorkspaceFilesPanel({
                 }}
               >
                 {t("common.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="rounded-md bg-destructive px-3 py-1.5 text-sm text-destructive-foreground hover:bg-destructive/90"
+                variant="destructive"
+                size="sm"
                 disabled={forceDeleteBusy}
                 onClick={() => void handleForceDelete()}
               >
                 {t("workspace.forceDelete")}
-              </button>
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

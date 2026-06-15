@@ -54,8 +54,8 @@ export function WorkspaceFileContextMenu({
 }: WorkspaceFileContextMenuProps) {
   const { t } = useTranslation();
   const revealLabel = useRevealInExplorerLabel();
-  const trashLabel = useMoveToTrashLabel();
   const shellActionsEnabled = isElectron && Boolean(onReveal);
+  const deleteEnabled = isElectron && Boolean(onDelete);
 
   return (
     <ContextMenu>
@@ -92,13 +92,13 @@ export function WorkspaceFileContextMenu({
         {onDelete ? (
           <ContextMenuItem
             variant="destructive"
-            disabled={!shellActionsEnabled}
+            disabled={!deleteEnabled}
             title={!isElectron ? t("workspace.shellElectronOnly") : undefined}
             onSelect={() => {
               onDelete(target);
             }}
           >
-            {trashLabel}
+            {t("workspace.delete")}
           </ContextMenuItem>
         ) : null}
       </ContextMenuContent>
