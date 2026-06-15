@@ -55,6 +55,7 @@ import {
 } from "@/lib/desktop-chrome";
 import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
 import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
+import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 import {
   HoverDetailTooltip,
@@ -2549,6 +2550,7 @@ function ModelsSettingsPanel({
   };
 
   const openProviderPicker = () => {
+    resetConnectWizard();
     setProviderQuery("");
     setProviderDialogOpen(true);
   };
@@ -2796,7 +2798,7 @@ function ModelsSettingsPanel({
     };
     await onAddProviderModels(bulk);
     setConnectDialogOpen(false);
-    resetConnectWizard();
+    runAfterRadixOverlayClose(resetConnectWizard);
   };
 
   const saveCustomSingle = async () => {
@@ -2830,7 +2832,7 @@ function ModelsSettingsPanel({
       ...(contextLength !== undefined ? { contextLength } : {}),
     });
     setConnectDialogOpen(false);
-    resetConnectWizard();
+    runAfterRadixOverlayClose(resetConnectWizard);
   };
 
   const saveBedrockBearerSingle = async () => {
@@ -2869,7 +2871,7 @@ function ModelsSettingsPanel({
       ...(contextLength !== undefined ? { contextLength } : {}),
     });
     setConnectDialogOpen(false);
-    resetConnectWizard();
+    runAfterRadixOverlayClose(resetConnectWizard);
   };
 
   return (
@@ -3485,12 +3487,9 @@ function ModelsSettingsPanel({
 
       <Dialog
         open={connectDialogOpen}
-        onOpenChange={(open) => {
-          setConnectDialogOpen(open);
-          if (!open) {
-            resetConnectWizard();
-          }
-        }}
+        // 不在 onOpenChange(false) 立刻 resetConnectWizard：Dialog exit 动画未结束时 Content 仍挂载，
+        // selectedProvider 被清 null 会导致标题回退「连接提供商」、条件 Select 消失。见 runAfterRadixOverlayClose / openProviderPicker。
+        onOpenChange={setConnectDialogOpen}
       >
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>

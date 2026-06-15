@@ -49,3 +49,11 @@ const MOTION_BY_KIND: Record<RadixAnchoredOverlayKind, string> = {
 export function radixAnchoredOverlayMotion(kind: RadixAnchoredOverlayKind): string {
   return MOTION_BY_KIND[kind];
 }
+
+/** 与 Dialog / ContextMenu 等 Radix 浮层 `duration-100` 退场动画一致。 */
+export const RADIX_OVERLAY_CLOSE_MS = 100;
+
+/** exit 动画结束后再执行；避免 onOpenChange(false) 同期清 state 导致退场末帧闪 UI。 */
+export function runAfterRadixOverlayClose(action: () => void): void {
+  window.setTimeout(action, RADIX_OVERLAY_CLOSE_MS);
+}
