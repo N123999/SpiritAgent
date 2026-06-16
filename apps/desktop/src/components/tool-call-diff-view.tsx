@@ -84,7 +84,7 @@ export function ToolCallDiffView({
 
   if (hunks.length === 0) {
     return (
-      <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-border/20 bg-background p-2 font-mono text-xs leading-relaxed text-muted-foreground">
+      <pre className="overflow-x-auto whitespace-pre rounded-md border border-border/20 bg-background p-2 font-mono text-xs leading-relaxed text-muted-foreground">
         {modified || original}
       </pre>
     );
@@ -94,6 +94,7 @@ export function ToolCallDiffView({
     <ScrollArea
       ref={scrollAreaRef}
       type="always"
+      scrollbars="both"
       className="tool-call-diff h-[min(420px,50vh)] min-h-[120px] w-full min-w-0 rounded-md border border-border/20 bg-background pr-2 [&>[data-radix-scroll-area-viewport]]:h-full [&>[data-radix-scroll-area-viewport]]:overscroll-contain"
       data-tool-diff-path={relativePath}
       onWheel={(event) => {

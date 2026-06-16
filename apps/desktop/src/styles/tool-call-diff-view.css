@@ -22,7 +22,35 @@
 
 .tool-call-diff .diff {
   background-color: var(--background);
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
+}
+
+.tool-call-diff table.diff {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.tool-call-diff .diff-code {
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.tool-call-diff .diff-code pre {
+  margin: 0;
+  white-space: pre;
+}
+
+.tool-call-diff .diff-gutter {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  padding-right: 0.625rem;
+  text-align: right;
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  user-select: none;
+  white-space: nowrap;
 }
 
 /* PR review file thread: diff sits flush in a bg-muted card */
@@ -48,15 +76,6 @@
 
 .tool-call-diff .diff-line {
   font-family: var(--font-mono, ui-monospace, monospace);
-}
-
-.tool-call-diff .diff-gutter {
-  width: 2.75rem;
-  min-width: 2.75rem;
-  padding-right: 0.625rem;
-  text-align: right;
-  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
-  user-select: none;
 }
 
 /* Keep empty unified gutter cells in table layout (display:none breaks column alignment). */
