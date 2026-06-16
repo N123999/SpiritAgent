@@ -435,6 +435,13 @@ export function insertSegmentAtCaret(
   }
 
   const normalized = mergeAdjacentTextSegments(next);
+  if (newSegment.kind === "text") {
+    const plainTarget = caretToPlainTextOffset(merged, caret) + newSegment.value.length;
+    return {
+      segments: normalized,
+      caret: plainTextOffsetToCaret(normalized, plainTarget),
+    };
+  }
   let afterIndex = normalized.length - 1;
   let caretOffset = 0;
   if (newSegment.kind === "element") {

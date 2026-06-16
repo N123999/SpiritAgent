@@ -161,6 +161,16 @@ test("caretToPlainTextOffset skips element segments in plain text", () => {
   assert.equal(caretToPlainTextOffset(segs, { segmentIndex: 2, offset: 1 }), 3);
 });
 
+test("insertSegmentAtCaret places caret after text inserted into empty composer", () => {
+  const { segments, caret } = insertSegmentAtCaret(
+    emptySegments(),
+    { segmentIndex: 0, offset: 0 },
+    { kind: "text", value: "Concurrent" },
+  );
+  assert.equal(segmentsToPlainText(segments), "Concurrent");
+  assert.equal(caretToPlainTextOffset(segments, caret), "Concurrent".length);
+});
+
 test("insertSegmentAtCaret splits text and leaves trailing text segment", () => {
   const { segments, caret } = insertSegmentAtCaret(
     [{ kind: "text", value: "hello world" }],

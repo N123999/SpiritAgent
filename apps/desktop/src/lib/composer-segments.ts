@@ -230,7 +230,10 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
   }
   if (el.tagName === "DIV" || el.tagName === "P") {
     appendSegmentsFromChildren(el, segs);
+    return;
   }
+  // 浏览器粘贴的富文本包装节点（span/strong 等）不是 chip，提取子节点正文。
+  appendSegmentsFromChildren(el, segs);
 }
 
 export function segmentsToDom(
