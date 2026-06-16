@@ -1376,9 +1376,9 @@ function RulesSettingsPanel({
               </p>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="new-rule-desc">{t('settings.description')}</Label>
+              <Label htmlFor="new-rule-content">{t('settings.content')}</Label>
               <DesktopFormTextarea
-                id="new-rule-desc"
+                id="new-rule-content"
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 placeholder={t('settings.ruleDescPlaceholder')}
