@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { forwardRef, useRef, type KeyboardEvent, type ReactNode } from "react";
 
 import {
   DropdownMenu,
@@ -41,17 +41,41 @@ type FilteredOverlayMenuProps = {
   footer?: ReactNode;
 };
 
-export function FilteredOverlayMenuList({
-  children,
-  className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn(className ?? DESKTOP_OVERLAY_LIST_LIST_PADDING)}>{children}</div>
+function collectFocusableMenuItems(container: HTMLElement | null): HTMLElement[] {
+  if (!container) {
+    return [];
+  }
+  return Array.from(
+    container.querySelectorAll<HTMLElement>('[role="menuitem"]:not([data-disabled])'),
   );
 }
+
+function focusMenuItem(item: HTMLElement | undefined): void {
+  if (!item) {
+    return;
+  }
+  item.focus();
+  item.scrollIntoView({ block: "nearest" });
+}
+
+export const FilteredOverlayMenuList = forwardRef<
+  HTMLDivElement,
+  {
+    children: ReactNode;
+    className?: string;
+    onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
+  }
+>(function FilteredOverlayMenuList({ children, className, onKeyDown }, ref) {
+  return (
+    <div
+      ref={ref}
+      className={cn(className ?? DESKTOP_OVERLAY_LIST_LIST_PADDING)}
+      onKeyDown={onKeyDown}
+    >
+      {children}
+    </div>
+  );
+});
 
 export function FilteredOverlayMenu({
   trigger,
@@ -70,6 +94,56 @@ export function FilteredOverlayMenu({
 }: FilteredOverlayMenuProps) {
   const showFilter = onFilterChange != null;
   const filterInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const handleFilterKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      const items = collectFocusableMenuItems(listRef.current);
+      focusMenuItem(items[0]);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    event.stopPropagation();
+  };
+
+  const handleListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const item = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('[role="menuitem"]:not([data-disabled])')
+      : null;
+    if (!item) {
+      return;
+    }
+    const items = collectFocusableMenuItems(listRef.current);
+    const index = items.indexOf(item);
+    if (index < 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      focusMenuItem(items[index + 1]);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (index <= 0) {
+        filterInputRef.current?.focus();
+      } else {
+        focusMenuItem(items[index - 1]);
+      }
+    }
+  };
+
+  const filterInputKeyDownProps = showFilter
+    ? { onKeyDown: handleFilterKeyDown }
+    : {};
 
   const contentClasses =
     variant === "workspace-panel"
@@ -118,7 +192,7 @@ export function FilteredOverlayMenu({
                 onChange={(event) => onFilterChange(event.target.value)}
                 placeholder={filterPlaceholder}
                 className={DESKTOP_OVERLAY_LIST_FILTER_INPUT_GHOST}
-                onKeyDown={(event) => event.stopPropagation()}
+                {...filterInputKeyDownProps}
                 autoComplete="off"
               />
             ) : (
@@ -129,7 +203,7 @@ export function FilteredOverlayMenu({
                   onChange={(event) => onFilterChange(event.target.value)}
                   placeholder={filterPlaceholder}
                   className={DESKTOP_OVERLAY_LIST_FILTER_INPUT}
-                  onKeyDown={(event) => event.stopPropagation()}
+                  {...filterInputKeyDownProps}
                   autoComplete="off"
                 />
               </div>
@@ -142,7 +216,9 @@ export function FilteredOverlayMenu({
           onWheel={stopOverlayScrollPropagation}
           onTouchMove={stopOverlayScrollPropagation}
         >
-          <FilteredOverlayMenuList>{children}</FilteredOverlayMenuList>
+          <FilteredOverlayMenuList ref={listRef} onKeyDown={handleListKeyDown}>
+            {children}
+          </FilteredOverlayMenuList>
         </ScrollArea>
         {footer ? (
           <div className="shrink-0 border-t border-border/40 p-1">{footer}</div>
