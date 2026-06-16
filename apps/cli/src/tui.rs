@@ -480,6 +480,7 @@ impl TuiShell {
         provider: Option<ModelProvider>,
         transport_kind: crate::model_registry::ModelTransportKind,
         context_length: Option<u64>,
+        azure_resource_name: Option<&str>,
     ) -> Result<(), String> {
         let mut config = self.runtime.config().clone();
         if config.has_model(name) {
@@ -493,6 +494,12 @@ impl TuiShell {
             extra.insert(
                 "transportKind".to_string(),
                 serde_json::json!(transport_kind.as_str()),
+            );
+        }
+        if let Some(resource_name) = azure_resource_name.map(str::trim).filter(|v| !v.is_empty()) {
+            extra.insert(
+                "azureResourceName".to_string(),
+                serde_json::json!(resource_name),
             );
         }
 

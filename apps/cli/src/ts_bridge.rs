@@ -33,6 +33,7 @@ use crate::{
         AppConfig, ModelProvider, load_provider_access_key_id_from_keyring,
         load_provider_secret_access_key_from_keyring, normalize_reasoning_effort_value,
     },
+    model_provider_presets::{azure_api_base_from_resource_name, resolve_azure_resource_name},
     plan::{self, PlanMetadata},
     ports::{
         ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
@@ -1925,6 +1926,21 @@ impl TsBridgeRuntime {
                         );
                     }
                 }
+                if active.provider == Some(ModelProvider::Azure) {
+                    let resource_name = resolve_azure_resource_name(
+                        active.azure_resource_name(),
+                        &api_base,
+                    )
+                    .ok_or_else(|| {
+                        anyhow!("Azure OpenAI 模型缺少 azureResourceName 配置，请使用 Desktop 连接向导导入或 spirit model add --azure-resource-name")
+                    })?;
+                    let azure_base = azure_api_base_from_resource_name(&resource_name);
+                    if let Some(obj) = transport.as_object_mut() {
+                        obj.insert("baseUrl".to_string(), json!(azure_base));
+                        obj.insert("azureResourceName".to_string(), json!(resource_name));
+                        obj.insert("llmVendor".to_string(), json!("azure"));
+                    }
+                }
                 transport
             } else if active.transport_kind() == crate::model_registry::ModelTransportKind::Bedrock {
                 if active.provider == Some(ModelProvider::AmazonBedrock)
@@ -3401,6 +3417,7 @@ fn open_responses_sdk_provider(provider: Option<ModelProvider>) -> Option<&'stat
     match provider {
         Some(ModelProvider::Openai) => Some("openai"),
         Some(ModelProvider::Xai) => Some("xai"),
+        Some(ModelProvider::Azure) => Some("azure"),
         Some(ModelProvider::VercelAiGateway) | Some(ModelProvider::Openrouter) => None,
         _ => Some("open-responses-compatible"),
     }
@@ -3421,6 +3438,7 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::Openai => "openai",
         ModelProvider::Google => "google",
         ModelProvider::Volcengine => "volcengine",
+        ModelProvider::Azure => "azure",
         ModelProvider::AmazonBedrock => {
             unreachable!("Amazon Bedrock 不应映射到 openai-compatible llmVendor")
         }
@@ -3849,6 +3867,114 @@ mod tests {
             transport.get("llmVendor").and_then(Value::as_str),
             Some("xai")
         );
+    }
+
+    #[test]
+    fn resolve_transport_config_json_uses_azure_official_responses_provider() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let previous_api_key = env::var(super::ENV_API_KEY).ok();
+        // SAFETY: 单测串行写入进程级环境变量，结束后恢复。
+        unsafe {
+            env::set_var(super::ENV_API_KEY, "test-azure-key");
+        }
+
+        let mut next = runtime.config().clone();
+        next.models.push(ModelProfile {
+            name: "my-gpt4o-deploy".to_string(),
+            api_base: "https://my-openai-resource.openai.azure.com/openai/v1".to_string(),
+            provider: Some(ModelProvider::Azure),
+            reasoning_effort: None,
+            context_length: None,
+            extra: serde_json::Map::from_iter([
+                ("transportKind".to_string(), json!("open-responses")),
+                ("azureResourceName".to_string(), json!("my-openai-resource")),
+            ]),
+        });
+        next.active_model = "my-gpt4o-deploy".to_string();
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport.get("transportKind").and_then(Value::as_str),
+            Some("open-responses")
+        );
+        assert_eq!(
+            transport.get("baseUrl").and_then(Value::as_str),
+            Some("https://my-openai-resource.openai.azure.com/openai/v1")
+        );
+        assert_eq!(
+            transport.get("responsesProvider").and_then(Value::as_str),
+            Some("azure")
+        );
+        assert_eq!(
+            transport.get("llmVendor").and_then(Value::as_str),
+            Some("azure")
+        );
+        assert_eq!(
+            transport
+                .get("azureResourceName")
+                .and_then(Value::as_str),
+            Some("my-openai-resource")
+        );
+        assert_eq!(
+            transport.get("model").and_then(Value::as_str),
+            Some("my-gpt4o-deploy")
+        );
+
+        unsafe {
+            match previous_api_key {
+                Some(value) => env::set_var(super::ENV_API_KEY, value),
+                None => env::remove_var(super::ENV_API_KEY),
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_transport_config_json_recomputes_azure_base_url_from_resource_name() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let previous_api_key = env::var(super::ENV_API_KEY).ok();
+        // SAFETY: 单测串行写入进程级环境变量，结束后恢复。
+        unsafe {
+            env::set_var(super::ENV_API_KEY, "test-azure-key");
+        }
+
+        let mut next = runtime.config().clone();
+        next.models.push(ModelProfile {
+            name: "my-gpt4o-deploy".to_string(),
+            api_base: "https://stale-host.example/openai/v1".to_string(),
+            provider: Some(ModelProvider::Azure),
+            reasoning_effort: None,
+            context_length: None,
+            extra: serde_json::Map::from_iter([
+                ("transportKind".to_string(), json!("open-responses")),
+                ("azureResourceName".to_string(), json!("my-openai-resource")),
+            ]),
+        });
+        next.active_model = "my-gpt4o-deploy".to_string();
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport.get("baseUrl").and_then(Value::as_str),
+            Some("https://my-openai-resource.openai.azure.com/openai/v1")
+        );
+
+        unsafe {
+            match previous_api_key {
+                Some(value) => env::set_var(super::ENV_API_KEY, value),
+                None => env::remove_var(super::ENV_API_KEY),
+            }
+        }
     }
 
     #[test]

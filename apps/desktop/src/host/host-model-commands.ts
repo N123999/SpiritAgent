@@ -37,7 +37,7 @@ import {
   supportsImageGeneration,
   supportsVideoGeneration,
 } from './model-config.js';
-import { bedrockApiBaseFromRegion } from '@spirit-agent/host-internal';
+import { bedrockApiBaseFromRegion, azureApiBaseFromResourceName, isValidAzureResourceName } from '@spirit-agent/host-internal';
 import { bedrockMantleApiBaseFromRegion, isBedrockMantleOpenAiModel } from '@spirit-agent/host-internal/bedrock-mantle';
 import { modelSupportsChat } from './lightweight-chat-model.js';
 import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
@@ -296,6 +296,7 @@ function resolveManagedConnectApiBase(
   requestApiBase: string,
   awsRegion?: string,
   modelName?: string,
+  azureResourceName?: string,
 ): string {
   if (provider === 'amazon-bedrock') {
     const region = awsRegion?.trim();
@@ -304,6 +305,12 @@ function resolveManagedConnectApiBase(
         return bedrockMantleApiBaseFromRegion(region);
       }
       return bedrockApiBaseFromRegion(region);
+    }
+  }
+  if (provider === 'azure') {
+    const resourceName = azureResourceName?.trim();
+    if (resourceName) {
+      return azureApiBaseFromResourceName(resourceName);
     }
   }
   if (!provider || provider === 'custom') {
@@ -523,19 +530,43 @@ export async function addModelCommand(
 
     const name = request.name.trim();
     const provider = parseModelProviderId(request.provider);
+    if (
+      provider === 'azure'
+      && request.transportKind !== undefined
+      && request.transportKind !== 'open-responses'
+    ) {
+      throw new Error(i18n.t('error.azureOpenResponsesOnly'));
+    }
     const transportKind = resolveDesktopTransportKind({
       provider,
       transportKind: request.transportKind,
     });
     const awsRegion = request.awsRegion?.trim();
+    const azureResourceName = request.azureResourceName?.trim();
     if (provider === 'amazon-bedrock' && !awsRegion) {
       throw new Error(i18n.t('error.bedrockRegionRequired'));
     }
-    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion, name);
+    if (provider === 'azure' && !azureResourceName) {
+      throw new Error(i18n.t('error.azureResourceNameRequired'));
+    }
+    if (provider === 'azure' && azureResourceName && !isValidAzureResourceName(azureResourceName)) {
+      throw new Error(i18n.t('error.azureResourceNameInvalid'));
+    }
+    const apiBase = resolveManagedConnectApiBase(
+      provider,
+      transportKind,
+      request.apiBase,
+      awsRegion,
+      name,
+      azureResourceName,
+    );
     const apiKey = request.apiKey.trim();
 
     if (!name) {
       throw new Error(i18n.t('error.modelNameRequired'));
+    }
+    if (provider === 'azure' && /\s/u.test(name)) {
+      throw new Error(i18n.t('error.azureDeploymentNameWhitespace'));
     }
     if (!apiKey) {
       throw new Error(i18n.t('error.apiKeyRequired'));
@@ -563,6 +594,7 @@ export async function addModelCommand(
       capabilities?: DesktopModelCapability[];
       contextLength?: number;
       awsRegion?: string;
+      azureResourceName?: string;
     } = {
       name,
       apiBase,
@@ -586,6 +618,9 @@ export async function addModelCommand(
       }
       if (provider === 'amazon-bedrock' && awsRegion) {
         profile.awsRegion = awsRegion;
+      }
+      if (provider === 'azure' && azureResourceName) {
+        profile.azureResourceName = azureResourceName;
       }
     }
     const capabilities = resolveAddedModelCapabilities({

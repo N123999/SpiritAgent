@@ -4,9 +4,11 @@ import test from 'node:test';
 import {
   isGatewayOpenAiRoutedModel,
   normalizeGatewayOpenAiModelId,
+  resolveAzureResourceName,
   resolveOpenResponsesLanguageModelId,
   resolveOpenResponsesSdkProvider,
 } from './responses-compat.js';
+import { extractAzureResourceNameFromApiBase } from '../azure-resource.js';
 
 test('normalizeGatewayOpenAiModelId', () => {
   assert.equal(normalizeGatewayOpenAiModelId('openai/gpt-5.1'), 'gpt-5.1');
@@ -86,6 +88,57 @@ test('resolveOpenResponsesSdkProvider openrouter stays open-responses-compatible
       model: 'openai/gpt-5.1',
     }),
     'open-responses-compatible',
+  );
+});
+
+test('resolveOpenResponsesSdkProvider azure uses official azure sdk', () => {
+  assert.equal(
+    resolveOpenResponsesSdkProvider({
+      llmVendor: 'azure',
+      model: 'my-gpt4o-deploy',
+    }),
+    'azure',
+  );
+  assert.equal(
+    resolveOpenResponsesSdkProvider({
+      llmVendor: 'azure',
+      model: 'my-gpt4o-deploy',
+      responsesProvider: 'azure',
+    }),
+    'azure',
+  );
+});
+
+test('resolveAzureResourceName prefers explicit azureResourceName', () => {
+  assert.equal(
+    resolveAzureResourceName({
+      azureResourceName: 'my-resource',
+      baseUrl: 'https://other-resource.openai.azure.com/openai/v1',
+    }),
+    'my-resource',
+  );
+});
+
+test('resolveAzureResourceName falls back to baseUrl host segment', () => {
+  assert.equal(
+    resolveAzureResourceName({
+      baseUrl: 'https://my-openai-resource.openai.azure.com/openai/v1',
+    }),
+    'my-openai-resource',
+  );
+});
+
+test('resolveAzureResourceName throws when neither field is usable', () => {
+  assert.throws(
+    () => resolveAzureResourceName({ baseUrl: 'https://api.openai.com/v1' }),
+    /缺少 azureResourceName/,
+  );
+});
+
+test('extractAzureResourceNameFromApiBase rejects invalid resource segments', () => {
+  assert.equal(
+    extractAzureResourceNameFromApiBase('https://bad name.openai.azure.com/openai/v1'),
+    undefined,
   );
 });
 

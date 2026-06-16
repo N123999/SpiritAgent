@@ -31,6 +31,10 @@
       "types": "./dist/shell-tool-result.d.ts",
       "default": "./dist/shell-tool-result.js"
     },
+    "./azure-resource": {
+      "types": "./dist/azure-resource.d.ts",
+      "default": "./dist/azure-resource.js"
+    },
     "./host-bridge": {
       "types": "./dist/host-bridge-public.d.ts",
       "default": "./dist/host-bridge-public.js"
@@ -81,6 +85,7 @@
   },
   "dependencies": {
     "@ai-sdk/alibaba": "^1.0.22",
+    "@ai-sdk/azure": "^3.0.74",
     "@ai-sdk/amazon-bedrock": "^4.0.117",
     "@ai-sdk/anthropic": "^2.0.79",
     "@ai-sdk/deepseek": "^2.0.32",

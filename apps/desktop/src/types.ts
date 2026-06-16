@@ -190,6 +190,8 @@ export interface AddModelRequest {
   contextLength?: number;
   /** Amazon Bedrock AWS 区域；`amazon-bedrock` 必填。 */
   awsRegion?: string;
+  /** Azure OpenAI 资源名；`azure` 必填。 */
+  azureResourceName?: string;
 }
 
 export interface RemoveModelRequest {
@@ -1044,6 +1046,8 @@ export interface ModelProfileSnapshot {
   transportKind?: DesktopTransportKind;
   /** Amazon Bedrock AWS 区域（如 `us-east-1`）；仅 `amazon-bedrock` 使用。 */
   awsRegion?: string;
+  /** Azure OpenAI 资源名；仅 `azure` 使用。 */
+  azureResourceName?: string;
   /** 用户配置的模型上下文长度（token）；优先于 catalog 解析。 */
   contextLength?: number;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */

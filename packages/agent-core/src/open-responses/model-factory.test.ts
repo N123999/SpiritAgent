@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildResponsesGenerateTools } from './model-factory.js';
+import { buildResponsesGenerateTools, buildResponsesProviderOptions } from './model-factory.js';
 
 const hostTool = {
   type: 'function',
@@ -105,4 +105,26 @@ test('buildResponsesGenerateTools adds web_search for xai when enabled', () => {
   );
 
   assert.ok('web_search' in tools);
+});
+
+test('buildResponsesProviderOptions maps azure provider options', () => {
+  const options = buildResponsesProviderOptions({
+    transportKind: 'open-responses',
+    apiKey: 'test-key',
+    model: 'my-deploy',
+    llmVendor: 'azure',
+    responsesProvider: 'azure',
+    azureResourceName: 'my-resource',
+    reasoningEffort: 'low',
+    store: false,
+  });
+
+  assert.deepEqual(options, {
+    azure: {
+      store: false,
+      truncation: 'disabled',
+      reasoningEffort: 'low',
+      reasoningSummary: 'auto',
+    },
+  });
 });

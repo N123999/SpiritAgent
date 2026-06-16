@@ -15,6 +15,7 @@ import {
   bedrockApiBaseFromRegion,
   bedrockMantleApiBaseFromRegion,
   isBedrockMantleOpenAiModel,
+  azureApiBaseFromResourceName,
   type ProviderListedModelEntry,
 } from '@spirit-agent/host-internal';
 
@@ -51,7 +52,7 @@ import {
 export { resolveComposerDirectMediaTool, type DirectMediaTool };
 
 export function resolveProfileApiBase(
-  profile: Pick<ModelProfileSnapshot, 'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion'>,
+  profile: Pick<ModelProfileSnapshot, 'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion' | 'azureResourceName'>,
 ): string {
   if (profile.provider === 'amazon-bedrock') {
     const region = profile.awsRegion?.trim();
@@ -61,6 +62,18 @@ export function resolveProfileApiBase(
       }
       return bedrockApiBaseFromRegion(region);
     }
+  }
+
+  if (profile.provider === 'azure') {
+    const resourceName = profile.azureResourceName?.trim();
+    if (resourceName) {
+      return azureApiBaseFromResourceName(resourceName);
+    }
+    const trimmed = profile.apiBase?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+    throw new Error('Azure OpenAI 模型缺少 azureResourceName 配置。');
   }
 
   if (profile.provider && profile.provider !== 'custom') {
@@ -82,6 +95,9 @@ export function resolveDesktopTransportKind(
     ) {
       return 'openai-compatible';
     }
+    if (profile?.provider === 'azure') {
+      return 'open-responses';
+    }
     return requested;
   }
 
@@ -89,7 +105,9 @@ export function resolveDesktopTransportKind(
     ? 'anthropic'
     : profile?.provider === 'amazon-bedrock'
       ? 'bedrock'
-      : 'openai-compatible';
+      : profile?.provider === 'azure'
+        ? 'open-responses'
+        : 'openai-compatible';
 }
 
 export function defaultApiBaseForTransport(
@@ -144,6 +162,7 @@ export function buildPrimaryTransportConfig(input: {
     | 'reasoningEffort'
     | 'supportedReasoningEfforts'
     | 'awsRegion'
+    | 'azureResourceName'
   >;
 }): LlmTransportConfig {
   const spiritAgentMode = input.agentMode ?? 'agent';
@@ -230,10 +249,16 @@ export function buildPrimaryTransportConfig(input: {
         ? 'openai'
         : input.profile?.provider === 'xai'
           ? 'xai'
-          : input.profile?.provider === 'vercel-ai-gateway' ||
-              input.profile?.provider === 'openrouter'
-            ? undefined
-            : 'open-responses-compatible';
+          : input.profile?.provider === 'azure'
+            ? 'azure'
+            : input.profile?.provider === 'vercel-ai-gateway' ||
+                input.profile?.provider === 'openrouter'
+              ? undefined
+              : 'open-responses-compatible';
+    const azureResourceName = input.profile?.azureResourceName?.trim();
+    if (input.profile?.provider === 'azure' && !azureResourceName) {
+      throw new Error('Azure OpenAI 模型缺少 azureResourceName 配置。');
+    }
     const reasoningSummary = resolveOpenResponsesReasoningSummary({
       ...(llmVendor ? { llmVendor } : {}),
       model: input.model,
@@ -255,6 +280,7 @@ export function buildPrimaryTransportConfig(input: {
         : {}),
       ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
       ...(reasoningSummary ? { reasoningSummary } : {}),
+      ...(azureResourceName ? { azureResourceName } : {}),
     };
   }
 

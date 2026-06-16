@@ -12,6 +12,7 @@
     "openai": "https://api.openai.com/v1",
     "google": "https://generativelanguage.googleapis.com/v1beta",
     "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
+    "azure": "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1",
     "amazon-bedrock": "https://bedrock.us-east-1.amazonaws.com"
   },
   "presetApiBaseByTransport": {
@@ -30,9 +31,12 @@
     },
     "amazon-bedrock": {
       "bedrock": "https://bedrock.us-east-1.amazonaws.com"
+    },
+    "azure": {
+      "open-responses": "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1"
     }
   },
-  "pickerOrder": ["openai", "google", "xai", "anthropic", "deepseek", "vercel-ai-gateway", "openrouter", "moonshot-ai", "alibaba", "minimax", "volcengine", "amazon-bedrock", "custom"],
+  "pickerOrder": ["openai", "google", "xai", "anthropic", "deepseek", "vercel-ai-gateway", "openrouter", "moonshot-ai", "alibaba", "minimax", "volcengine", "azure", "amazon-bedrock", "custom"],
   "pickerLabels": {
     "deepseek": {
       "labelKey": "providers.deepseek",
@@ -77,6 +81,10 @@
     "volcengine": {
       "labelKey": "providers.volcengine",
       "fallbackLabel": "Volcengine"
+    },
+    "azure": {
+      "labelKey": "providers.azure",
+      "fallbackLabel": "Azure OpenAI"
     },
     "amazon-bedrock": {
       "labelKey": "providers.amazonBedrock",

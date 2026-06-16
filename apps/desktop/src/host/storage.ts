@@ -746,6 +746,13 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             typeof model.awsRegion === 'string' && model.awsRegion.trim().length > 0
               ? model.awsRegion.trim()
               : undefined;
+          const azureResourceName =
+            typeof model.azureResourceName === 'string' && model.azureResourceName.trim().length > 0
+              ? model.azureResourceName.trim()
+              : undefined;
+          if (provider === 'azure' && !azureResourceName) {
+            return null;
+          }
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
@@ -760,9 +767,11 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
             ...(awsRegion ? { awsRegion } : {}),
+            ...(azureResourceName ? { azureResourceName } : {}),
             ...(contextLength !== undefined ? { contextLength } : {}),
           };
         })
+        .filter((model): model is ModelProfileSnapshot => model !== null)
     : [];
 
   const normalizedModels = models;
@@ -841,6 +850,10 @@ function normalizeDesktopTransportKind(
   value: unknown,
   provider?: DesktopModelProvider,
 ): DesktopTransportKind | undefined {
+  if (provider === 'azure') {
+    return 'open-responses';
+  }
+
   if (
     value === 'openai-compatible'
     || value === 'open-responses'

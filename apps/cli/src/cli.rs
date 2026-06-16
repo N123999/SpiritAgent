@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path, workspace_mcp_config_path,
     },
-    model_provider_presets::{model_add_default_custom_api_base, model_add_preset_api_base_by_provider},
+    model_provider_presets::{azure_api_base_from_resource_name, model_add_default_custom_api_base, model_add_preset_api_base_by_provider, validate_azure_resource_name},
     model_registry::{
         AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, ModelTransportKind,
     },
@@ -29,6 +29,7 @@ pub enum ModelCommand {
         capabilities: Vec<String>,
         context_length: Option<u64>,
         key: Option<String>,
+        azure_resource_name: Option<String>,
     },
     Remove {
         name: String,
@@ -156,12 +157,33 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             capabilities,
             context_length,
             key,
+            azure_resource_name,
         } => {
             if cfg.has_model(&name) {
                 println!("模型已存在: {}", name);
             } else {
                 let provider = parse_model_provider(provider)?;
                 let transport_kind = parse_model_transport_kind(transport_kind, provider)?;
+                let azure_resource_name = azure_resource_name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned);
+                if provider == Some(ModelProvider::Azure) && azure_resource_name.is_none() {
+                    return Err(anyhow!(
+                        "provider=azure 时必须指定 --azure-resource-name"
+                    ));
+                }
+                if provider == Some(ModelProvider::Azure) {
+                    if let Some(resource_name) = azure_resource_name.as_deref() {
+                        validate_azure_resource_name(resource_name).map_err(anyhow::Error::msg)?;
+                    }
+                }
+                if provider == Some(ModelProvider::Azure)
+                    && transport_kind != ModelTransportKind::OpenResponses
+                {
+                    return Err(anyhow!("provider=azure 仅支持 open-responses transport-kind"));
+                }
                 let reasoning_effort = parse_model_reasoning_effort(
                     &name,
                     reasoning_effort,
@@ -169,6 +191,11 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     transport_kind,
                 )?;
                 let api_base = api_base.unwrap_or_else(|| {
+                    if provider == Some(ModelProvider::Azure) {
+                        return azure_api_base_from_resource_name(
+                            azure_resource_name.as_deref().unwrap_or(""),
+                        );
+                    }
                     if let Some(provider) = provider {
                         if let Some(preset) = model_add_preset_api_base_by_provider(provider) {
                             return preset;
@@ -217,6 +244,12 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     extra.insert(
                         "transportKind".to_string(),
                         serde_json::json!(transport_kind.as_str()),
+                    );
+                }
+                if let Some(resource_name) = azure_resource_name {
+                    extra.insert(
+                        "azureResourceName".to_string(),
+                        serde_json::json!(resource_name),
                     );
                 }
 
@@ -435,6 +468,7 @@ fn parse_model_transport_kind(
         None => match provider {
             Some(ModelProvider::Anthropic) => ModelTransportKind::Anthropic,
             Some(ModelProvider::AmazonBedrock) => ModelTransportKind::Bedrock,
+            Some(ModelProvider::Azure) => ModelTransportKind::OpenResponses,
             _ => ModelTransportKind::OpenAiCompatible,
         },
     };
@@ -457,6 +491,9 @@ fn parse_model_transport_kind(
         }
         (Some(ModelProvider::AmazonBedrock), transport_kind) if transport_kind != ModelTransportKind::Bedrock => {
             Err(anyhow!("provider=amazon-bedrock 仅支持 bedrock transport-kind"))
+        }
+        (Some(ModelProvider::Azure), transport_kind) if transport_kind != ModelTransportKind::OpenResponses => {
+            Err(anyhow!("provider=azure 仅支持 open-responses transport-kind"))
         }
         (Some(ModelProvider::Anthropic | ModelProvider::Openai | ModelProvider::Google | ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::Minimax | ModelProvider::Alibaba | ModelProvider::Xai | ModelProvider::VercelAiGateway | ModelProvider::Openrouter | ModelProvider::Volcengine | ModelProvider::Custom), ModelTransportKind::Bedrock) => {
             Err(anyhow!("只有 provider=amazon-bedrock 时可以选择 bedrock transport-kind"))
