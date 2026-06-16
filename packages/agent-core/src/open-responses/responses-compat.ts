@@ -6,6 +6,7 @@ import type {
   OpenAiVideoGenerationConfig,
 } from '../openai/openai-compat.js';
 import { resolveOpenAiTransportReasoningEffortForContext } from '../reasoning-effort.js';
+import { extractAzureResourceNameFromApiBase } from '../azure-resource.js';
 import { cloneJsonValue } from '../tool-agent.js';
 
 /** 底层 AI SDK provider：OpenAI 官方 Responses、Azure 官方 Responses 或 Open Responses 兼容 endpoint。 */
@@ -279,12 +280,6 @@ export function normalizeOpenResponsesApiBase(baseUrl: string | undefined): stri
 export function openResponsesPostUrl(baseUrl: string | undefined): string {
   const normalized = normalizeOpenResponsesApiBase(baseUrl);
   return normalized.endsWith('/responses') ? normalized : `${normalized}/responses`;
-}
-
-export function extractAzureResourceNameFromApiBase(baseUrl: string): string | undefined {
-  const normalized = baseUrl.trim().replace(/\/+$/, '');
-  const match = normalized.match(/^https:\/\/([^.]+)\.openai\.azure\.com(?:\/|$)/i);
-  return match?.[1]?.trim() || undefined;
 }
 
 export function resolveAzureResourceName(

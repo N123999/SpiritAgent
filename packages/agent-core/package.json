@@ -31,6 +31,10 @@
       "types": "./dist/shell-tool-result.d.ts",
       "default": "./dist/shell-tool-result.js"
     },
+    "./azure-resource": {
+      "types": "./dist/azure-resource.d.ts",
+      "default": "./dist/azure-resource.js"
+    },
     "./host-bridge": {
       "types": "./dist/host-bridge-public.d.ts",
       "default": "./dist/host-bridge-public.js"
