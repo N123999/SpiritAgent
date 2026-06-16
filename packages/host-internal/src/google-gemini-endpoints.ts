@@ -1,10 +1,9 @@
-/** Gemini API（AI Studio）OpenAI 兼容 Chat Completions base。 */
-export const GOOGLE_GEMINI_OPENAI_COMPAT_BASE =
-  'https://generativelanguage.googleapis.com/v1beta/openai';
+/** Gemini API（AI Studio）@ai-sdk/google 默认 base。 */
+export const GOOGLE_GEMINI_API_BASE =
+  'https://generativelanguage.googleapis.com/v1beta';
 
 /** Gemini API 原生 REST root（模型目录等）。 */
-export const GOOGLE_GEMINI_NATIVE_API_ROOT =
-  'https://generativelanguage.googleapis.com/v1beta';
+export const GOOGLE_GEMINI_NATIVE_API_ROOT = GOOGLE_GEMINI_API_BASE;
 
 // 本机/CI 通常无法直连 generativelanguage.googleapis.com；联调需在有网络的环境手动验证连接向导。
 
@@ -40,16 +39,13 @@ export function assertGoogleGeminiApiBase(baseUrl: string): void {
 function resolveGoogleNativeApiRoot(apiBase: string): string {
   assertGoogleGeminiApiBase(apiBase);
   const normalized = trimTrailingSlashes(apiBase);
-  if (normalized.endsWith('/openai')) {
-    return normalized.slice(0, -'/openai'.length);
-  }
   if (normalized.endsWith('/v1beta')) {
     return normalized;
   }
   return GOOGLE_GEMINI_NATIVE_API_ROOT;
 }
 
-/** 由 Chat apiBase 派生原生 `GET /v1beta/models` URL。 */
+/** 由 apiBase 派生原生 `GET /v1beta/models` URL。 */
 export function googleNativeModelsListUrl(apiBase: string, pageToken?: string): string {
   const root = resolveGoogleNativeApiRoot(apiBase);
   const url = new URL(`${root}/models`);

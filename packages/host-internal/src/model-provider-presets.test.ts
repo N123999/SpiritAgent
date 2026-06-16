@@ -77,7 +77,7 @@ test('resolveProviderConnectApiBase uses transport-specific preset bases', () =>
   );
   assert.equal(
     resolveProviderConnectApiBase('google', 'openai-compatible'),
-    'https://generativelanguage.googleapis.com/v1beta/openai',
+    'https://generativelanguage.googleapis.com/v1beta',
   );
 });
 
@@ -103,7 +103,7 @@ test('resolveProviderConnectApiBase ignores endpoint override for preset provide
   );
   assert.equal(
     resolveProviderConnectApiBase('google', 'openai-compatible', 'https://api.openai.com/v1'),
-    'https://generativelanguage.googleapis.com/v1beta/openai',
+    'https://generativelanguage.googleapis.com/v1beta',
   );
 });
 

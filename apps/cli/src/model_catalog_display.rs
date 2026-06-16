@@ -243,7 +243,7 @@ mod tests {
             "spirit-google-catalog-display-test-{}",
             std::process::id()
         ));
-        let hint = "google::openai-compatible::https://generativelanguage.googleapis.com/v1beta/openai";
+        let hint = "google::openai-compatible::https://generativelanguage.googleapis.com/v1beta";
         let previous = env::var("APPDATA").ok();
         // SAFETY: test-only isolation of SpiritAgent data dir.
         unsafe {
@@ -255,7 +255,7 @@ mod tests {
         }
         fs::write(
             &path,
-            r#"{"apiBase":"https://generativelanguage.googleapis.com/v1beta/openai","fetchedAtUnixMs":1,"modelIds":["gemini-2.5-flash"],"modelCatalog":[{"id":"gemini-2.5-flash","displayName":"Gemini 2.5 Flash"}]}"#,
+            r#"{"apiBase":"https://generativelanguage.googleapis.com/v1beta","fetchedAtUnixMs":1,"modelIds":["gemini-2.5-flash"],"modelCatalog":[{"id":"gemini-2.5-flash","displayName":"Gemini 2.5 Flash"}]}"#,
         )
         .expect("write cache");
         let titles = read_display_names_for_hint(hint);

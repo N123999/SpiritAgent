@@ -78,7 +78,7 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(1).as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta/openai")
+            Some("https://generativelanguage.googleapis.com/v1beta")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(2).as_deref(),
@@ -124,11 +124,11 @@ mod tests {
     }
 
     #[test]
-    fn preset_api_base_by_provider_returns_google_openai_compat_base() {
+    fn preset_api_base_by_provider_returns_google_api_base() {
         assert_eq!(
             super::model_add_preset_api_base_by_provider(crate::model_registry::ModelProvider::Google)
                 .as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta/openai")
+            Some("https://generativelanguage.googleapis.com/v1beta")
         );
         assert!(super::model_add_preset_api_base_by_provider(
             crate::model_registry::ModelProvider::Custom

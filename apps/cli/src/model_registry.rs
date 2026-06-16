@@ -976,7 +976,7 @@ mod tests {
     fn normalize_transport_kind_downgrades_google_open_responses() {
         let mut model = super::ModelProfile {
             name: "gemini-flash".to_string(),
-            api_base: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+            api_base: "https://generativelanguage.googleapis.com/v1beta".to_string(),
             provider: Some(super::ModelProvider::Google),
             reasoning_effort: None,
             context_length: None,

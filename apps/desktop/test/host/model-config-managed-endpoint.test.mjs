@@ -14,7 +14,7 @@ test('resolveProfileApiBase uses preset endpoint for google provider profiles', 
       transportKind: 'openai-compatible',
       apiBase: 'https://api.openai.com/v1',
     }),
-    'https://generativelanguage.googleapis.com/v1beta/openai',
+    'https://generativelanguage.googleapis.com/v1beta',
   );
 });
 

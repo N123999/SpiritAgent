@@ -8,6 +8,10 @@ import {
   type DeepSeekLanguageModelOptions,
 } from '@ai-sdk/deepseek';
 import {
+  createGoogleGenerativeAI,
+  type GoogleGenerativeAIProviderOptions,
+} from '@ai-sdk/google';
+import {
   createMoonshotAI,
   type MoonshotAILanguageModelOptions,
 } from '@ai-sdk/moonshotai';
@@ -104,6 +108,7 @@ import {
 
 const DEFAULT_OPENAI_COMPATIBLE_BASE_URL = 'https://api.openai.com/v1';
 const DEFAULT_XAI_BASE_URL = 'https://api.x.ai/v1';
+const DEFAULT_GOOGLE_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const STREAMING_TOOL_CALL_PLACEHOLDER_PREFIX = 'stream-tool-call-';
 
 type AiSdkToolCall = {
@@ -599,7 +604,7 @@ function buildAiSdkRequestTrace(
     !isAlibabaOfficialAiSdkProvider(config) &&
     !isVercelAiGatewayProvider(config) &&
     !isOpenAiOfficialAiSdkProvider(config) &&
-    !isGoogleOpenAiCompatProvider(config)
+    !isGoogleOfficialAiSdkProvider(config)
   ) {
     return requestTrace;
   }
@@ -619,8 +624,8 @@ function buildAiSdkRequestTrace(
           ? 'alibaba_sdk_chat_completions'
           : isVercelAiGatewayProvider(config)
             ? 'gateway_sdk_chat_completions'
-            : isGoogleOpenAiCompatProvider(config)
-              ? 'google_openai_compat_chat_completions'
+            : isGoogleOfficialAiSdkProvider(config)
+              ? 'google_sdk_generate_content'
               : 'openai_official_sdk_chat_completions';
 
   const alibabaExtraBody = isAlibabaOfficialAiSdkProvider(config)
@@ -657,6 +662,10 @@ function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
 
   if (isOpenAiOfficialAiSdkProvider(config)) {
     return createAiSdkOpenAiProvider(config).chat(config.model);
+  }
+
+  if (isGoogleOfficialAiSdkProvider(config)) {
+    return createAiSdkGoogleProvider(config).chat(config.model);
   }
 
   if (isMoonshotOfficialAiSdkProvider(config)) {
@@ -754,6 +763,14 @@ function createAiSdkXaiProvider(config: OpenAiTransportConfig) {
   return createXai({
     apiKey: config.apiKey,
     baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
+    fetch: getLlmFetch(),
+  });
+}
+
+function createAiSdkGoogleProvider(config: OpenAiTransportConfig) {
+  return createGoogleGenerativeAI({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl ?? DEFAULT_GOOGLE_BASE_URL,
     fetch: getLlmFetch(),
   });
 }
@@ -870,6 +887,21 @@ function buildAiSdkProviderOptions(
 
     return {
       xai: xaiOptions as JsonObject,
+    };
+  }
+
+  if (isGoogleOfficialAiSdkProvider(config)) {
+    const thinkingConfig = buildGoogleThinkingConfig(config);
+    if (thinkingConfig === undefined) {
+      return {};
+    }
+
+    const googleOptions = {
+      thinkingConfig,
+    } satisfies GoogleGenerativeAIProviderOptions;
+
+    return {
+      google: googleOptions as JsonObject,
     };
   }
 
@@ -1602,8 +1634,66 @@ function isOpenAiOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'openai';
 }
 
-function isGoogleOpenAiCompatProvider(config: OpenAiTransportConfig): boolean {
+function isGoogleOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'google';
+}
+
+function isGoogleGemini3Model(model: string): boolean {
+  const normalized = model.trim().toLowerCase();
+  return normalized.includes('gemini-3');
+}
+
+function buildGoogleThinkingConfig(
+  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'reasoningEffort'>,
+): GoogleGenerativeAIProviderOptions['thinkingConfig'] | undefined {
+  const effort = openAiReasoningEffort(config);
+  if (effort === undefined) {
+    return undefined;
+  }
+
+  if (effort === 'none') {
+    if (isGoogleGemini3Model(config.model)) {
+      return { thinkingLevel: 'minimal' };
+    }
+
+    return { thinkingBudget: 0 };
+  }
+
+  if (isGoogleGemini3Model(config.model)) {
+    if (effort === 'low' || effort === 'medium' || effort === 'high') {
+      return {
+        thinkingLevel: effort,
+        includeThoughts: true,
+      };
+    }
+
+    return undefined;
+  }
+
+  const thinkingBudget = googleGemini25ThinkingBudgetForEffort(effort);
+  if (thinkingBudget === undefined) {
+    return undefined;
+  }
+
+  return {
+    thinkingBudget,
+    includeThoughts: thinkingBudget > 0,
+  };
+}
+
+function googleGemini25ThinkingBudgetForEffort(
+  effort: string,
+): number | undefined {
+  switch (effort) {
+    case 'low':
+      return 1024;
+    case 'medium':
+      return 4096;
+    case 'high':
+      return 8192;
+    default:
+      return undefined;
+  }
 }
 
 function xaiChatReasoningEffort(
