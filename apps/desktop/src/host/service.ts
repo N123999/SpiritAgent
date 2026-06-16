@@ -2181,7 +2181,6 @@ class DesktopHostService {
     const state = this.requireState();
     return createDesktopSubagentWorkspaceBootstrap({
       parentWorkspaceRoot: state.workspaceRoot,
-      parentToolExecutor: parentExecutor,
       isGitRepository: state.git.isRepository,
       resolveBaseBranch: () => {
         const bundle = this.activeBundle();

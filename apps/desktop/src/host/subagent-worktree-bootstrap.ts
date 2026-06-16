@@ -17,7 +17,6 @@ export type DesktopSubagentWorktreeBootstrapDeps = {
     branchName: string;
   }>;
   buildScopedToolExecutor: (workspaceRoot: string) => Promise<DesktopToolExecutor>;
-  parentToolExecutor: DesktopToolExecutor;
   resolveBaseBranch: () => string | undefined;
   isGitRepository: boolean;
 };
