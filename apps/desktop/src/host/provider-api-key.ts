@@ -13,6 +13,14 @@ export function providerSecretAccessKeyAccount(providerId: string): string {
   return `provider::${providerId}::secret-access-key`;
 }
 
+export function providerVertexClientEmailAccount(providerId: string): string {
+  return `provider::${providerId}::client-email`;
+}
+
+export function providerVertexPrivateKeyAccount(providerId: string): string {
+  return `provider::${providerId}::private-key`;
+}
+
 export interface BedrockProviderCredentials {
   apiKey?: string;
   accessKeyId?: string;
@@ -31,6 +39,34 @@ export function hasBedrockIamCredentials(
   credentials: Pick<BedrockProviderCredentials, 'accessKeyId' | 'secretAccessKey'>,
 ): boolean {
   return Boolean(credentials.accessKeyId?.trim() && credentials.secretAccessKey?.trim());
+}
+
+export interface GoogleVertexProviderCredentials {
+  apiKey?: string;
+  clientEmail?: string;
+  privateKey?: string;
+}
+
+export function hasGoogleVertexServiceAccountCredentials(
+  credentials: Pick<GoogleVertexProviderCredentials, 'clientEmail' | 'privateKey'>,
+): boolean {
+  return Boolean(credentials.clientEmail?.trim() && credentials.privateKey?.trim());
+}
+
+export function hasGoogleVertexRuntimeCredentials(input: {
+  apiKey?: string;
+  clientEmail?: string;
+  privateKey?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}): boolean {
+  if (input.apiKey?.trim()) {
+    return true;
+  }
+  if (hasGoogleVertexServiceAccountCredentials(input)) {
+    return Boolean(input.vertexProject?.trim() && input.vertexLocation?.trim());
+  }
+  return Boolean(input.vertexProject?.trim() && input.vertexLocation?.trim());
 }
 
 /** Config profiles without `provider` are treated as custom-scoped keys. */

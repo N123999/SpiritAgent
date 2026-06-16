@@ -10,6 +10,7 @@ test('modelsDevProviderLogoId maps Spirit ids to models.dev provider folders', (
   assert.equal(modelsDevProviderLogoId('vercel-ai-gateway'), 'vercel');
   assert.equal(modelsDevProviderLogoId('moonshot-ai'), 'moonshotai');
   assert.equal(modelsDevProviderLogoId('openai'), 'openai');
+  assert.equal(modelsDevProviderLogoId('google-vertex-ai'), 'google-vertex');
 });
 
 test('modelsDevProviderLogoUrl uses aliased provider id', () => {

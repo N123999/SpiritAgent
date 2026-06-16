@@ -37,7 +37,12 @@ import {
   supportsImageGeneration,
   supportsVideoGeneration,
 } from './model-config.js';
-import { bedrockApiBaseFromRegion, azureApiBaseFromResourceName, isValidAzureResourceName } from '@spirit-agent/host-internal';
+import {
+  bedrockApiBaseFromRegion,
+  azureApiBaseFromResourceName,
+  isValidAzureResourceName,
+  vertexApiBaseFromProjectAndLocation,
+} from '@spirit-agent/host-internal';
 import { bedrockMantleApiBaseFromRegion, isBedrockMantleOpenAiModel } from '@spirit-agent/host-internal/bedrock-mantle';
 import { modelSupportsChat } from './lightweight-chat-model.js';
 import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
@@ -56,13 +61,19 @@ import {
   saveApiKeyForModel,
   saveApiKeyForProvider,
   saveBedrockProviderCredentialsForProvider,
+  saveGoogleVertexProviderCredentialsForProvider,
   saveConfig,
   readBedrockProviderCredentialsFromKeyring,
   type DesktopConfigFile,
   type DesktopWorkspaceBinding,
   type HostMetadataSummary,
 } from './storage.js';
-import { hasBedrockIamCredentials, hasBedrockRuntimeCredentials } from './provider-api-key.js';
+import {
+  hasBedrockIamCredentials,
+  hasBedrockRuntimeCredentials,
+  hasGoogleVertexRuntimeCredentials,
+  hasGoogleVertexServiceAccountCredentials,
+} from './provider-api-key.js';
 import { currentApiBase } from './service-utils.js';
 
 interface HostModelState {
@@ -296,6 +307,8 @@ function resolveManagedConnectApiBase(
   requestApiBase: string,
   awsRegion?: string,
   modelName?: string,
+  vertexProject?: string,
+  vertexLocation?: string,
   azureResourceName?: string,
 ): string {
   if (provider === 'amazon-bedrock') {
@@ -305,6 +318,13 @@ function resolveManagedConnectApiBase(
         return bedrockMantleApiBaseFromRegion(region);
       }
       return bedrockApiBaseFromRegion(region);
+    }
+  }
+  if (provider === 'google-vertex-ai') {
+    const project = vertexProject?.trim();
+    const location = vertexLocation?.trim();
+    if (project && location) {
+      return vertexApiBaseFromProjectAndLocation(project, location);
     }
   }
   if (provider === 'azure') {
@@ -345,6 +365,46 @@ function assertBedrockCatalogCredentials(input: {
   throw new Error(i18n.t('error.bedrockCatalogIamRequired'));
 }
 
+function assertVertexCatalogCredentials(input: {
+  apiKey?: string;
+  vertexClientEmail?: string;
+  vertexPrivateKey?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}): void {
+  if (input.apiKey?.trim()) {
+    throw new Error(i18n.t('error.vertexExpressCatalogUnsupported'));
+  }
+  if (!input.vertexProject?.trim() || !input.vertexLocation?.trim()) {
+    throw new Error(i18n.t('error.vertexProjectLocationRequired'));
+  }
+  const hasServiceAccountFields = Boolean(
+    input.vertexClientEmail?.trim() || input.vertexPrivateKey?.trim(),
+  );
+  if (
+    hasServiceAccountFields
+    && !hasGoogleVertexServiceAccountCredentials({
+      clientEmail: input.vertexClientEmail,
+      privateKey: input.vertexPrivateKey,
+    })
+  ) {
+    throw new Error(i18n.t('error.vertexCatalogServiceAccountRequired'));
+  }
+}
+
+function assertVertexConnectCredentials(input: {
+  apiKey?: string;
+  vertexClientEmail?: string;
+  vertexPrivateKey?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}): void {
+  if (hasGoogleVertexRuntimeCredentials(input)) {
+    return;
+  }
+  throw new Error(i18n.t('error.vertexCredentialsRequired'));
+}
+
 export async function previewModelsCommand(request: PreviewModelsRequest): Promise<PreviewModelsResponse> {
   const provider = parseModelProviderId(request.provider);
   const transportKind = resolveDesktopTransportKind({
@@ -352,15 +412,36 @@ export async function previewModelsCommand(request: PreviewModelsRequest): Promi
     transportKind: request.transportKind,
   });
   const awsRegion = request.awsRegion?.trim();
+  const vertexProject = request.vertexProject?.trim();
+  const vertexLocation = request.vertexLocation?.trim();
   if (provider === 'amazon-bedrock' && !awsRegion) {
     throw new Error(i18n.t('error.bedrockRegionRequired'));
   }
-  const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion);
+  const apiBase = resolveManagedConnectApiBase(
+    provider,
+    transportKind,
+    request.apiBase,
+    awsRegion,
+    undefined,
+    vertexProject,
+    vertexLocation,
+    undefined,
+  );
   const apiKey = request.apiKey.trim();
   const accessKeyId = request.accessKeyId?.trim();
   const secretAccessKey = request.secretAccessKey?.trim();
+  const vertexClientEmail = request.vertexClientEmail?.trim();
+  const vertexPrivateKey = request.vertexPrivateKey?.trim();
   if (provider === 'amazon-bedrock') {
     assertBedrockCatalogCredentials({ apiKey, accessKeyId, secretAccessKey });
+  } else if (provider === 'google-vertex-ai') {
+    assertVertexCatalogCredentials({
+      apiKey,
+      vertexClientEmail,
+      vertexPrivateKey,
+      vertexProject,
+      vertexLocation,
+    });
   } else if (!apiKey) {
     throw new Error(i18n.t('error.apiKeyRequired'));
   }
@@ -372,6 +453,10 @@ export async function previewModelsCommand(request: PreviewModelsRequest): Promi
     ...(awsRegion ? { awsRegion } : {}),
     ...(accessKeyId ? { accessKeyId } : {}),
     ...(secretAccessKey ? { secretAccessKey } : {}),
+    ...(vertexProject ? { vertexProject } : {}),
+    ...(vertexLocation ? { vertexLocation } : {}),
+    ...(vertexClientEmail ? { vertexClientEmail } : {}),
+    ...(vertexPrivateKey ? { vertexPrivateKey } : {}),
     forceRefresh: request.forceRefresh === true,
   });
   return {
@@ -399,15 +484,36 @@ export async function addProviderModelsCommand(
       transportKind: request.transportKind,
     });
     const awsRegion = request.awsRegion?.trim();
+    const vertexProject = request.vertexProject?.trim();
+    const vertexLocation = request.vertexLocation?.trim();
     if (provider === 'amazon-bedrock' && !awsRegion) {
       throw new Error(i18n.t('error.bedrockRegionRequired'));
     }
-    const apiBase = resolveManagedConnectApiBase(provider, transportKind, request.apiBase, awsRegion);
+    const apiBase = resolveManagedConnectApiBase(
+      provider,
+      transportKind,
+      request.apiBase,
+      awsRegion,
+      undefined,
+      vertexProject,
+      vertexLocation,
+      undefined,
+    );
     const apiKey = request.apiKey.trim();
     const accessKeyId = request.accessKeyId?.trim();
     const secretAccessKey = request.secretAccessKey?.trim();
+    const vertexClientEmail = request.vertexClientEmail?.trim();
+    const vertexPrivateKey = request.vertexPrivateKey?.trim();
     if (provider === 'amazon-bedrock') {
       assertBedrockConnectCredentials({ apiKey, accessKeyId, secretAccessKey });
+    } else if (provider === 'google-vertex-ai') {
+      assertVertexConnectCredentials({
+        apiKey,
+        vertexClientEmail,
+        vertexPrivateKey,
+        vertexProject,
+        vertexLocation,
+      });
     } else if (!apiKey) {
       throw new Error(i18n.t('error.apiKeyRequired'));
     }
@@ -427,6 +533,8 @@ export async function addProviderModelsCommand(
       provider?: DesktopModelProvider;
       transportKind?: DesktopTransportKind;
       awsRegion?: string;
+      vertexProject?: string;
+      vertexLocation?: string;
     };
     const catalogEntries = previewCatalogMapForAddProviderRequest(request, provider, transportKind);
     const toAdd: NewProfile[] = [];
@@ -462,6 +570,14 @@ export async function addProviderModelsCommand(
         if (provider === 'amazon-bedrock' && awsRegion) {
           profile.awsRegion = awsRegion;
         }
+        if (provider === 'google-vertex-ai') {
+          if (vertexProject) {
+            profile.vertexProject = vertexProject;
+          }
+          if (vertexLocation) {
+            profile.vertexLocation = vertexLocation;
+          }
+        }
       }
       toAdd.push(profile);
     }
@@ -478,12 +594,20 @@ export async function addProviderModelsCommand(
           accessKeyId,
           secretAccessKey,
         });
+      } else if (provider === 'google-vertex-ai') {
+        await saveGoogleVertexProviderCredentialsForProvider(providerKeyScope, {
+          apiKey,
+          clientEmail: vertexClientEmail,
+          privateKey: vertexPrivateKey,
+        });
       } else {
         await saveApiKeyForProvider(providerKeyScope, apiKey);
       }
     } catch (err) {
       if (provider === 'amazon-bedrock') {
         await saveBedrockProviderCredentialsForProvider(providerKeyScope, {});
+      } else if (provider === 'google-vertex-ai') {
+        await saveGoogleVertexProviderCredentialsForProvider(providerKeyScope, {});
       } else {
         await removeProviderApiKey(providerKeyScope);
       }
@@ -542,6 +666,8 @@ export async function addModelCommand(
       transportKind: request.transportKind,
     });
     const awsRegion = request.awsRegion?.trim();
+    const vertexProject = request.vertexProject?.trim();
+    const vertexLocation = request.vertexLocation?.trim();
     const azureResourceName = request.azureResourceName?.trim();
     if (provider === 'amazon-bedrock' && !awsRegion) {
       throw new Error(i18n.t('error.bedrockRegionRequired'));
@@ -558,6 +684,8 @@ export async function addModelCommand(
       request.apiBase,
       awsRegion,
       name,
+      vertexProject,
+      vertexLocation,
       azureResourceName,
     );
     const apiKey = request.apiKey.trim();
@@ -565,10 +693,15 @@ export async function addModelCommand(
     if (!name) {
       throw new Error(i18n.t('error.modelNameRequired'));
     }
-    if (provider === 'azure' && /\s/u.test(name)) {
+    if (provider === 'google-vertex-ai') {
+      assertVertexConnectCredentials({
+        apiKey,
+        vertexProject,
+        vertexLocation,
+      });
+    } else if (provider === 'azure' && /\s/u.test(name)) {
       throw new Error(i18n.t('error.azureDeploymentNameWhitespace'));
-    }
-    if (!apiKey) {
+    } else if (!apiKey) {
       throw new Error(i18n.t('error.apiKeyRequired'));
     }
     if (state.config.models.some((model) => model.name === name)) {
@@ -594,6 +727,8 @@ export async function addModelCommand(
       capabilities?: DesktopModelCapability[];
       contextLength?: number;
       awsRegion?: string;
+      vertexProject?: string;
+      vertexLocation?: string;
       azureResourceName?: string;
     } = {
       name,
@@ -618,6 +753,14 @@ export async function addModelCommand(
       }
       if (provider === 'amazon-bedrock' && awsRegion) {
         profile.awsRegion = awsRegion;
+      }
+      if (provider === 'google-vertex-ai') {
+        if (vertexProject) {
+          profile.vertexProject = vertexProject;
+        }
+        if (vertexLocation) {
+          profile.vertexLocation = vertexLocation;
+        }
       }
       if (provider === 'azure' && azureResourceName) {
         profile.azureResourceName = azureResourceName;
@@ -650,6 +793,8 @@ export async function addModelCommand(
     await saveConfig(state.config);
     if (provider === 'amazon-bedrock') {
       await saveBedrockProviderCredentialsForProvider(modelProviderKeyScope(provider), { apiKey });
+    } else if (provider === 'google-vertex-ai') {
+      await saveGoogleVertexProviderCredentialsForProvider(modelProviderKeyScope(provider), { apiKey });
     } else if (provider !== undefined) {
       await saveApiKeyForProvider(modelProviderKeyScope(provider), apiKey);
     } else {

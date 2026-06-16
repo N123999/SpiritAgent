@@ -59,11 +59,15 @@ import type { StoredDesktopSession } from './contracts.js';
 import {
   buildModelSecretKeyPresence,
   hasBedrockRuntimeCredentials,
+  hasGoogleVertexRuntimeCredentials,
   modelProviderKeyScope,
   providerAccessKeyIdAccount,
   providerKeyAccount,
   providerSecretAccessKeyAccount,
+  providerVertexClientEmailAccount,
+  providerVertexPrivateKeyAccount,
   type BedrockProviderCredentials,
+  type GoogleVertexProviderCredentials,
   type ModelKeyPresenceProfile,
 } from './provider-api-key.js';
 import { normalizeDesktopRewindMetadata } from './rewind.js';
@@ -72,6 +76,7 @@ export type { ModelKeyPresenceProfile } from './provider-api-key.js';
 export {
   buildModelSecretKeyPresence,
   hasBedrockRuntimeCredentials,
+  hasGoogleVertexRuntimeCredentials,
   modelProviderKeyScope,
   providerKeyAccount,
 } from './provider-api-key.js';
@@ -252,6 +257,18 @@ export function readProviderSecretAccessKeyFromKeyring(providerId: string): stri
   return trimmed || undefined;
 }
 
+export function readProviderVertexClientEmailFromKeyring(providerId: string): string | undefined {
+  const value = getKeyringPassword(KEYRING_SERVICE, providerVertexClientEmailAccount(providerId));
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+export function readProviderVertexPrivateKeyFromKeyring(providerId: string): string | undefined {
+  const value = getKeyringPassword(KEYRING_SERVICE, providerVertexPrivateKeyAccount(providerId));
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
 export function readBedrockProviderCredentialsFromKeyring(
   providerId: DesktopModelProvider,
 ): BedrockProviderCredentials {
@@ -292,6 +309,50 @@ export async function removeBedrockProviderCredentials(providerId: DesktopModelP
   await removeProviderApiKey(providerId);
   deleteKeyringPassword(KEYRING_SERVICE, providerAccessKeyIdAccount(providerId));
   deleteKeyringPassword(KEYRING_SERVICE, providerSecretAccessKeyAccount(providerId));
+}
+
+export function readGoogleVertexProviderCredentialsFromKeyring(
+  providerId: DesktopModelProvider,
+): GoogleVertexProviderCredentials {
+  return {
+    apiKey: readProviderKeyFromKeyring(providerId),
+    clientEmail: readProviderVertexClientEmailFromKeyring(providerId),
+    privateKey: readProviderVertexPrivateKeyFromKeyring(providerId),
+  };
+}
+
+export async function saveGoogleVertexProviderCredentialsForProvider(
+  providerId: DesktopModelProvider,
+  credentials: GoogleVertexProviderCredentials,
+): Promise<void> {
+  const apiKey = credentials.apiKey?.trim();
+  if (apiKey) {
+    await saveApiKeyForProvider(providerId, apiKey);
+  } else {
+    await removeProviderApiKey(providerId);
+  }
+
+  const clientEmail = credentials.clientEmail?.trim();
+  if (clientEmail) {
+    setKeyringPassword(KEYRING_SERVICE, providerVertexClientEmailAccount(providerId), clientEmail);
+  } else {
+    deleteKeyringPassword(KEYRING_SERVICE, providerVertexClientEmailAccount(providerId));
+  }
+
+  const privateKey = credentials.privateKey?.trim();
+  if (privateKey) {
+    setKeyringPassword(KEYRING_SERVICE, providerVertexPrivateKeyAccount(providerId), privateKey);
+  } else {
+    deleteKeyringPassword(KEYRING_SERVICE, providerVertexPrivateKeyAccount(providerId));
+  }
+}
+
+export async function removeGoogleVertexProviderCredentials(
+  providerId: DesktopModelProvider,
+): Promise<void> {
+  await removeProviderApiKey(providerId);
+  deleteKeyringPassword(KEYRING_SERVICE, providerVertexClientEmailAccount(providerId));
+  deleteKeyringPassword(KEYRING_SERVICE, providerVertexPrivateKeyAccount(providerId));
 }
 
 export function readProviderKeyFromKeyring(providerId: string): string | undefined {
@@ -409,7 +470,7 @@ export async function resolveApiKeyForConfigModel(
 }
 
 function normalizePresenceProfiles(
-  profilesOrNames: string[] | ModelKeyPresenceProfile[],
+  profilesOrNames: string[] | ModelKeyPresenceProfile[] | ModelProfileSnapshot[],
 ): ModelKeyPresenceProfile[] {
   if (profilesOrNames.length === 0) {
     return [];
@@ -418,22 +479,44 @@ function normalizePresenceProfiles(
   if (typeof first === 'string') {
     return (profilesOrNames as string[]).map((name) => ({ name }));
   }
+  if ('apiBase' in first && typeof first === 'object' && first !== null) {
+    return (profilesOrNames as ModelProfileSnapshot[]).map(toModelKeyPresenceProfile);
+  }
   return profilesOrNames as ModelKeyPresenceProfile[];
 }
 
-function hasProviderSecretInKeyring(providerId: string): boolean {
+function hasProviderSecretInKeyring(providerId: string, profile: ModelKeyPresenceProfile): boolean {
   if (readProviderKeyFromKeyring(providerId)) {
     return true;
   }
   if (providerId === 'amazon-bedrock') {
     return hasBedrockRuntimeCredentials(readBedrockProviderCredentialsFromKeyring('amazon-bedrock'));
   }
+  if (providerId === 'google-vertex-ai') {
+    const credentials = readGoogleVertexProviderCredentialsFromKeyring('google-vertex-ai');
+    return hasGoogleVertexRuntimeCredentials({
+      apiKey: credentials.apiKey,
+      clientEmail: credentials.clientEmail,
+      privateKey: credentials.privateKey,
+      vertexProject: profile.vertexProject,
+      vertexLocation: profile.vertexLocation,
+    });
+  }
   return false;
+}
+
+function toModelKeyPresenceProfile(model: ModelProfileSnapshot): ModelKeyPresenceProfile {
+  return {
+    name: model.name,
+    provider: model.provider,
+    ...(model.vertexProject ? { vertexProject: model.vertexProject } : {}),
+    ...(model.vertexLocation ? { vertexLocation: model.vertexLocation } : {}),
+  };
 }
 
 /** 各模型是否在钥匙串中有提供商级或遗留模型级条目（不含环境变量与全局回退）。 */
 export async function modelSecretKeyPresence(
-  profilesOrNames: string[] | ModelKeyPresenceProfile[],
+  profilesOrNames: string[] | ModelKeyPresenceProfile[] | ModelProfileSnapshot[],
 ): Promise<Record<string, boolean>> {
   const profiles = normalizePresenceProfiles(profilesOrNames);
   return buildModelSecretKeyPresence(
@@ -746,6 +829,14 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             typeof model.awsRegion === 'string' && model.awsRegion.trim().length > 0
               ? model.awsRegion.trim()
               : undefined;
+          const vertexProject =
+            typeof model.vertexProject === 'string' && model.vertexProject.trim().length > 0
+              ? model.vertexProject.trim()
+              : undefined;
+          const vertexLocation =
+            typeof model.vertexLocation === 'string' && model.vertexLocation.trim().length > 0
+              ? model.vertexLocation.trim()
+              : undefined;
           const azureResourceName =
             typeof model.azureResourceName === 'string' && model.azureResourceName.trim().length > 0
               ? model.azureResourceName.trim()
@@ -767,6 +858,8 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
             ...(awsRegion ? { awsRegion } : {}),
+            ...(vertexProject ? { vertexProject } : {}),
+            ...(vertexLocation ? { vertexLocation } : {}),
             ...(azureResourceName ? { azureResourceName } : {}),
             ...(contextLength !== undefined ? { contextLength } : {}),
           };

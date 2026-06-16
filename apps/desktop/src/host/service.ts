@@ -333,6 +333,7 @@ import {
   loadStoredSession,
   modelSecretKeyPresence,
   readBedrockProviderCredentialsFromKeyring,
+  readGoogleVertexProviderCredentialsFromKeyring,
   resolveApiKeyForConfigModel,
   createDesktopExtensionStateStore,
   saveConfig,
@@ -344,6 +345,7 @@ import {
 } from './storage.js';
 import {
   hasBedrockRuntimeCredentials,
+  hasGoogleVertexRuntimeCredentials,
   modelProviderKeyScope,
 } from './provider-api-key.js';
 import { DesktopToolExecutor } from './tool-executor.js';
@@ -1929,6 +1931,9 @@ class DesktopHostService {
     const bedrockCredentials = activeTransportKind === 'bedrock' && activeProfile?.provider
       ? readBedrockProviderCredentialsFromKeyring(modelProviderKeyScope(activeProfile.provider))
       : undefined;
+    const googleVertexCredentials = activeProfile?.provider === 'google-vertex-ai'
+      ? readGoogleVertexProviderCredentialsFromKeyring('google-vertex-ai')
+      : undefined;
     const apiKey = await resolveApiKeyForConfigModel(state.config, state.config.activeModel);
     const azureResourceNameReady = activeProfile?.provider !== 'azure'
       || Boolean(activeProfile.azureResourceName?.trim());
@@ -1939,6 +1944,14 @@ class DesktopHostService {
           accessKeyId: bedrockCredentials?.accessKeyId,
           secretAccessKey: bedrockCredentials?.secretAccessKey,
         })
+      : activeProfile?.provider === 'google-vertex-ai'
+        ? hasGoogleVertexRuntimeCredentials({
+            apiKey,
+            clientEmail: googleVertexCredentials?.clientEmail,
+            privateKey: googleVertexCredentials?.privateKey,
+            vertexProject: activeProfile?.vertexProject,
+            vertexLocation: activeProfile?.vertexLocation,
+          })
       : activeProfile?.provider === 'azure'
         ? azureResourceNameReady && Boolean(apiKey)
         : Boolean(apiKey);
@@ -1978,6 +1991,9 @@ class DesktopHostService {
       agentMode: resolveDesktopAgentMode(state.config),
       ...(activeTransportKind === 'bedrock' && bedrockCredentials
         ? { bedrockCredentials: { ...bedrockCredentials, apiKey: apiKey ?? bedrockCredentials.apiKey } }
+        : {}),
+      ...(activeProfile?.provider === 'google-vertex-ai' && googleVertexCredentials
+        ? { googleVertexCredentials }
         : {}),
     });
     runtimeTransportConfig = attachImageGenerationToTransportConfig(runtimeTransportConfig, {
@@ -2542,6 +2558,30 @@ class DesktopHostService {
         awsRegion: profile.awsRegion,
         accessKeyId: bedrockCredentials.accessKeyId,
         secretAccessKey: bedrockCredentials.secretAccessKey,
+        forceRefresh: true,
+      });
+    } else if (activeModel.provider === 'google-vertex-ai') {
+      const vertexCredentials = readGoogleVertexProviderCredentialsFromKeyring('google-vertex-ai');
+      if (
+        !hasGoogleVertexRuntimeCredentials({
+          apiKey,
+          clientEmail: vertexCredentials.clientEmail,
+          privateKey: vertexCredentials.privateKey,
+          vertexProject: profile?.vertexProject,
+          vertexLocation: profile?.vertexLocation,
+        })
+      ) {
+        return;
+      }
+      await loadPreviewModelsForTransport({
+        provider: activeModel.provider,
+        transportKind,
+        apiBase: activeModel.apiBase.trim() || DEFAULT_API_BASE,
+        apiKey: apiKey?.trim() ?? vertexCredentials.apiKey?.trim() ?? '',
+        ...(profile?.vertexProject ? { vertexProject: profile.vertexProject } : {}),
+        ...(profile?.vertexLocation ? { vertexLocation: profile.vertexLocation } : {}),
+        ...(vertexCredentials.clientEmail ? { vertexClientEmail: vertexCredentials.clientEmail } : {}),
+        ...(vertexCredentials.privateKey ? { vertexPrivateKey: vertexCredentials.privateKey } : {}),
         forceRefresh: true,
       });
     } else {

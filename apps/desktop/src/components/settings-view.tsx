@@ -104,11 +104,15 @@ import {
 } from "@/host/provider-presets";
 import { bedrockApiBaseFromRegion } from "@spirit-agent/host-internal/bedrock-region";
 import { azureApiBaseFromResourceName, isValidAzureResourceName } from "@spirit-agent/host-internal/azure-resource";
+import { vertexApiBaseFromProjectAndLocation } from "@spirit-agent/host-internal/google-vertex-endpoints";
 import {
   bedrockMantleApiBaseFromRegion,
   isBedrockMantleOpenAiModel,
 } from "@spirit-agent/host-internal/bedrock-mantle";
-import { hasBedrockIamCredentials } from "@/host/provider-api-key";
+import {
+  hasBedrockIamCredentials,
+  hasGoogleVertexServiceAccountCredentials,
+} from "@/host/provider-api-key";
 import { AgentsSettingsPanel } from "@/components/agents-settings-panel";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -303,6 +307,7 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
     case "xai":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.responsesApi];
     case "google":
+    case "google-vertex-ai":
       return [connectTransportOptionCatalog.chatCompletions];
     case "minimax":
     case "deepseek":
@@ -2447,6 +2452,10 @@ function ModelsSettingsPanel({
   const [connectAzureResourceName, setConnectAzureResourceName] = useState("");
   const [connectAccessKeyId, setConnectAccessKeyId] = useState("");
   const [connectSecretAccessKey, setConnectSecretAccessKey] = useState("");
+  const [connectVertexProject, setConnectVertexProject] = useState("");
+  const [connectVertexLocation, setConnectVertexLocation] = useState("");
+  const [connectVertexClientEmail, setConnectVertexClientEmail] = useState("");
+  const [connectVertexPrivateKey, setConnectVertexPrivateKey] = useState("");
   const [connectName, setConnectName] = useState("");
   const [connectApiBase, setConnectApiBase] = useState("");
   const [connectCapabilities, setConnectCapabilities] = useState<DesktopModelCapability[]>(
@@ -2460,6 +2469,7 @@ function ModelsSettingsPanel({
     "single",
   );
   const [bedrockConnectMode, setBedrockConnectMode] = useState<"bearer" | "iam">("bearer");
+  const [vertexConnectMode, setVertexConnectMode] = useState<"adc" | "service-account" | "express">("adc");
   const [modelDefaultsDialogTarget, setModelDefaultsDialogTarget] = useState<string | null>(null);
   const [modelDefaultAssignments, setModelDefaultAssignments] = useState<ModelDefaultAssignments>({
     activeModel: false,
@@ -2547,6 +2557,10 @@ function ModelsSettingsPanel({
     setConnectAzureResourceName("");
     setConnectAccessKeyId("");
     setConnectSecretAccessKey("");
+    setConnectVertexProject("");
+    setConnectVertexLocation("");
+    setConnectVertexClientEmail("");
+    setConnectVertexPrivateKey("");
     setConnectName("");
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
@@ -2554,6 +2568,7 @@ function ModelsSettingsPanel({
     setConnectTransportKind("openai-compatible");
     setCustomConnectMode("single");
     setBedrockConnectMode("bearer");
+    setVertexConnectMode("adc");
     setSelectedProvider(null);
   };
 
@@ -2575,12 +2590,17 @@ function ModelsSettingsPanel({
     setConnectAzureResourceName("");
     setConnectAccessKeyId("");
     setConnectSecretAccessKey("");
+    setConnectVertexProject("");
+    setConnectVertexLocation("");
+    setConnectVertexClientEmail("");
+    setConnectVertexPrivateKey("");
     setConnectName("");
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
     resetConnectTransportKindForProvider(id);
     setCustomConnectMode("single");
     setBedrockConnectMode("bearer");
+    setVertexConnectMode("adc");
     setConnectDialogOpen(true);
   };
 
@@ -2747,6 +2767,8 @@ function ModelsSettingsPanel({
         ? bedrockApiBaseFromRegion(connectAwsRegion)
         : selectedProvider === "azure"
           ? azureApiBaseFromResourceName(connectAzureResourceName)
+        : selectedProvider === "google-vertex-ai" && vertexConnectMode !== "express"
+          ? vertexApiBaseFromProjectAndLocation(connectVertexProject, connectVertexLocation)
         : selectedProvider === "custom"
         ? resolveCustomConnectApiBase(connectTransportKind, connectApiBase)
         : connectTransportKindForRequest !== undefined
@@ -2760,6 +2782,16 @@ function ModelsSettingsPanel({
     accessKeyId: connectAccessKeyId,
     secretAccessKey: connectSecretAccessKey,
   });
+  const hasVertexCatalogCredentials = hasGoogleVertexServiceAccountCredentials({
+    clientEmail: connectVertexClientEmail,
+    privateKey: connectVertexPrivateKey,
+  });
+  const vertexConnectFields = {
+    ...(connectVertexProject.trim() ? { vertexProject: connectVertexProject.trim() } : {}),
+    ...(connectVertexLocation.trim() ? { vertexLocation: connectVertexLocation.trim() } : {}),
+    ...(connectVertexClientEmail.trim() ? { vertexClientEmail: connectVertexClientEmail.trim() } : {}),
+    ...(connectVertexPrivateKey.trim() ? { vertexPrivateKey: connectVertexPrivateKey.trim() } : {}),
+  };
 
   const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {
@@ -2771,6 +2803,16 @@ function ModelsSettingsPanel({
       }
       if (!hasBedrockCatalogCredentials) {
         throw new Error(t('settings.bedrockCatalogIamRequired'));
+      }
+    } else if (selectedProvider === "google-vertex-ai") {
+      if (!connectVertexProject.trim() || !connectVertexLocation.trim()) {
+        throw new Error(t('settings.vertexProjectLocationRequired'));
+      }
+      if (vertexConnectMode === "service-account" && !hasVertexCatalogCredentials) {
+        throw new Error(t('settings.vertexCatalogServiceAccountRequired'));
+      }
+      if (vertexConnectMode === "express") {
+        throw new Error(t('settings.vertexExpressCatalogUnsupported'));
       }
     } else if (!connectApiKey.trim()) {
       throw new Error(t('settings.apiKeyRequired'));
@@ -2786,6 +2828,7 @@ function ModelsSettingsPanel({
             secretAccessKey: connectSecretAccessKey.trim(),
           }
         : {}),
+      ...(selectedProvider === "google-vertex-ai" ? vertexConnectFields : {}),
       ...(connectTransportKindForRequest !== undefined
         ? { transportKind: connectTransportKindForRequest }
         : {}),
@@ -2807,6 +2850,7 @@ function ModelsSettingsPanel({
             secretAccessKey: connectSecretAccessKey.trim(),
           }
         : {}),
+      ...(selectedProvider === "google-vertex-ai" ? vertexConnectFields : {}),
       ...(connectTransportKindForRequest !== undefined
         ? { transportKind: connectTransportKindForRequest }
         : {}),
@@ -2926,6 +2970,38 @@ function ModelsSettingsPanel({
       provider: "azure",
       transportKind: "open-responses",
       azureResourceName,
+      ...(contextLength !== undefined ? { contextLength } : {}),
+    });
+    setConnectDialogOpen(false);
+    runAfterRadixOverlayClose(resetConnectWizard);
+  };
+
+  const saveVertexExpressSingle = async () => {
+    if (selectedProvider !== "google-vertex-ai" || vertexConnectMode !== "express") {
+      return;
+    }
+    const name = connectName.trim();
+    if (!name) {
+      throw new Error(t('settings.modelNameRequired'));
+    }
+    if (!connectApiKey.trim()) {
+      throw new Error(t('settings.apiKeyRequired'));
+    }
+    const contextLengthRaw = connectContextLength.trim();
+    let contextLength: number | undefined;
+    if (contextLengthRaw) {
+      const parsed = parseModelContextLength(Number(contextLengthRaw));
+      if (parsed === undefined) {
+        throw new Error(t('settings.contextLengthInvalid'));
+      }
+      contextLength = parsed;
+    }
+    await onAddModel({
+      name,
+      apiBase: "",
+      apiKey: connectApiKey,
+      provider: "google-vertex-ai",
+      transportKind: "openai-compatible",
       ...(contextLength !== undefined ? { contextLength } : {}),
     });
     setConnectDialogOpen(false);
@@ -3793,7 +3869,8 @@ function ModelsSettingsPanel({
                 />
               </div>
             ) : null}
-            {selectedProvider !== "amazon-bedrock" || bedrockConnectMode === "bearer" ? (
+            {(selectedProvider !== "amazon-bedrock" || bedrockConnectMode === "bearer")
+            && selectedProvider !== "google-vertex-ai" ? (
             <div className="grid gap-2">
               <Label htmlFor="connect-api-key">
                 {selectedProvider === "amazon-bedrock"
@@ -3840,6 +3917,136 @@ function ModelsSettingsPanel({
                 </div>
                 <p className="text-xs leading-5 text-muted-foreground">
                   {t('settings.bedrockIamHint')}
+                </p>
+              </>
+            ) : null}
+            {selectedProvider === "google-vertex-ai" ? (
+              <div className="grid gap-2">
+                <Label>{t('settings.vertexAuthMode')}</Label>
+                <div
+                  role="tablist"
+                  aria-label={t('settings.vertexAuthMode')}
+                  className="inline-flex h-9 shrink-0 rounded-lg border border-border/40 bg-muted/30 p-0.5"
+                >
+                  {(["adc", "service-account", "express"] as const).map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="tab"
+                      aria-selected={vertexConnectMode === value}
+                      className={cn(
+                        "rounded-md px-2.5 text-xs font-medium transition-colors",
+                        vertexConnectMode === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                      disabled={modelsBusy || modelsPreviewBusy}
+                      onClick={() => setVertexConnectMode(value)}
+                    >
+                      {value === "adc"
+                        ? t('settings.vertexAuthAdc')
+                        : value === "service-account"
+                          ? t('settings.vertexAuthServiceAccount')
+                          : t('settings.vertexAuthExpress')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {selectedProvider === "google-vertex-ai" && vertexConnectMode === "express" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-vertex-api-key">API Key</Label>
+                <DesktopFormInput
+                  id="connect-vertex-api-key"
+                  type="password"
+                  value={connectApiKey}
+                  onChange={(e) => setConnectApiKey(e.target.value)}
+                  placeholder={t('settings.enterApiKey')}
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
+            {selectedProvider === "google-vertex-ai" && vertexConnectMode !== "express" ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-vertex-project">{t('settings.vertexProject')}</Label>
+                  <DesktopFormInput
+                    id="connect-vertex-project"
+                    value={connectVertexProject}
+                    onChange={(e) => setConnectVertexProject(e.target.value)}
+                    placeholder={t('settings.vertexProjectPlaceholder')}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-vertex-location">{t('settings.vertexLocation')}</Label>
+                  <DesktopFormInput
+                    id="connect-vertex-location"
+                    value={connectVertexLocation}
+                    onChange={(e) => setConnectVertexLocation(e.target.value)}
+                    placeholder={t('settings.vertexLocationPlaceholder')}
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            ) : null}
+            {selectedProvider === "google-vertex-ai" && vertexConnectMode === "adc" ? (
+              <p className="text-xs leading-5 text-muted-foreground">
+                {t('settings.vertexAdcHint')}
+              </p>
+            ) : null}
+            {selectedProvider === "google-vertex-ai" && vertexConnectMode === "express" ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-vertex-model-name">{t('settings.modelName')}</Label>
+                  <DesktopFormInput
+                    id="connect-vertex-model-name"
+                    value={connectName}
+                    onChange={(e) => setConnectName(e.target.value)}
+                    placeholder={t('settings.vertexModelNamePlaceholder')}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-context-length-vertex">{t('settings.contextLength')}</Label>
+                  <DesktopFormInput
+                    id="connect-context-length-vertex"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={connectContextLength}
+                    onChange={(e) => setConnectContextLength(e.target.value)}
+                    placeholder={t('settings.optional')}
+                    autoComplete="off"
+                  />
+                </div>
+              </>
+            ) : null}
+            {selectedProvider === "google-vertex-ai" && vertexConnectMode === "service-account" ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-vertex-client-email">{t('settings.vertexClientEmail')}</Label>
+                  <DesktopFormInput
+                    id="connect-vertex-client-email"
+                    value={connectVertexClientEmail}
+                    onChange={(e) => setConnectVertexClientEmail(e.target.value)}
+                    placeholder={t('settings.vertexClientEmailPlaceholder')}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="connect-vertex-private-key">{t('settings.vertexPrivateKey')}</Label>
+                  <DesktopFormInput
+                    id="connect-vertex-private-key"
+                    type="password"
+                    value={connectVertexPrivateKey}
+                    onChange={(e) => setConnectVertexPrivateKey(e.target.value)}
+                    placeholder={t('settings.enterApiKey')}
+                    autoComplete="off"
+                  />
+                </div>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {t('settings.vertexServiceAccountHint')}
                 </p>
               </>
             ) : null}
@@ -3952,6 +4159,57 @@ function ModelsSettingsPanel({
                     {t('settings.addProvider')}
                   </Button>
                 ) : null}
+                {selectedProvider === "google-vertex-ai" && vertexConnectMode === "express" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      modelsBusy
+                      || modelsPreviewBusy
+                      || !connectName.trim()
+                      || !connectApiKey.trim()
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await saveVertexExpressSingle();
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                    {t('settings.addThisModel')}
+                  </Button>
+                ) : null}
+                {selectedProvider === "google-vertex-ai" && vertexConnectMode !== "express" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      modelsBusy
+                      || modelsPreviewBusy
+                      || !connectVertexProject.trim()
+                      || !connectVertexLocation.trim()
+                      || (vertexConnectMode === "service-account" && !hasVertexCatalogCredentials)
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await syncCatalogFromUpstream(false);
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy || modelsPreviewBusy ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : null}
+                    {t('settings.addProvider')}
+                  </Button>
+                ) : null}
                 {selectedProvider === "azure" ? (
                   <Button
                     type="button"
@@ -3977,7 +4235,7 @@ function ModelsSettingsPanel({
                     {t('settings.addThisModel')}
                   </Button>
                 ) : null}
-                {selectedProvider !== null && selectedProvider !== "custom" && selectedProvider !== "amazon-bedrock" && selectedProvider !== "azure" ? (
+                {selectedProvider !== null && selectedProvider !== "custom" && selectedProvider !== "amazon-bedrock" && selectedProvider !== "azure" && selectedProvider !== "google-vertex-ai" ? (
                   <Button
                     type="button"
                     size="sm"

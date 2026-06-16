@@ -144,6 +144,11 @@ export interface PreviewModelsRequest {
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
+  azureResourceName?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+  vertexClientEmail?: string;
+  vertexPrivateKey?: string;
   /** 为 true 时忽略 TTL，强制请求上游。 */
   forceRefresh?: boolean;
 }
@@ -165,6 +170,11 @@ export interface AddProviderModelsRequest {
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
+  azureResourceName?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+  vertexClientEmail?: string;
+  vertexPrivateKey?: string;
 }
 
 /** 快照附带：某 apiBase 在本地 `model-catalog-cache` 中的最近一次列模型结果（供主界面分组与排序）。 */
@@ -192,6 +202,10 @@ export interface AddModelRequest {
   awsRegion?: string;
   /** Azure 资源名；`azure` 必填。 */
   azureResourceName?: string;
+  /** Google Vertex GCP 项目 ID。 */
+  vertexProject?: string;
+  /** Google Vertex 区域（如 `us-central1`）。 */
+  vertexLocation?: string;
 }
 
 export interface RemoveModelRequest {
@@ -1048,6 +1062,10 @@ export interface ModelProfileSnapshot {
   awsRegion?: string;
   /** Azure 资源名；仅 `azure` 使用。 */
   azureResourceName?: string;
+  /** Google Vertex GCP 项目 ID；仅 `google-vertex-ai` 使用。 */
+  vertexProject?: string;
+  /** Google Vertex 区域；仅 `google-vertex-ai` 使用。 */
+  vertexLocation?: string;
   /** 用户配置的模型上下文长度（token）；优先于 catalog 解析。 */
   contextLength?: number;
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
