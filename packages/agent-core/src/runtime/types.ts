@@ -418,6 +418,11 @@ export interface AgentRuntimeOptions<
   resolveWorkspaceFilesFromInput?: (
     userInput: string,
   ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];
+  /** Host-provided resolver used when scoping child subagent runtimes to a different workspace root. */
+  resolveWorkspaceFilesForRoot?: (
+    workspaceRoot: string,
+    userInput: string,
+  ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];
   bootstrapSubagentWorkspace?: SubagentWorkspaceBootstrap<ToolRequest, TrustTarget>;
 }
 

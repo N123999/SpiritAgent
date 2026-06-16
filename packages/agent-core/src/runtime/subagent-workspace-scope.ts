@@ -1,8 +1,10 @@
+import { appendLlmUserLlmMessage } from '../llm-tool-agent.js';
 import {
   patchBasicInfoWorkspaceRootInToolAgentState,
   type ToolAgentState,
 } from '../tool-agent.js';
 import type { AgentRuntimeOptions } from './types.js';
+import { pendingWorkspaceFilesFromInput } from './helpers.js';
 
 function isToolAgentLikeState(state: unknown): state is ToolAgentState {
   return (
@@ -62,5 +64,22 @@ export function scopeAgentRuntimeOptionsForSubagentWorkspace<
             scopeState(options.rebuildRetryStateAfterCompaction!(history, userInput, retryState)),
         }
       : {}),
+    ...(options.appendUserLlmMessage
+      ? {
+          appendUserLlmMessage: (state, message) =>
+            appendLlmUserLlmMessage(state as ToolAgentState, message, scopedRoot) as State,
+        }
+      : {}),
+    ...(options.resolveWorkspaceFilesForRoot
+      ? {
+          resolveWorkspaceFilesFromInput: (userInput) =>
+            options.resolveWorkspaceFilesForRoot!(scopedRoot, userInput),
+        }
+      : options.resolveWorkspaceFilesFromInput
+        ? {
+            resolveWorkspaceFilesFromInput: (userInput) =>
+              pendingWorkspaceFilesFromInput(scopedRoot, userInput),
+          }
+        : {}),
   };
 }

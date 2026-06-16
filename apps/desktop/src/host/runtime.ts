@@ -140,6 +140,8 @@ export function createDesktopRuntime(input: {
       ),
     resolveWorkspaceFilesFromInput: (userInput) =>
       resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),
+    resolveWorkspaceFilesForRoot: (workspaceRoot, userInput) =>
+      resolveWorkspaceFileReferenceAttachmentsFromInput(workspaceRoot, userInput),
     generateImage: (request) =>
       input.llmTransport.generateImage(
         input.transportConfig,

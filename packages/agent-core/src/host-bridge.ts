@@ -1757,6 +1757,13 @@ async function createRuntime(
       }
       return pendingWorkspaceFilesFromInput(workspaceRoot, text);
     },
+    resolveWorkspaceFilesForRoot: (root, text) => {
+      const resolveFromHostInternal = cliHostInternal?.module.resolveWorkspaceFileReferenceAttachmentsFromInput;
+      if (resolveFromHostInternal) {
+        return resolveFromHostInternal(root, text);
+      }
+      return pendingWorkspaceFilesFromInput(root, text);
+    },
     ...(hookRunner ? { hookRunner } : {}),
     hookSessionContext: buildCliHookSessionContext(config),
     bootstrapSubagentWorkspace: bootstrapCliSubagentWorkspace,
