@@ -2316,7 +2316,7 @@ impl TsBridgeRuntime {
 
         if provider == Some(ModelProvider::GoogleVertexAi) {
             return Err(anyhow!(
-                "未检测到 Google Vertex AI 凭证。请在 Desktop 连接向导配置 Express API Key、服务账号或 ADC（project/location），或设置环境变量 {}",
+                "未检测到 Google Vertex AI 凭证。请配置 Express API Key、服务账号（client email + private key）、或 ADC（填写 project/location 并设置 GOOGLE_APPLICATION_CREDENTIALS / gcloud 默认凭证），或设置环境变量 {}",
                 ENV_API_KEY
             ));
         }
