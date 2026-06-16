@@ -1932,7 +1932,7 @@ impl TsBridgeRuntime {
                         &api_base,
                     )
                     .ok_or_else(|| {
-                        anyhow!("Azure OpenAI 模型缺少 azureResourceName 配置，请使用 Desktop 连接向导导入或 spirit model add --azure-resource-name")
+                        anyhow!("Azure 模型缺少 azureResourceName 配置，请使用 Desktop 连接向导导入或 spirit model add --azure-resource-name")
                     })?;
                     let azure_base = azure_api_base_from_resource_name(&resource_name);
                     if let Some(obj) = transport.as_object_mut() {

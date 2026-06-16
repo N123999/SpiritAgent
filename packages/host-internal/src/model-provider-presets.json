@@ -84,7 +84,7 @@
     },
     "azure": {
       "labelKey": "providers.azure",
-      "fallbackLabel": "Azure OpenAI"
+      "fallbackLabel": "Azure"
     },
     "amazon-bedrock": {
       "labelKey": "providers.amazonBedrock",

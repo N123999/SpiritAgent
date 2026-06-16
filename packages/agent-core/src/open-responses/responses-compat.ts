@@ -57,7 +57,7 @@ export interface OpenResponsesTransportConfig {
     secretAccessKey: string;
     sessionToken?: string;
   };
-  /** Azure OpenAI 资源名；与 `@ai-sdk/azure` 的 `resourceName` 对齐。 */
+  /** Azure 资源名；与 `@ai-sdk/azure` 的 `resourceName` 对齐。 */
   azureResourceName?: string;
 }
 
@@ -295,5 +295,5 @@ export function resolveAzureResourceName(
     return fromBase;
   }
 
-  throw new Error('Azure OpenAI 缺少 azureResourceName 配置。');
+  throw new Error('Azure 缺少 azureResourceName 配置。');
 }

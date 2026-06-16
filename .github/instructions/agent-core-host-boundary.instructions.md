@@ -180,7 +180,7 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | `transportKind` | 协议族 | 典型 SDK |
 | --- | --- | --- |
 | `openai-compatible` | OpenAI Chat Completions 兼容 | `@ai-sdk/openai-compatible` 等 |
-| `open-responses` | Responses / Open Responses | OpenAI 官方：`@ai-sdk/openai` 的 `responses`；xAI：`@ai-sdk/xai` 的 `responses`；Azure OpenAI：`@ai-sdk/azure` 默认 Responses callable（`provider=azure` 固定此 transport，须 `azureResourceName` + 部署名，本版仅 API Key）；其它兼容 endpoint：`@ai-sdk/open-responses` |
+| `open-responses` | Responses / Open Responses | OpenAI 官方：`@ai-sdk/openai` 的 `responses`；xAI：`@ai-sdk/xai` 的 `responses`；Azure：`@ai-sdk/azure` 默认 Responses callable（`provider=azure` 固定此 transport，须 `azureResourceName` + 部署名，本版仅 API Key）；其它兼容 endpoint：`@ai-sdk/open-responses` |
 | `anthropic` | Anthropic Messages | `@ai-sdk/anthropic` |
 
 - 现有 `provider=openai` 配置默认仍为 `openai-compatible`；切换到 Responses 须由用户显式选择 `open-responses`。

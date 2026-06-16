@@ -1,4 +1,4 @@
-/** Renderer-safe Azure OpenAI resource / apiBase helpers（无 Node 或 SDK 依赖）。 */
+/** Renderer-safe Azure resource / apiBase helpers（无 Node 或 SDK 依赖）。 */
 
 const AZURE_RESOURCE_NAME_PATTERN = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,62}[a-zA-Z0-9])?$/;
 
@@ -18,7 +18,7 @@ export function validateAzureResourceName(resourceName: string): string {
   const normalized = normalizeAzureResourceName(resourceName);
   if (!isValidAzureResourceName(normalized)) {
     throw new Error(
-      'Azure OpenAI resource name must be 2–64 characters and contain only letters, numbers, and hyphens; it cannot start or end with a hyphen.',
+      'Azure resource name must be 2–64 characters and contain only letters, numbers, and hyphens; it cannot start or end with a hyphen.',
     );
   }
   return normalized;

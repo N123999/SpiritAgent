@@ -73,7 +73,7 @@ export function resolveProfileApiBase(
     if (trimmed) {
       return trimmed;
     }
-    throw new Error('Azure OpenAI 模型缺少 azureResourceName 配置。');
+    throw new Error('Azure 模型缺少 azureResourceName 配置。');
   }
 
   if (profile.provider && profile.provider !== 'custom') {
@@ -257,7 +257,7 @@ export function buildPrimaryTransportConfig(input: {
               : 'open-responses-compatible';
     const azureResourceName = input.profile?.azureResourceName?.trim();
     if (input.profile?.provider === 'azure' && !azureResourceName) {
-      throw new Error('Azure OpenAI 模型缺少 azureResourceName 配置。');
+      throw new Error('Azure 模型缺少 azureResourceName 配置。');
     }
     const reasoningSummary = resolveOpenResponsesReasoningSummary({
       ...(llmVendor ? { llmVendor } : {}),

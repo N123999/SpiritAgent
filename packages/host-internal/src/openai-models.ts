@@ -705,7 +705,7 @@ export async function listProviderModels(
   }
 
   if (options.provider === 'azure') {
-    throw new Error('Azure OpenAI 无 /models 端点，请手动填写部署名。');
+    throw new Error('Azure 无 /models 端点，请手动填写部署名。');
   }
 
   return listOpenAiCompatibleModels(options);
