@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { useTranslation } from "react-i18next";
 import type * as Monaco from "monaco-editor";
 
@@ -20,6 +20,12 @@ import {
 } from "@/components/workspace-monaco-editor";
 import { cn } from "@/lib/utils";
 import { DESKTOP_CHROME_TOGGLE_ICON_BTN, DESKTOP_SHELL_LAYOUT_TRANSITION } from "@/lib/desktop-chrome";
+import {
+  WORKSPACE_FILES_TREE_MIN_WIDTH_PX,
+  computeWorkspaceFilesTreeMaxWidthPx,
+  readWorkspaceFilesTreeWidthPx,
+  writeWorkspaceFilesTreeWidthPx,
+} from "@/lib/layout-prefs";
 import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
 import { FILES_EXPLORER_TOOLBAR_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import {
@@ -266,6 +272,12 @@ export function WorkspaceFilesTab({
   const [savedText, setSavedText] = useState("");
   const [markdownViewMode, setMarkdownViewMode] = useState<MarkdownViewMode>("edit");
   const [fileTreeOpen, setFileTreeOpen] = useState(true);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const fileTreeDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const latestFileTreeWidthPxRef = useRef(readWorkspaceFilesTreeWidthPx());
+  const [fileTreeWidthPx, setFileTreeWidthPx] = useState(() => readWorkspaceFilesTreeWidthPx());
+  const [isResizingFileTree, setIsResizingFileTree] = useState(false);
+  const [splitContainerWidthPx, setSplitContainerWidthPx] = useState(0);
   const [monacoEditor, setMonacoEditor] = useState<MonacoEditor | null>(null);
   const editorRef = useRef<WorkspaceMonacoEditorHandle>(null);
   const previewScrollRef = useRef<ComponentRef<typeof ScrollArea>>(null);
@@ -276,6 +288,84 @@ export function WorkspaceFilesTab({
     onTitleChangeRef.current = onTitleChange;
   });
   const prevSelectedEntryRef = useRef(selectedEntry);
+
+  latestFileTreeWidthPxRef.current = fileTreeWidthPx;
+
+  const maxFileTreeWidthPx = useMemo(
+    () =>
+      splitContainerWidthPx > 0
+        ? computeWorkspaceFilesTreeMaxWidthPx(splitContainerWidthPx)
+        : computeWorkspaceFilesTreeMaxWidthPx(1200),
+    [splitContainerWidthPx],
+  );
+
+  const clampFileTreeWidth = useCallback(
+    (value: number) =>
+      Math.min(maxFileTreeWidthPx, Math.max(WORKSPACE_FILES_TREE_MIN_WIDTH_PX, value)),
+    [maxFileTreeWidthPx],
+  );
+
+  useEffect(() => {
+    const container = splitContainerRef.current;
+    if (!container) {
+      return;
+    }
+    const syncContainerWidth = () => {
+      setSplitContainerWidthPx(container.clientWidth);
+    };
+    syncContainerWidth();
+    const observer = new ResizeObserver(syncContainerWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [fileTreeOpen, selectedEntry]);
+
+  useEffect(() => {
+    if (fileTreeWidthPx <= maxFileTreeWidthPx) {
+      return;
+    }
+    setFileTreeWidthPx(clampFileTreeWidth(fileTreeWidthPx));
+  }, [clampFileTreeWidth, fileTreeWidthPx, maxFileTreeWidthPx]);
+
+  const onFileTreeResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      setIsResizingFileTree(true);
+      fileTreeDragRef.current = { startX: event.clientX, startWidth: fileTreeWidthPx };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [fileTreeWidthPx],
+  );
+
+  const onFileTreeResizePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const drag = fileTreeDragRef.current;
+      if (!drag) {
+        return;
+      }
+      const delta = event.clientX - drag.startX;
+      const next = clampFileTreeWidth(drag.startWidth + delta);
+      latestFileTreeWidthPxRef.current = next;
+      setFileTreeWidthPx(next);
+    },
+    [clampFileTreeWidth],
+  );
+
+  const endFileTreeResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    setIsResizingFileTree(false);
+    if (fileTreeDragRef.current) {
+      const containerWidth = splitContainerRef.current?.clientWidth ?? 0;
+      writeWorkspaceFilesTreeWidthPx(
+        latestFileTreeWidthPxRef.current,
+        containerWidth > 0 ? containerWidth : undefined,
+      );
+    }
+    fileTreeDragRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // already released
+    }
+  }, []);
 
   useEffect(() => {
     const prev = prevSelectedEntryRef.current;
@@ -538,17 +628,26 @@ export function WorkspaceFilesTab({
       {saveError ? (
         <p className="shrink-0 px-2 pt-1 text-xs text-destructive/90">{saveError}</p>
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden">
+      <div
+        ref={splitContainerRef}
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden",
+          isResizingFileTree && "select-none",
+        )}
+      >
         <div
           className={cn(
             "flex min-h-0 shrink-0 flex-col overflow-hidden",
-            DESKTOP_SHELL_LAYOUT_TRANSITION,
+            !isResizingFileTree && DESKTOP_SHELL_LAYOUT_TRANSITION,
             fileTreeOpen
               ? selectedEntry
-                ? "w-[min(40%,13rem)] border-r border-border/40"
+                ? "border-r border-border/40"
                 : "min-w-0 flex-1"
               : "w-0",
           )}
+          style={
+            fileTreeOpen && selectedEntry ? { width: fileTreeWidthPx } : undefined
+          }
         >
           <div
             className={cn(
@@ -612,13 +711,28 @@ export function WorkspaceFilesTab({
             />
           </div>
         </div>
-        {selectedEntry ? (
+        {fileTreeOpen && selectedEntry ? (
           <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t("workspace.resizeFileTreeWidth")}
             className={cn(
-              "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-              fileTreeOpen && "pl-2",
+              "group relative z-10 -ml-px w-1 shrink-0 cursor-col-resize touch-none select-none self-stretch",
+              "before:absolute before:inset-y-0 before:-right-1 before:w-3 before:content-['']",
             )}
+            onPointerDown={onFileTreeResizePointerDown}
+            onPointerMove={onFileTreeResizePointerMove}
+            onPointerUp={endFileTreeResize}
+            onPointerCancel={endFileTreeResize}
           >
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover:bg-border/55"
+              aria-hidden
+            />
+          </div>
+        ) : null}
+        {selectedEntry ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pl-2">
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {doc?.status === "loading" ? (
               <div className="h-full min-h-0 w-full" />

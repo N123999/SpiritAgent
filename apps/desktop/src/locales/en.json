@@ -638,6 +638,7 @@
     "fileExplorerToolbar": "File explorer toolbar",
     "hideFileTree": "Hide file tree",
     "showFileTree": "Show file tree",
+    "resizeFileTreeWidth": "Resize file tree width",
     "shellExited": "Exited with code {{exitCode}}",
     "openWorkspaceToUse": "Open a workspace to use.",
     "shellElectronOnly": "Shell is only available in the Electron desktop version.",
