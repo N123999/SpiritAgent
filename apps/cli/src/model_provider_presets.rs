@@ -167,23 +167,23 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(1).as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta")
-        );
-        assert_eq!(
-            model_add_preset_api_base_by_choice_index(2).as_deref(),
-            Some("https://api.x.ai/v1")
-        );
-        assert_eq!(
-            model_add_preset_api_base_by_choice_index(3).as_deref(),
             Some("https://api.anthropic.com/v1")
         );
         assert_eq!(
+            model_add_preset_api_base_by_choice_index(2).as_deref(),
+            Some("https://generativelanguage.googleapis.com/v1beta")
+        );
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(3).as_deref(),
+            Some("https://api.x.ai/v1")
+        );
+        assert_eq!(
             model_add_preset_api_base_by_choice_index(4).as_deref(),
-            Some("https://api.deepseek.com/v1")
+            Some("https://ai-gateway.vercel.sh/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(5).as_deref(),
-            Some("https://ai-gateway.vercel.sh/v1")
+            Some("https://api.deepseek.com/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(6).as_deref(),

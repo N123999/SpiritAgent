@@ -35,11 +35,11 @@ const PROVIDER_MODEL_TRANSPORT_KINDS: readonly ProviderModelTransportKind[] = [
 
 const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'openai',
+  'anthropic',
   'google',
   'xai',
-  'anthropic',
-  'deepseek',
   'vercel-ai-gateway',
+  'deepseek',
   'openrouter',
   'moonshot-ai',
   'alibaba',
@@ -66,7 +66,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","google","xai","anthropic","deepseek","vercel-ai-gateway","openrouter","moonshot-ai","alibaba","minimax","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","alibaba","minimax","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
     );
   }
 }
