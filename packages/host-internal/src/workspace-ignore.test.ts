@@ -93,3 +93,26 @@ test('resolveWorkspaceExplorerIgnoreFlags returns empty array for empty entries'
     assert.deepEqual(flags, []);
   });
 });
+
+test('resolveWorkspaceExplorerIgnoreFlags preferInProcess matches gitignore rules in repositories', async () => {
+  await withTempWorkspace(async (root) => {
+    await initGitRepo(root);
+    await writeFile(join(root, '.gitignore'), 'node_modules/\n.env\n', 'utf8');
+    await mkdir(join(root, 'node_modules'), { recursive: true });
+    await writeFile(join(root, '.env'), 'SECRET=1\n', 'utf8');
+    await writeFile(join(root, 'src.ts'), 'export {}\n', 'utf8');
+
+    const flags = await resolveWorkspaceExplorerIgnoreFlags(
+      root,
+      '',
+      [
+        { name: 'node_modules', kind: 'dir' },
+        { name: '.env', kind: 'file' },
+        { name: 'src.ts', kind: 'file' },
+      ],
+      { preferInProcess: true },
+    );
+
+    assert.deepEqual(flags, [true, true, false]);
+  });
+});
