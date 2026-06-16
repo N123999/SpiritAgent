@@ -2154,6 +2154,7 @@ class DesktopHostService {
   private async buildScopedSubagentToolExecutor(
     workspaceRoot: string,
     transportConfig: LlmTransportConfig | undefined,
+    parentExecutor: DesktopToolExecutor,
   ): Promise<DesktopToolExecutor> {
     const state = this.requireState();
     const extensions = await this.extensionManager().list();
@@ -2164,6 +2165,7 @@ class DesktopHostService {
       extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
       hostContributedToolsEnabled: true,
     });
+    scoped.setApprovalLevel(parentExecutor.approvalLevelSnapshot());
     scoped.setAgentModeToolExposure(resolveDesktopAgentMode(state.config));
     scoped.setLoopToolExposure(this.activeBundle().loopEnabled);
     if (transportConfig) {
@@ -2188,7 +2190,7 @@ class DesktopHostService {
       generateWorktreeNames: (task, baseBranch, repoRoot) =>
         this.generateWorktreeNamesFromModel(task, baseBranch, repoRoot),
       buildScopedToolExecutor: (workspaceRoot) =>
-        this.buildScopedSubagentToolExecutor(workspaceRoot, transportConfig),
+        this.buildScopedSubagentToolExecutor(workspaceRoot, transportConfig, parentExecutor),
     });
   }
 
