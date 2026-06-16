@@ -69,6 +69,11 @@ export function resolveProfileApiBase(
     if (resourceName) {
       return azureApiBaseFromResourceName(resourceName);
     }
+    const trimmed = profile.apiBase?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+    throw new Error('Azure OpenAI 模型缺少 azureResourceName 配置。');
   }
 
   if (profile.provider && profile.provider !== 'custom') {
