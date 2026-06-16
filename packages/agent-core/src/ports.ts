@@ -316,6 +316,8 @@ export interface SubagentSessionSummary {
   latestMessage?: string;
   finalOutput?: string;
   error?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
 }
 
 export interface SubagentSessionArchiveEntry {
@@ -553,6 +555,7 @@ export interface RunSubagentRequest {
   contextSummary?: string;
   filesToInspect?: string[];
   expectedOutput?: string;
+  worktree?: boolean;
 }
 
 export type AuthorizationDecision<TrustTarget = string> =

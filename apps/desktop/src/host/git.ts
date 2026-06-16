@@ -15,6 +15,7 @@ import {
   readGitWorkingTreeChanges,
   readGitWorkspaceSnapshot,
   readWorktreeContext,
+  removeGitWorktree as removeGitWorktreeInternal,
   resolveDefaultBranch,
   resolvePrimaryRepoRoot,
   type GitCheckoutOptions,
@@ -151,6 +152,13 @@ export async function createWorkspaceGitWorktree(
     worktreePath,
     branchName: names.branchName,
   };
+}
+
+export async function removeWorkspaceGitWorktree(
+  repoRoot: string,
+  worktreePath: string,
+): Promise<void> {
+  await removeGitWorktreeInternal(repoRoot, worktreePath, { force: true });
 }
 
 export async function pushWorkspaceGitBranch(workspaceRoot: string): Promise<void> {

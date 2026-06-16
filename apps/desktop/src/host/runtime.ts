@@ -1,23 +1,22 @@
 import {
   AgentRuntime,
   assistantToolCallMessageFromLlmState,
-  appendLlmUserLlmMessage,
-  normalizeStoredLlmMessage,
-  type HookRunner,
-  type HookSessionContext,
-  type SpiritLlmTransport,
   appendLlmToolResultMessage,
+  appendLlmUserLlmMessage,
   appendLlmUserMessage,
   buildApplyPatchFileToolsPromptSection,
   buildProviderWebSearchPromptSection,
   continueLlmToolAgentState,
   extractLastLlmAssistantText,
+  normalizeStoredLlmMessage,
   rebuildLlmToolAgentStateAfterCompaction,
   shouldUseApplyPatchFileTools,
   startLlmToolAgentState,
   truncateLlmHistoryForCompaction,
   truncateLlmToolAgentStateForContextRetry,
   type ChatArchive,
+  type HookRunner,
+  type HookSessionContext,
   type LlmActiveSkill,
   type LlmEnabledRule,
   type LlmEnabledSkillCatalogEntry,
@@ -26,6 +25,8 @@ import {
   type LlmToolAgentBasicInfo,
   type LlmToolAgentState,
   type LlmTransportConfig,
+  type SpiritLlmTransport,
+  type SubagentWorkspaceBootstrap,
 } from '@spirit-agent/core';
 import {
   persistPreCompactionHistoryArchive,
@@ -61,6 +62,7 @@ export function createDesktopRuntime(input: {
   getLoopEnabled?: () => boolean;
   hookRunner?: HookRunner;
   hookSessionContext?: HookSessionContext;
+  bootstrapSubagentWorkspace?: SubagentWorkspaceBootstrap<DesktopToolRequest, string>;
 }): DesktopRuntime {
   const resolveLoopEnabled = () => input.getLoopEnabled?.() === true;
   const applyPatchFileToolsPromptSection = resolveApplyPatchFileToolsPromptSection(
@@ -71,7 +73,12 @@ export function createDesktopRuntime(input: {
     input.transportConfig,
   );
 
-  return new AgentRuntime({
+  return new AgentRuntime<
+    LlmTransportConfig,
+    LlmToolAgentState,
+    DesktopToolRequest,
+    string
+  >({
     config: input.transportConfig,
     llmTransport: input.llmTransport,
     toolExecutor: input.toolExecutor,
@@ -138,6 +145,8 @@ export function createDesktopRuntime(input: {
       ),
     resolveWorkspaceFilesFromInput: (userInput) =>
       resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),
+    resolveWorkspaceFilesForRoot: (workspaceRoot, userInput) =>
+      resolveWorkspaceFileReferenceAttachmentsFromInput(workspaceRoot, userInput),
     generateImage: (request) =>
       input.llmTransport.generateImage(
         input.transportConfig,
@@ -152,6 +161,9 @@ export function createDesktopRuntime(input: {
       ),
     ...(input.hookRunner ? { hookRunner: input.hookRunner } : {}),
     ...(input.hookSessionContext ? { hookSessionContext: input.hookSessionContext } : {}),
+    ...(input.bootstrapSubagentWorkspace
+      ? { bootstrapSubagentWorkspace: input.bootstrapSubagentWorkspace }
+      : {}),
     persistPreCompactionHistory: async ({ archive, sessionId }) =>
       persistPreCompactionHistoryArchive(spiritAgentDataDir(), archive, {
         ...(sessionId !== undefined ? { sessionId } : {}),
