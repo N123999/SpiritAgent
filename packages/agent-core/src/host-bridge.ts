@@ -912,6 +912,7 @@ async function bootstrapCliSubagentWorkspace(
     const git = await import(pathToFileURL(gitModulePath).href) as {
       resolvePrimaryRepoRoot: (root: string) => Promise<string>;
       resolveDefaultBranch: (root: string) => Promise<string | undefined>;
+      readWorktreeContext: (root: string) => Promise<{ isWorktree: boolean }>;
       buildWorktreeRootPath: (repoRoot: string, worktreeName: string) => string;
       addGitWorktree: (
         repoRoot: string,
@@ -920,6 +921,10 @@ async function bootstrapCliSubagentWorkspace(
     };
 
     const parentRoot = input.parentWorkspaceRoot.trim() || currentWorkspaceRoot();
+    const worktreeContext = await git.readWorktreeContext(parentRoot);
+    if (worktreeContext.isWorktree) {
+      return { error: 'worktree subagents cannot start from inside an existing worktree session' };
+    }
     const repoRoot = await git.resolvePrimaryRepoRoot(parentRoot);
     const baseBranch = await git.resolveDefaultBranch(repoRoot);
     if (!baseBranch) {
