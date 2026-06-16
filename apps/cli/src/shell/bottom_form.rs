@@ -11,8 +11,9 @@ use crate::{
     model_provider_presets::{
         model_add_default_custom_api_base, model_add_preset_api_base_by_choice_index,
         model_add_picker_order_ids, model_add_provider_at_choice_index,
-        model_add_provider_id_at_choice_index, model_add_requires_manual_single_provider,
+        model_add_provider_id_at_choice_index,         model_add_requires_manual_single_provider,
         azure_api_base_from_resource_name,
+        is_valid_azure_resource_name,
     },
     model_registry::{ModelProvider, ModelTransportKind},
     rules::{RuleEntry, RuleScope},
@@ -1223,6 +1224,9 @@ pub(crate) fn parse_model_add_connection(
         let azure_resource_name = bottom_form_text_value(form, 1).trim().to_string();
         if azure_resource_name.is_empty() {
             return Err(t!("form.model.validation.azure_resource_name_empty").into_owned());
+        }
+        if !is_valid_azure_resource_name(&azure_resource_name) {
+            return Err(t!("form.model.validation.azure_resource_name_invalid").into_owned());
         }
         let deployment_name = bottom_form_text_value(form, 2).trim().to_string();
         if deployment_name.is_empty() {

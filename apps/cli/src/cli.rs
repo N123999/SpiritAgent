@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path, workspace_mcp_config_path,
     },
-    model_provider_presets::{azure_api_base_from_resource_name, model_add_default_custom_api_base, model_add_preset_api_base_by_provider},
+    model_provider_presets::{azure_api_base_from_resource_name, model_add_default_custom_api_base, model_add_preset_api_base_by_provider, validate_azure_resource_name},
     model_registry::{
         AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, ModelTransportKind,
     },
@@ -173,6 +173,11 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     return Err(anyhow!(
                         "provider=azure 时必须指定 --azure-resource-name"
                     ));
+                }
+                if provider == Some(ModelProvider::Azure) {
+                    if let Some(resource_name) = azure_resource_name.as_deref() {
+                        validate_azure_resource_name(resource_name).map_err(anyhow::Error::msg)?;
+                    }
                 }
                 if provider == Some(ModelProvider::Azure)
                     && transport_kind != ModelTransportKind::OpenResponses

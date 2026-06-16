@@ -66,10 +66,36 @@ pub(crate) fn model_add_default_custom_api_base(
     }
 }
 
+pub(crate) fn is_valid_azure_resource_name(resource_name: &str) -> bool {
+    let trimmed = resource_name.trim();
+    if trimmed.len() < 2 || trimmed.len() > 64 {
+        return false;
+    }
+    let bytes = trimmed.as_bytes();
+    if !bytes[0].is_ascii_alphanumeric() || !bytes[bytes.len() - 1].is_ascii_alphanumeric() {
+        return false;
+    }
+    trimmed
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+}
+
+pub(crate) fn validate_azure_resource_name(resource_name: &str) -> Result<String, String> {
+    let trimmed = resource_name.trim().to_string();
+    if is_valid_azure_resource_name(&trimmed) {
+        Ok(trimmed)
+    } else {
+        Err("Azure resource name must be 2–64 characters and contain only letters, numbers, and hyphens; it cannot start or end with a hyphen.".to_string())
+    }
+}
+
 pub(crate) fn azure_api_base_from_resource_name(resource_name: &str) -> String {
     let trimmed = resource_name.trim();
     if trimmed.is_empty() {
         return "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1".to_string();
+    }
+    if let Ok(validated) = validate_azure_resource_name(trimmed) {
+        return format!("https://{validated}.openai.azure.com/openai/v1");
     }
     format!("https://{trimmed}.openai.azure.com/openai/v1")
 }
@@ -88,7 +114,7 @@ pub(crate) fn extract_azure_resource_name_from_api_base(base_url: &str) -> Optio
         return None;
     }
     let resource = host[..host.len() - SUFFIX.len()].trim();
-    if resource.is_empty() {
+    if resource.is_empty() || !is_valid_azure_resource_name(resource) {
         None
     } else {
         Some(resource.to_string())
@@ -239,5 +265,12 @@ mod tests {
             .as_deref(),
             Some("explicit")
         );
+    }
+
+    #[test]
+    fn is_valid_azure_resource_name_rejects_invalid_values() {
+        assert!(super::is_valid_azure_resource_name("my-openai-resource"));
+        assert!(!super::is_valid_azure_resource_name("-bad"));
+        assert!(!super::is_valid_azure_resource_name("bad@host"));
     }
 }

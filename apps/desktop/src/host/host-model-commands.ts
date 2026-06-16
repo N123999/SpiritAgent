@@ -37,7 +37,7 @@ import {
   supportsImageGeneration,
   supportsVideoGeneration,
 } from './model-config.js';
-import { bedrockApiBaseFromRegion, azureApiBaseFromResourceName } from '@spirit-agent/host-internal';
+import { bedrockApiBaseFromRegion, azureApiBaseFromResourceName, isValidAzureResourceName } from '@spirit-agent/host-internal';
 import { bedrockMantleApiBaseFromRegion, isBedrockMantleOpenAiModel } from '@spirit-agent/host-internal/bedrock-mantle';
 import { modelSupportsChat } from './lightweight-chat-model.js';
 import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
@@ -548,6 +548,9 @@ export async function addModelCommand(
     }
     if (provider === 'azure' && !azureResourceName) {
       throw new Error(i18n.t('error.azureResourceNameRequired'));
+    }
+    if (provider === 'azure' && azureResourceName && !isValidAzureResourceName(azureResourceName)) {
+      throw new Error(i18n.t('error.azureResourceNameInvalid'));
     }
     const apiBase = resolveManagedConnectApiBase(
       provider,

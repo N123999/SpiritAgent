@@ -103,7 +103,7 @@ import {
   resolveProviderConnectApiBase,
 } from "@/host/provider-presets";
 import { bedrockApiBaseFromRegion } from "@spirit-agent/host-internal/bedrock-region";
-import { azureApiBaseFromResourceName } from "@spirit-agent/host-internal/azure-resource";
+import { azureApiBaseFromResourceName, isValidAzureResourceName } from "@spirit-agent/host-internal/azure-resource";
 import {
   bedrockMantleApiBaseFromRegion,
   isBedrockMantleOpenAiModel,
@@ -2897,6 +2897,9 @@ function ModelsSettingsPanel({
     const name = connectName.trim();
     if (!azureResourceName) {
       throw new Error(t('settings.azureResourceNameRequired'));
+    }
+    if (!isValidAzureResourceName(azureResourceName)) {
+      throw new Error(t('settings.azureResourceNameInvalid'));
     }
     if (!name) {
       throw new Error(t('settings.azureDeploymentNameRequired'));
