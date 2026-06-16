@@ -66,6 +66,41 @@ pub(crate) fn model_add_default_custom_api_base(
     }
 }
 
+pub(crate) fn azure_api_base_from_resource_name(resource_name: &str) -> String {
+    let trimmed = resource_name.trim();
+    if trimmed.is_empty() {
+        return "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1".to_string();
+    }
+    format!("https://{trimmed}.openai.azure.com/openai/v1")
+}
+
+pub(crate) fn model_add_picker_order_ids() -> &'static [String] {
+    &presets().picker_order
+}
+
+pub(crate) fn model_add_provider_id_at_choice_index(selected: usize) -> Option<&'static str> {
+    presets().picker_order.get(selected).map(String::as_str)
+}
+
+pub(crate) fn model_add_provider_at_choice_index(
+    selected: usize,
+) -> Option<crate::model_registry::ModelProvider> {
+    let id = model_add_provider_id_at_choice_index(selected)?;
+    if id == "custom" {
+        return Some(crate::model_registry::ModelProvider::Custom);
+    }
+    id.parse().ok()
+}
+
+pub(crate) fn model_add_requires_manual_single_provider(
+    provider: crate::model_registry::ModelProvider,
+) -> bool {
+    matches!(
+        provider,
+        crate::model_registry::ModelProvider::Azure
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,9 +153,13 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(11).as_deref(),
+            Some("https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1")
+        );
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(12).as_deref(),
             Some("https://bedrock.us-east-1.amazonaws.com")
         );
-        assert!(model_add_preset_api_base_by_choice_index(12).is_none());
+        assert!(model_add_preset_api_base_by_choice_index(13).is_none());
     }
 
     #[test]

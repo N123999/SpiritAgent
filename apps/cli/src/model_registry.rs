@@ -32,6 +32,7 @@ pub enum ModelProvider {
     Volcengine,
     #[serde(rename = "amazon-bedrock")]
     AmazonBedrock,
+    Azure,
     Custom,
 }
 
@@ -50,6 +51,7 @@ impl ModelProvider {
             Self::Google => "google",
             Self::Volcengine => "volcengine",
             Self::AmazonBedrock => "amazon-bedrock",
+            Self::Azure => "azure",
             Self::Custom => "custom",
         }
     }
@@ -72,6 +74,7 @@ impl FromStr for ModelProvider {
             "google" => Ok(Self::Google),
             "volcengine" => Ok(Self::Volcengine),
             "amazon-bedrock" => Ok(Self::AmazonBedrock),
+            "azure" => Ok(Self::Azure),
             "custom" => Ok(Self::Custom),
             other => Err(format!("不支持的 provider: {other}")),
         }
@@ -145,6 +148,7 @@ impl ModelProfile {
             .unwrap_or_else(|| match self.provider {
                 Some(ModelProvider::Anthropic) => ModelTransportKind::Anthropic,
                 Some(ModelProvider::AmazonBedrock) => ModelTransportKind::Bedrock,
+                Some(ModelProvider::Azure) => ModelTransportKind::OpenResponses,
                 _ => ModelTransportKind::OpenAiCompatible,
             })
     }
@@ -169,6 +173,7 @@ impl ModelProfile {
             | Some(ModelProvider::Google)
             | Some(ModelProvider::Volcengine)
             | Some(ModelProvider::AmazonBedrock)
+            | Some(ModelProvider::Azure)
             | Some(ModelProvider::Custom)
             | None => true,
         }
@@ -210,6 +215,16 @@ impl ModelProfile {
         self.extra
             .get("awsRegion")
             .or_else(|| self.extra.get("aws_region"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
+    pub fn azure_resource_name(&self) -> Option<String> {
+        self.extra
+            .get("azureResourceName")
+            .or_else(|| self.extra.get("azure_resource_name"))
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())

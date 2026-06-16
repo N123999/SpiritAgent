@@ -1925,6 +1925,15 @@ impl TsBridgeRuntime {
                         );
                     }
                 }
+                if active.provider == Some(ModelProvider::Azure) {
+                    let resource_name = active.azure_resource_name().ok_or_else(|| {
+                        anyhow!("Azure OpenAI 模型缺少 azureResourceName 配置，请使用 Desktop 连接向导导入或 spirit model add --azure-resource-name")
+                    })?;
+                    if let Some(obj) = transport.as_object_mut() {
+                        obj.insert("azureResourceName".to_string(), json!(resource_name));
+                        obj.insert("llmVendor".to_string(), json!("azure"));
+                    }
+                }
                 transport
             } else if active.transport_kind() == crate::model_registry::ModelTransportKind::Bedrock {
                 if active.provider == Some(ModelProvider::AmazonBedrock)
@@ -3401,6 +3410,7 @@ fn open_responses_sdk_provider(provider: Option<ModelProvider>) -> Option<&'stat
     match provider {
         Some(ModelProvider::Openai) => Some("openai"),
         Some(ModelProvider::Xai) => Some("xai"),
+        Some(ModelProvider::Azure) => Some("azure"),
         Some(ModelProvider::VercelAiGateway) | Some(ModelProvider::Openrouter) => None,
         _ => Some("open-responses-compatible"),
     }
@@ -3421,6 +3431,7 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::Openai => "openai",
         ModelProvider::Google => "google",
         ModelProvider::Volcengine => "volcengine",
+        ModelProvider::Azure => "azure",
         ModelProvider::AmazonBedrock => {
             unreachable!("Amazon Bedrock 不应映射到 openai-compatible llmVendor")
         }

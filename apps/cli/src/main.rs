@@ -101,9 +101,9 @@ enum ModelAction {
         name: String,
         #[arg(long)]
         api_base: Option<String>,
-        #[arg(long, value_parser = ["deepseek", "xai", "moonshot-ai", "minimax", "alibaba", "anthropic", "vercel-ai-gateway", "openrouter", "openai", "google", "volcengine", "amazon-bedrock", "custom"])]
+        #[arg(long, value_parser = ["deepseek", "xai", "moonshot-ai", "minimax", "alibaba", "anthropic", "vercel-ai-gateway", "openrouter", "openai", "google", "volcengine", "azure", "amazon-bedrock", "custom"])]
         provider: Option<String>,
-        #[arg(long, value_parser = ["openai-compatible", "open-responses", "anthropic"])]
+        #[arg(long, value_parser = ["openai-compatible", "open-responses", "anthropic", "bedrock"])]
         transport_kind: Option<String>,
         #[arg(long)]
         reasoning_effort: Option<String>,
@@ -113,6 +113,8 @@ enum ModelAction {
         context_length: Option<u64>,
         #[arg(long)]
         key: Option<String>,
+        #[arg(long)]
+        azure_resource_name: Option<String>,
     },
     Remove {
         name: String,
@@ -293,6 +295,7 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             capabilities,
             context_length,
             key,
+            azure_resource_name,
         } => ModelCommand::Add {
             name,
             api_base,
@@ -302,6 +305,7 @@ fn into_model_command(action: ModelAction) -> ModelCommand {
             capabilities,
             context_length,
             key,
+            azure_resource_name,
         },
         ModelAction::Remove { name } => ModelCommand::Remove { name },
         ModelAction::Use { name } => ModelCommand::Use { name },

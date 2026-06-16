@@ -10,6 +10,9 @@ use crate::{
     mcp_types::McpDiscoveredPrompt,
     model_provider_presets::{
         model_add_default_custom_api_base, model_add_preset_api_base_by_choice_index,
+        model_add_picker_order_ids, model_add_provider_at_choice_index,
+        model_add_provider_id_at_choice_index, model_add_requires_manual_single_provider,
+        azure_api_base_from_resource_name,
     },
     model_registry::{ModelProvider, ModelTransportKind},
     rules::{RuleEntry, RuleScope},
@@ -49,7 +52,13 @@ const DEFAULT_HOOK_TIMEOUT: &str = "30";
 const HOOK_EVENT_PRE_TOOL_USE_INDEX: usize = 3;
 
 const MODEL_ADD_FIELD_PROVIDER: usize = 0;
-const MODEL_ADD_VOLCENGINE_PROVIDER_INDEX: usize = 10;
+
+fn model_add_volcengine_provider_index() -> usize {
+    model_add_picker_order_ids()
+        .iter()
+        .position(|id| id == "volcengine")
+        .unwrap_or(10)
+}
 
 const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
 
@@ -206,20 +215,31 @@ pub(crate) fn new_hook_add_form(workspace_scope_available: bool) -> BottomFormVi
 }
 
 fn model_add_provider_choice_labels() -> Vec<String> {
-    vec![
-        t!("form.model.provider.openai").into_owned(),
-        t!("form.model.provider.google").into_owned(),
-        t!("form.model.provider.xai").into_owned(),
-        t!("form.model.provider.anthropic").into_owned(),
-        t!("form.model.provider.deepseek").into_owned(),
-        t!("form.model.provider.vercel_ai_gateway").into_owned(),
-        t!("form.model.provider.openrouter").into_owned(),
-        t!("form.model.provider.moonshot-ai").into_owned(),
-        t!("form.model.provider.alibaba").into_owned(),
-        t!("form.model.provider.minimax").into_owned(),
-        t!("form.model.provider.volcengine").into_owned(),
-        t!("form.model.provider.custom").into_owned(),
-    ]
+    model_add_picker_order_ids()
+        .iter()
+        .map(|id| model_add_provider_label(id))
+        .collect()
+}
+
+fn model_add_provider_label(id: &str) -> String {
+    match id {
+        "openai" => t!("form.model.provider.openai"),
+        "google" => t!("form.model.provider.google"),
+        "xai" => t!("form.model.provider.xai"),
+        "anthropic" => t!("form.model.provider.anthropic"),
+        "deepseek" => t!("form.model.provider.deepseek"),
+        "vercel-ai-gateway" => t!("form.model.provider.vercel_ai_gateway"),
+        "openrouter" => t!("form.model.provider.openrouter"),
+        "moonshot-ai" => t!("form.model.provider.moonshot-ai"),
+        "alibaba" => t!("form.model.provider.alibaba"),
+        "minimax" => t!("form.model.provider.minimax"),
+        "volcengine" => t!("form.model.provider.volcengine"),
+        "azure" => t!("form.model.provider.azure"),
+        "amazon-bedrock" => t!("form.model.provider.amazon_bedrock"),
+        "custom" => t!("form.model.provider.custom"),
+        other => std::borrow::Cow::Borrowed(other),
+    }
+    .into_owned()
 }
 
 fn model_add_provider_option_count() -> usize {
@@ -240,6 +260,11 @@ fn model_add_provider_selected(form: &BottomFormView) -> Option<usize> {
 }
 
 fn model_add_mode_bulk(form: &BottomFormView, provider_idx: usize) -> bool {
+    if let Some(provider) = model_add_provider_at_choice_index(provider_idx) {
+        if model_add_requires_manual_single_provider(provider) {
+            return false;
+        }
+    }
     if model_add_is_preset_provider(provider_idx) {
         return true;
     }
@@ -303,6 +328,7 @@ fn model_add_transport_kind(form: &BottomFormView, provider: ModelProvider) -> M
             }
             _ => ModelTransportKind::OpenAiCompatible,
         },
+        ModelProvider::Azure => ModelTransportKind::OpenResponses,
         _ => ModelTransportKind::OpenAiCompatible,
     }
 }
@@ -412,22 +438,40 @@ fn model_add_api_key_field(api_key: &str) -> BottomFormFieldView {
     }
 }
 
-fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
-    match idx {
-        0 => Some(ModelProvider::Openai),
-        1 => Some(ModelProvider::Google),
-        2 => Some(ModelProvider::Xai),
-        3 => Some(ModelProvider::Anthropic),
-        4 => Some(ModelProvider::Deepseek),
-        5 => Some(ModelProvider::VercelAiGateway),
-        6 => Some(ModelProvider::Openrouter),
-        7 => Some(ModelProvider::Moonshot),
-        8 => Some(ModelProvider::Alibaba),
-        9 => Some(ModelProvider::Minimax),
-        10 => Some(ModelProvider::Volcengine),
-        11 => Some(ModelProvider::Custom),
-        _ => None,
+fn model_add_deployment_name_field(value: &str) -> BottomFormFieldView {
+    let value = value.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.deployment_name.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.deployment_name.placeholder").into_owned(),
+            cursor,
+            mask: false,
+            disabled: false,
+        },
     }
+}
+
+fn model_add_azure_resource_name_field(value: &str) -> BottomFormFieldView {
+    let value = value.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.azure_resource_name.label").into_owned(),
+        help: t!("form.model.field.azure_resource_name.help").into_owned(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.azure_resource_name.placeholder").into_owned(),
+            cursor,
+            mask: false,
+            disabled: false,
+        },
+    }
+}
+
+fn model_add_provider_to_enum(idx: usize) -> Option<ModelProvider> {
+    model_add_provider_at_choice_index(idx)
 }
 
 fn sync_model_add_form_fields(form: &mut BottomFormView) {
@@ -459,20 +503,27 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         _ => 0,
     };
 
-    let name_raw = if old_len == 7 {
-        bottom_form_text_value(form, 3)
+    let name_raw = if old_len == 7 || old_len == 5 {
+        bottom_form_text_value(form, if old_len == 5 { 2 } else { 3 })
+    } else {
+        ""
+    };
+    let azure_resource_raw = if old_len == 5 {
+        bottom_form_text_value(form, 1)
     } else {
         ""
     };
     let base_raw = if old_len == 7 {
         bottom_form_text_value(form, 4)
-    } else if old_len == 5 {
+    } else if old_len == 5 && model_add_provider_id_at_choice_index(provider_idx) != Some("azure") {
         bottom_form_text_value(form, 3)
     } else {
         ""
     };
     let context_length_raw = if old_len == 7 {
         bottom_form_text_value(form, 5)
+    } else if old_len == 5 {
+        bottom_form_text_value(form, 3)
     } else {
         ""
     };
@@ -480,11 +531,19 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
     let bulk_custom = !model_add_is_preset_provider(provider_idx) && mode_custom == 1;
 
     let new_fields: Vec<BottomFormFieldView> =
-        if provider_idx == MODEL_ADD_VOLCENGINE_PROVIDER_INDEX {
+        if provider_idx == model_add_volcengine_provider_index() {
         vec![
             model_add_provider_field(provider_idx),
             model_add_mode_field_preset(),
             model_add_volcengine_transport_field(volcengine_transport_selected),
+            model_add_api_key_field(api_key_raw),
+        ]
+    } else if model_add_provider_id_at_choice_index(provider_idx) == Some("azure") {
+        vec![
+            model_add_provider_field(provider_idx),
+            model_add_azure_resource_name_field(azure_resource_raw),
+            model_add_deployment_name_field(name_raw),
+            model_add_context_length_field(context_length_raw),
             model_add_api_key_field(api_key_raw),
         ]
     } else if model_add_is_preset_provider(provider_idx) {
@@ -541,6 +600,7 @@ pub(crate) struct ParsedModelAddForm {
     pub api_base: String,
     pub api_key: String,
     pub context_length: Option<u64>,
+    pub azure_resource_name: Option<String>,
 }
 
 pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
@@ -1156,6 +1216,34 @@ pub(crate) fn parse_model_add_connection(
         return Err(t!("form.model.validation.api_key_empty").into_owned());
     }
 
+    if provider == ModelProvider::Azure {
+        if form.fields.len() != 5 {
+            return Err(t!("form.model.validation.invalid_form_kind").into_owned());
+        }
+        let azure_resource_name = bottom_form_text_value(form, 1).trim().to_string();
+        if azure_resource_name.is_empty() {
+            return Err(t!("form.model.validation.azure_resource_name_empty").into_owned());
+        }
+        let deployment_name = bottom_form_text_value(form, 2).trim().to_string();
+        if deployment_name.is_empty() {
+            return Err(t!("form.model.validation.name_empty").into_owned());
+        }
+        if deployment_name.chars().any(char::is_whitespace) {
+            return Err(t!("form.model.validation.name_whitespace").into_owned());
+        }
+        let context_length = parse_model_context_length_field(&bottom_form_text_value(form, 3))?;
+        return Ok(ParsedModelAddForm {
+            provider,
+            transport_kind: ModelTransportKind::OpenResponses,
+            bulk: false,
+            model_name: Some(deployment_name),
+            api_base: azure_api_base_from_resource_name(&azure_resource_name),
+            api_key,
+            context_length,
+            azure_resource_name: Some(azure_resource_name),
+        });
+    }
+
     let bulk = model_add_mode_bulk(form, provider_idx);
     let api_base = if let Some(preset) = model_add_preset_api_base_by_choice_index(provider_idx) {
         preset
@@ -1205,6 +1293,7 @@ pub(crate) fn parse_model_add_connection(
         api_base,
         api_key,
         context_length,
+        azure_resource_name: None,
     })
 }
 
@@ -1888,7 +1977,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 11;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 13;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -2094,6 +2183,38 @@ mod tests {
             "https://ark.cn-beijing.volces.com/api/v3"
         );
         assert_eq!(parsed.api_key, "sk-volc");
+    }
+
+    #[test]
+    fn model_add_form_parses_azure_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 11;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        assert_eq!(form.fields.len(), 5);
+        form.selected_field = 1;
+        insert_text(&mut form, "my-openai-resource");
+        form.selected_field = 2;
+        insert_text(&mut form, "my-gpt4o-deploy");
+        form.selected_field = 4;
+        insert_text(&mut form, "azure-key");
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::Azure);
+        assert_eq!(parsed.transport_kind, ModelTransportKind::OpenResponses);
+        assert!(!parsed.bulk);
+        assert_eq!(parsed.model_name.as_deref(), Some("my-gpt4o-deploy"));
+        assert_eq!(
+            parsed.api_base,
+            "https://my-openai-resource.openai.azure.com/openai/v1"
+        );
+        assert_eq!(parsed.api_key, "azure-key");
+        assert_eq!(
+            parsed.azure_resource_name.as_deref(),
+            Some("my-openai-resource")
+        );
     }
 
     fn sample_rule_entry(scope: RuleScope, exists: bool, enabled: bool) -> RuleEntry {

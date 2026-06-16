@@ -359,6 +359,7 @@ impl TuiShell {
                     Some(parsed.provider),
                     parsed.transport_kind,
                     parsed.context_length,
+                    parsed.azure_resource_name.as_deref(),
                 ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {
