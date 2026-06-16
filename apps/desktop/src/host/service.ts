@@ -1930,6 +1930,8 @@ class DesktopHostService {
       ? readBedrockProviderCredentialsFromKeyring(modelProviderKeyScope(activeProfile.provider))
       : undefined;
     const apiKey = await resolveApiKeyForConfigModel(state.config, state.config.activeModel);
+    const azureResourceNameReady = activeProfile?.provider !== 'azure'
+      || Boolean(activeProfile.azureResourceName?.trim());
     const runtimeAuthReady = activeTransportKind === 'bedrock'
       ? Boolean(activeProfile?.awsRegion?.trim())
         && hasBedrockRuntimeCredentials({
@@ -1938,7 +1940,7 @@ class DesktopHostService {
           secretAccessKey: bedrockCredentials?.secretAccessKey,
         })
       : activeProfile?.provider === 'azure'
-        ? Boolean(activeProfile.azureResourceName?.trim()) && Boolean(apiKey)
+        ? azureResourceNameReady && Boolean(apiKey)
         : Boolean(apiKey);
     this.activeApiKeyConfigured = runtimeAuthReady;
     const extensionSystemPrompts = this.extensionWarmup.systemPromptsCache;
@@ -1960,7 +1962,9 @@ class DesktopHostService {
       if (bundle.id === this.sessionRegistry.activeSessionId()) {
         this.runtime = undefined;
       }
-      this.lastRuntimeError = i18n.t('error.apiKeyNotConfigured');
+      this.lastRuntimeError = activeProfile?.provider === 'azure' && !azureResourceNameReady
+        ? i18n.t('error.azureResourceNameRequired')
+        : i18n.t('error.apiKeyNotConfigured');
       await this.refreshModelKeyPresence();
       return;
     }
