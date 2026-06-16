@@ -313,18 +313,6 @@ function WorkspaceToolsDockInner({
     }
   }, []);
 
-  const clearDragWidthInlineStyles = useCallback(() => {
-    if (shellRef.current) {
-      shellRef.current.style.width = "";
-    }
-    if (splitRef.current) {
-      splitRef.current.style.width = "";
-    }
-    if (asideRef.current) {
-      asideRef.current.style.width = "";
-    }
-  }, []);
-
   useEffect(() => {
     if (widthPx <= maxWidthPx) {
       return;
@@ -365,14 +353,13 @@ function WorkspaceToolsDockInner({
       onWidthPxChange(latestWidthPxRef.current);
       writeWorkspaceToolsWidthPx(latestWidthPxRef.current);
     }
-    clearDragWidthInlineStyles();
     dragRef.current = null;
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       // 已释放或无 capture
     }
-  }, [clearDragWidthInlineStyles, onWidthPxChange]);
+  }, [onWidthPxChange]);
 
   const handleAddTab = useCallback(
     (kind: WorkspaceToolTabKind) => {
