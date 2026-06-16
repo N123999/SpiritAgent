@@ -746,6 +746,10 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             typeof model.awsRegion === 'string' && model.awsRegion.trim().length > 0
               ? model.awsRegion.trim()
               : undefined;
+          const azureResourceName =
+            typeof model.azureResourceName === 'string' && model.azureResourceName.trim().length > 0
+              ? model.azureResourceName.trim()
+              : undefined;
           return {
             name: model.name.trim(),
             apiBase: model.apiBase?.trim() || DEFAULT_API_BASE,
@@ -760,6 +764,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
             ...(awsRegion ? { awsRegion } : {}),
+            ...(azureResourceName ? { azureResourceName } : {}),
             ...(contextLength !== undefined ? { contextLength } : {}),
           };
         })
@@ -855,6 +860,9 @@ function normalizeDesktopTransportKind(
   }
   if (provider === 'amazon-bedrock') {
     return 'bedrock';
+  }
+  if (provider === 'azure') {
+    return 'open-responses';
   }
 
   return undefined;

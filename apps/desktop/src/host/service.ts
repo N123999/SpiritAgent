@@ -1937,7 +1937,9 @@ class DesktopHostService {
           accessKeyId: bedrockCredentials?.accessKeyId,
           secretAccessKey: bedrockCredentials?.secretAccessKey,
         })
-      : Boolean(apiKey);
+      : activeProfile?.provider === 'azure'
+        ? Boolean(activeProfile.azureResourceName?.trim()) && Boolean(apiKey)
+        : Boolean(apiKey);
     this.activeApiKeyConfigured = runtimeAuthReady;
     const extensionSystemPrompts = this.extensionWarmup.systemPromptsCache;
     const imageGenerationProfile = state.config.imageGenerationModel

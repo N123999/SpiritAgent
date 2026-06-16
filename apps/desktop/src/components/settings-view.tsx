@@ -103,6 +103,7 @@ import {
   resolveProviderConnectApiBase,
 } from "@/host/provider-presets";
 import { bedrockApiBaseFromRegion } from "@spirit-agent/host-internal/bedrock-region";
+import { azureApiBaseFromResourceName } from "@spirit-agent/host-internal/azure-resource";
 import {
   bedrockMantleApiBaseFromRegion,
   isBedrockMantleOpenAiModel,
@@ -326,6 +327,8 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
       ];
     case "amazon-bedrock":
       return [connectTransportOptionCatalog.bedrockApi];
+    case "azure":
+      return [];
     default:
       return [];
   }
@@ -337,6 +340,9 @@ function defaultConnectTransportKind(provider: DesktopModelProvider): DesktopTra
   }
   if (provider === "amazon-bedrock") {
     return "bedrock";
+  }
+  if (provider === "azure") {
+    return "open-responses";
   }
 
   return connectTransportOptionsForProvider(provider)[0]?.value ?? "openai-compatible";
@@ -372,6 +378,9 @@ function resolveConnectTransportKindForProvider(
   }
   if (provider === "amazon-bedrock") {
     return "bedrock";
+  }
+  if (provider === "azure") {
+    return "open-responses";
   }
 
   if (provider === null || !providerSupportsConnectTransportPicker(provider)) {
@@ -2435,6 +2444,7 @@ function ModelsSettingsPanel({
   const [selectedProvider, setSelectedProvider] = useState<DesktopModelProvider | null>(null);
   const [connectApiKey, setConnectApiKey] = useState("");
   const [connectAwsRegion, setConnectAwsRegion] = useState("");
+  const [connectAzureResourceName, setConnectAzureResourceName] = useState("");
   const [connectAccessKeyId, setConnectAccessKeyId] = useState("");
   const [connectSecretAccessKey, setConnectSecretAccessKey] = useState("");
   const [connectName, setConnectName] = useState("");
@@ -2534,6 +2544,7 @@ function ModelsSettingsPanel({
   const resetConnectWizard = () => {
     setConnectApiKey("");
     setConnectAwsRegion("");
+    setConnectAzureResourceName("");
     setConnectAccessKeyId("");
     setConnectSecretAccessKey("");
     setConnectName("");
@@ -2561,6 +2572,7 @@ function ModelsSettingsPanel({
     setSelectedProvider(id);
     setConnectApiKey("");
     setConnectAwsRegion("");
+    setConnectAzureResourceName("");
     setConnectAccessKeyId("");
     setConnectSecretAccessKey("");
     setConnectName("");
@@ -2733,6 +2745,8 @@ function ModelsSettingsPanel({
       ? ""
       : selectedProvider === "amazon-bedrock"
         ? bedrockApiBaseFromRegion(connectAwsRegion)
+        : selectedProvider === "azure"
+          ? azureApiBaseFromResourceName(connectAzureResourceName)
         : selectedProvider === "custom"
         ? resolveCustomConnectApiBase(connectTransportKind, connectApiBase)
         : connectTransportKindForRequest !== undefined
@@ -2869,6 +2883,43 @@ function ModelsSettingsPanel({
       provider: "amazon-bedrock",
       transportKind: "bedrock",
       awsRegion,
+      ...(contextLength !== undefined ? { contextLength } : {}),
+    });
+    setConnectDialogOpen(false);
+    runAfterRadixOverlayClose(resetConnectWizard);
+  };
+
+  const saveAzureSingle = async () => {
+    if (selectedProvider !== "azure") {
+      return;
+    }
+    const azureResourceName = connectAzureResourceName.trim();
+    const name = connectName.trim();
+    if (!azureResourceName) {
+      throw new Error(t('settings.azureResourceNameRequired'));
+    }
+    if (!name) {
+      throw new Error(t('settings.azureDeploymentNameRequired'));
+    }
+    if (!connectApiKey.trim()) {
+      throw new Error(t('settings.apiKeyRequired'));
+    }
+    const contextLengthRaw = connectContextLength.trim();
+    let contextLength: number | undefined;
+    if (contextLengthRaw) {
+      const parsed = parseModelContextLength(Number(contextLengthRaw));
+      if (parsed === undefined) {
+        throw new Error(t('settings.contextLengthInvalid'));
+      }
+      contextLength = parsed;
+    }
+    await onAddModel({
+      name,
+      apiBase: azureApiBaseFromResourceName(azureResourceName),
+      apiKey: connectApiKey,
+      provider: "azure",
+      transportKind: "open-responses",
+      azureResourceName,
       ...(contextLength !== undefined ? { contextLength } : {}),
     });
     setConnectDialogOpen(false);
@@ -3694,6 +3745,48 @@ function ModelsSettingsPanel({
                 />
               </div>
             ) : null}
+            {selectedProvider === "azure" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-azure-resource-name">{t('settings.azureResourceName')}</Label>
+                <DesktopFormInput
+                  id="connect-azure-resource-name"
+                  value={connectAzureResourceName}
+                  onChange={(e) => setConnectAzureResourceName(e.target.value)}
+                  placeholder={t('settings.azureResourceNamePlaceholder')}
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
+            {selectedProvider === "azure" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-azure-deployment-name">{t('settings.azureDeploymentName')}</Label>
+                <DesktopFormInput
+                  id="connect-azure-deployment-name"
+                  value={connectName}
+                  onChange={(e) => setConnectName(e.target.value)}
+                  placeholder={t('settings.azureDeploymentNamePlaceholder')}
+                  autoComplete="off"
+                />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  {t('settings.azureSingleHint')}
+                </p>
+              </div>
+            ) : null}
+            {selectedProvider === "azure" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-context-length-azure">{t('settings.contextLength')}</Label>
+                <DesktopFormInput
+                  id="connect-context-length-azure"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={connectContextLength}
+                  onChange={(e) => setConnectContextLength(e.target.value)}
+                  placeholder={t('settings.optional')}
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
             {selectedProvider !== "amazon-bedrock" || bedrockConnectMode === "bearer" ? (
             <div className="grid gap-2">
               <Label htmlFor="connect-api-key">
@@ -3853,7 +3946,32 @@ function ModelsSettingsPanel({
                     {t('settings.addProvider')}
                   </Button>
                 ) : null}
-                {selectedProvider !== null && selectedProvider !== "custom" && selectedProvider !== "amazon-bedrock" ? (
+                {selectedProvider === "azure" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      modelsBusy
+                      || modelsPreviewBusy
+                      || !connectAzureResourceName.trim()
+                      || !connectName.trim()
+                      || !connectApiKey.trim()
+                    }
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await saveAzureSingle();
+                        } catch {
+                          /* runtimeError */
+                        }
+                      })();
+                    }}
+                  >
+                    {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                    {t('settings.addThisModel')}
+                  </Button>
+                ) : null}
+                {selectedProvider !== null && selectedProvider !== "custom" && selectedProvider !== "amazon-bedrock" && selectedProvider !== "azure" ? (
                   <Button
                     type="button"
                     size="sm"
