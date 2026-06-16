@@ -1153,56 +1153,72 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         onPaste?.(e);
         if (e.defaultPrevented) return;
         const raw = e.nativeEvent.clipboardData?.getData(ELEMENT_MIME);
-        if (!raw) return;
-        e.preventDefault();
-        try {
-          const chips: Record<string, BrowserElementAttachment> = JSON.parse(raw);
-          const html = e.nativeEvent.clipboardData?.getData("text/html") ?? "";
-          const parser = new DOMParser();
-          const parsed = parser.parseFromString(html, "text/html");
-          const div = divRef.current;
-          if (!div) return;
+        if (raw) {
+          e.preventDefault();
+          try {
+            const chips: Record<string, BrowserElementAttachment> = JSON.parse(raw);
+            const html = e.nativeEvent.clipboardData?.getData("text/html") ?? "";
+            const parser = new DOMParser();
+            const parsed = parser.parseFromString(html, "text/html");
+            const div = divRef.current;
+            if (!div) return;
 
-          const pasteSegs: RichSegment[] = [];
-          parsed.body.childNodes.forEach((node) => {
-            if (node.nodeType === Node.COMMENT_NODE) return;
-            if (node.nodeType === Node.TEXT_NODE) {
-              const text = node.textContent ?? "";
-              if (text) pasteSegs.push({ kind: "text", value: text });
-              return;
-            }
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const el = node as HTMLElement;
-              if (el.dataset?.elementChip === "true") {
-                const id = el.dataset.elementId ?? "";
-                if (chips[id]) {
-                  pasteSegs.push({ kind: "element", attachment: chips[id] });
-                }
-              } else if (el.tagName === "BR") {
-                mergeTextIntoPaste(pasteSegs, "\n");
-              } else if (el.tagName === "DIV" || el.tagName === "P") {
-                el.childNodes.forEach((child) => {
-                  if (child.nodeType === Node.TEXT_NODE && child.textContent) {
-                    pasteSegs.push({ kind: "text", value: child.textContent });
-                  }
-                });
+            const pasteSegs: RichSegment[] = [];
+            parsed.body.childNodes.forEach((node) => {
+              if (node.nodeType === Node.COMMENT_NODE) return;
+              if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent ?? "";
+                if (text) pasteSegs.push({ kind: "text", value: text });
+                return;
               }
-            }
-          });
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as HTMLElement;
+                if (el.dataset?.elementChip === "true") {
+                  const id = el.dataset.elementId ?? "";
+                  if (chips[id]) {
+                    pasteSegs.push({ kind: "element", attachment: chips[id] });
+                  }
+                } else if (el.tagName === "BR") {
+                  mergeTextIntoPaste(pasteSegs, "\n");
+                } else if (el.tagName === "DIV" || el.tagName === "P") {
+                  el.childNodes.forEach((child) => {
+                    if (child.nodeType === Node.TEXT_NODE && child.textContent) {
+                      pasteSegs.push({ kind: "text", value: child.textContent });
+                    }
+                  });
+                }
+              }
+            });
 
-          const caret =
-            selectionToCaret(div, segmentsRef.current) ?? { segmentIndex: 0, offset: 0 };
-          let next = segmentsRef.current;
-          let nextCaret = caret;
-          for (const seg of pasteSegs) {
-            const result = insertSegmentAtCaret(next, nextCaret, seg);
-            next = result.segments;
-            nextCaret = result.caret;
+            const caret =
+              selectionToCaret(div, segmentsRef.current) ?? { segmentIndex: 0, offset: 0 };
+            let next = segmentsRef.current;
+            let nextCaret = caret;
+            for (const seg of pasteSegs) {
+              const result = insertSegmentAtCaret(next, nextCaret, seg);
+              next = result.segments;
+              nextCaret = result.caret;
+            }
+            commitSegments(next, nextCaret);
+          } catch {
+            // fall through to plain-text paste below
           }
-          commitSegments(next, nextCaret);
-        } catch {
-          // fall through to default paste
+          return;
         }
+
+        const plain = e.nativeEvent.clipboardData?.getData("text/plain");
+        if (!plain) return;
+        e.preventDefault();
+        const div = divRef.current;
+        if (!div) return;
+        const caret =
+          selectionToCaret(div, segmentsRef.current) ?? caretAtEnd(segmentsRef.current);
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(
+          segmentsRef.current,
+          caret,
+          { kind: "text", value: plain },
+        );
+        commitSegments(next, nextCaret);
       },
       [commitSegments, onPaste],
     );

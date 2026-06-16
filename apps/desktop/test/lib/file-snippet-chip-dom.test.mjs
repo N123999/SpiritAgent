@@ -7,7 +7,7 @@ globalThis.Node = window.Node;
 globalThis.HTMLElement = window.HTMLElement;
 globalThis.document = window.document;
 
-const { domToSegments, segmentsToDom } = await import("../../src/lib/composer-segments.ts");
+const { domToSegments, segmentsToDom, segmentsToPlainText } = await import("../../src/lib/composer-segments.ts");
 
 const sampleAttachment = {
   id: "file-dom-1",
@@ -54,4 +54,15 @@ test("file snippet chip preserves multiline selectedText in dataset", () => {
     return;
   }
   assert.equal(parsed[0].attachment.selectedText, attachment.selectedText);
+});
+
+test("domToSegments extracts text from browser-pasted styled span", () => {
+  const { document } = parseHTML("<!doctype html><html><body></body></html>");
+  const container = document.createElement("div");
+  const span = document.createElement("span");
+  span.textContent = "Concurrent";
+  container.appendChild(span);
+
+  const parsed = domToSegments(container);
+  assert.equal(segmentsToPlainText(parsed), "Concurrent");
 });
