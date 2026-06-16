@@ -230,6 +230,7 @@ export interface RunSubagentRequest {
   context_summary?: string;
   files_to_inspect: string[];
   expected_output?: string;
+  worktree?: boolean;
 }
 
 export type ApplyPatchOperationType = 'create_file' | 'update_file' | 'delete_file';
@@ -260,6 +261,7 @@ export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
       context_summary?: string;
       files_to_inspect: string[];
       expected_output?: string;
+      worktree?: boolean;
     }
   | {
       name: 'generate_image';
@@ -708,6 +710,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           const successCriteria = optionalStringStrict(parsed, 'success_criteria');
           const contextSummary = optionalStringStrict(parsed, 'context_summary');
           const expectedOutput = optionalStringStrict(parsed, 'expected_output');
+          const worktree = optionalBoolean(parsed, 'worktree');
         return {
           name,
           task: requiredString(parsed, 'task'),
@@ -715,6 +718,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           ...(contextSummary ? { context_summary: contextSummary } : {}),
           files_to_inspect: optionalStringArrayStrict(parsed, 'files_to_inspect'),
           ...(expectedOutput ? { expected_output: expectedOutput } : {}),
+          ...(worktree === true ? { worktree: true } : {}),
         };
         }
       case 'generate_image':
