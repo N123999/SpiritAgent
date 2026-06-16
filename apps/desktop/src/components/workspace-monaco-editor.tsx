@@ -104,7 +104,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       minimap: { enabled: false },
       fontSize: 12,
       scrollBeyondLastLine: false,
-      wordWrap: "on",
+      wordWrap: "off",
       automaticLayout: true,
       tabSize: 2,
       renderLineHighlight: "line",
