@@ -22,14 +22,14 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   className,
   tone = "default",
   size = "default",
-  allowGitHubHtml = false,
+  allowHtml = false,
   readManagedImagePreviewDataUrl,
 }: {
   content: string;
   className?: string;
   tone?: MarkdownTone;
   size?: MarkdownSize;
-  allowGitHubHtml?: boolean;
+  allowHtml?: boolean;
   readManagedImagePreviewDataUrl?: ReadManagedImagePreviewDataUrl;
 }) {
   const onMarkdownLinkClick = useWorkspaceMarkdownLinkClick();
@@ -41,16 +41,16 @@ export const MarkdownMessage = memo(function MarkdownMessage({
         undefined,
         onMarkdownLinkClick,
         size,
-        allowGitHubHtml,
+        allowHtml,
       ),
-    [allowGitHubHtml, onMarkdownLinkClick, readManagedImagePreviewDataUrl, size, tone],
+    [allowHtml, onMarkdownLinkClick, readManagedImagePreviewDataUrl, size, tone],
   );
 
   return (
     <div className={markdownMessageRootClassName(tone, className, size)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={allowGitHubHtml ? githubHtmlRehypePlugins : undefined}
+        rehypePlugins={allowHtml ? githubHtmlRehypePlugins : undefined}
         components={markdownComponents}
         urlTransform={reactMarkdownUrlTransform}
       >
