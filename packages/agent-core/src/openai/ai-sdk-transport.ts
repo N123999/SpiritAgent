@@ -794,7 +794,6 @@ function createAiSdkGoogleVertexProvider(config: OpenAiTransportConfig) {
   if (expressOnly) {
     return createVertex({
       apiKey,
-      ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
       fetch: getLlmFetch(),
     } as Parameters<typeof createVertex>[0]);
   }
