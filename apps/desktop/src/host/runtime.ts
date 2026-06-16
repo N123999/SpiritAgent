@@ -1,23 +1,22 @@
 import {
   AgentRuntime,
   assistantToolCallMessageFromLlmState,
-  appendLlmUserLlmMessage,
-  normalizeStoredLlmMessage,
-  type HookRunner,
-  type HookSessionContext,
-  type SpiritLlmTransport,
   appendLlmToolResultMessage,
+  appendLlmUserLlmMessage,
   appendLlmUserMessage,
   buildApplyPatchFileToolsPromptSection,
   buildProviderWebSearchPromptSection,
   continueLlmToolAgentState,
   extractLastLlmAssistantText,
+  normalizeStoredLlmMessage,
   rebuildLlmToolAgentStateAfterCompaction,
   shouldUseApplyPatchFileTools,
   startLlmToolAgentState,
   truncateLlmHistoryForCompaction,
   truncateLlmToolAgentStateForContextRetry,
   type ChatArchive,
+  type HookRunner,
+  type HookSessionContext,
   type LlmActiveSkill,
   type LlmEnabledRule,
   type LlmEnabledSkillCatalogEntry,
@@ -26,6 +25,8 @@ import {
   type LlmToolAgentBasicInfo,
   type LlmToolAgentState,
   type LlmTransportConfig,
+  type SpiritLlmTransport,
+  type SubagentWorkspaceBootstrap,
 } from '@spirit-agent/core';
 import {
   persistPreCompactionHistoryArchive,
@@ -61,6 +62,7 @@ export function createDesktopRuntime(input: {
   getLoopEnabled?: () => boolean;
   hookRunner?: HookRunner;
   hookSessionContext?: HookSessionContext;
+  bootstrapSubagentWorkspace?: SubagentWorkspaceBootstrap;
 }): DesktopRuntime {
   const resolveLoopEnabled = () => input.getLoopEnabled?.() === true;
   const applyPatchFileToolsPromptSection = resolveApplyPatchFileToolsPromptSection(
@@ -152,13 +154,16 @@ export function createDesktopRuntime(input: {
       ),
     ...(input.hookRunner ? { hookRunner: input.hookRunner } : {}),
     ...(input.hookSessionContext ? { hookSessionContext: input.hookSessionContext } : {}),
+    ...(input.bootstrapSubagentWorkspace
+      ? { bootstrapSubagentWorkspace: input.bootstrapSubagentWorkspace }
+      : {}),
     persistPreCompactionHistory: async ({ archive, sessionId }) =>
       persistPreCompactionHistoryArchive(spiritAgentDataDir(), archive, {
         ...(sessionId !== undefined ? { sessionId } : {}),
       }),
     removePreCompactionHistoryArchive: async (archivePath) =>
       removePreCompactionHistoryArchive(archivePath),
-  }, input.history.map((message) => normalizeStoredLlmMessage(message)));
+  }, input.history.map((message) => normalizeStoredLlmMessage(message))) as DesktopRuntime;
 }
 
 export function buildDesktopRuntimeBasicInfo(

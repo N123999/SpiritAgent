@@ -1,0 +1,91 @@
+import path from 'node:path';
+
+import type { SubagentWorkspaceBootstrap } from '@spirit-agent/core';
+
+import type { DesktopToolExecutor } from './tool-executor.js';
+import {
+  createWorkspaceGitWorktree,
+  readPrimaryRepoRoot,
+  readWorkspaceGitSnapshot,
+} from './git.js';
+
+export type DesktopSubagentWorktreeBootstrapDeps = {
+  parentWorkspaceRoot: string;
+  generateWorktreeNames: (task: string, baseBranch: string, repoRoot: string) => Promise<{
+    worktreeName: string;
+    branchName: string;
+  }>;
+  buildScopedToolExecutor: (workspaceRoot: string) => Promise<DesktopToolExecutor>;
+  parentToolExecutor: DesktopToolExecutor;
+  resolveBaseBranch: () => string | undefined;
+  isGitRepository: boolean;
+};
+
+export function createDesktopSubagentWorkspaceBootstrap(
+  deps: DesktopSubagentWorktreeBootstrapDeps,
+): SubagentWorkspaceBootstrap {
+  return async (input) => {
+    if (!input.worktree) {
+      return { workspaceRoot: input.parentWorkspaceRoot || deps.parentWorkspaceRoot };
+    }
+
+    if (!deps.isGitRepository) {
+      return { error: 'worktree subagents require a git repository' };
+    }
+
+    try {
+      const parentRoot = input.parentWorkspaceRoot.trim() || deps.parentWorkspaceRoot;
+      const repoRoot = await readPrimaryRepoRoot(parentRoot);
+      const worktreeContext = await readWorkspaceGitSnapshot(parentRoot);
+      if (worktreeContext.isWorktreeSession) {
+        return { error: 'worktree subagents cannot start from inside an existing worktree session' };
+      }
+
+      const baseBranch = deps.resolveBaseBranch();
+      if (!baseBranch) {
+        return { error: 'cannot determine base branch for subagent worktree' };
+      }
+
+      const names = await deps.generateWorktreeNames(input.task, baseBranch, repoRoot);
+      const created = await createWorkspaceGitWorktree(repoRoot, names, baseBranch);
+      const scopedExecutor = await deps.buildScopedToolExecutor(created.worktreePath);
+
+      return {
+        workspaceRoot: created.worktreePath,
+        worktreePath: created.worktreePath,
+        branchName: created.branchName,
+        toolExecutor: scopedExecutor,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { error: message };
+    }
+  };
+}
+
+export function normalizeSubagentWorktreeSlug(sessionId: string): string {
+  const slug = sessionId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '');
+  return slug.length > 0 ? slug : 'subagent';
+}
+
+export function buildDeterministicSubagentWorktreeNames(sessionId: string): {
+  worktreeName: string;
+  branchName: string;
+} {
+  const slug = normalizeSubagentWorktreeSlug(sessionId).slice(0, 48);
+  return {
+    worktreeName: `spirit-subagent-${slug}`,
+    branchName: `spirit/subagent-${slug}`,
+  };
+}
+
+export function resolveSubagentBootstrapParentRoot(
+  parentWorkspaceRoot: string,
+  fallbackRoot: string,
+): string {
+  const trimmed = parentWorkspaceRoot.trim();
+  return trimmed.length > 0 ? path.resolve(trimmed) : path.resolve(fallbackRoot);
+}
