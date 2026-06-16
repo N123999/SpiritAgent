@@ -21,6 +21,8 @@ pub enum ModelProvider {
     Xai,
     #[serde(rename = "moonshot-ai")]
     Moonshot,
+    #[serde(rename = "z-ai")]
+    ZAi,
     Minimax,
     Alibaba,
     Anthropic,
@@ -44,6 +46,7 @@ impl ModelProvider {
             Self::Deepseek => "deepseek",
             Self::Xai => "xai",
             Self::Moonshot => "moonshot-ai",
+            Self::ZAi => "z-ai",
             Self::Minimax => "minimax",
             Self::Alibaba => "alibaba",
             Self::Anthropic => "anthropic",
@@ -68,6 +71,7 @@ impl FromStr for ModelProvider {
             "deepseek" => Ok(Self::Deepseek),
             "xai" => Ok(Self::Xai),
             "moonshot-ai" => Ok(Self::Moonshot),
+            "z-ai" => Ok(Self::ZAi),
             "minimax" => Ok(Self::Minimax),
             "alibaba" => Ok(Self::Alibaba),
             "anthropic" => Ok(Self::Anthropic),
@@ -168,6 +172,7 @@ impl ModelProfile {
             Some(ModelProvider::Deepseek) => false,
             Some(ModelProvider::Moonshot) => false,
             Some(ModelProvider::Xai)
+            | Some(ModelProvider::ZAi)
             | Some(ModelProvider::Minimax)
             | Some(ModelProvider::Alibaba)
             | Some(ModelProvider::Anthropic)

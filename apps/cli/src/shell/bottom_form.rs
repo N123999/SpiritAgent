@@ -240,6 +240,7 @@ fn model_add_provider_label(id: &str) -> String {
         "vercel-ai-gateway" => t!("form.model.provider.vercel_ai_gateway"),
         "openrouter" => t!("form.model.provider.openrouter"),
         "moonshot-ai" => t!("form.model.provider.moonshot-ai"),
+        "z-ai" => t!("form.model.provider.z-ai"),
         "alibaba" => t!("form.model.provider.alibaba"),
         "minimax" => t!("form.model.provider.minimax"),
         "volcengine" => t!("form.model.provider.volcengine"),
