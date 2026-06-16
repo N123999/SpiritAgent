@@ -33,7 +33,7 @@ use crate::{
         AppConfig, ModelProvider, load_provider_access_key_id_from_keyring,
         load_provider_secret_access_key_from_keyring, normalize_reasoning_effort_value,
     },
-    model_provider_presets::resolve_azure_resource_name,
+    model_provider_presets::{azure_api_base_from_resource_name, resolve_azure_resource_name},
     plan::{self, PlanMetadata},
     ports::{
         ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
@@ -1934,7 +1934,9 @@ impl TsBridgeRuntime {
                     .ok_or_else(|| {
                         anyhow!("Azure OpenAI 模型缺少 azureResourceName 配置，请使用 Desktop 连接向导导入或 spirit model add --azure-resource-name")
                     })?;
+                    let azure_base = azure_api_base_from_resource_name(&resource_name);
                     if let Some(obj) = transport.as_object_mut() {
+                        obj.insert("baseUrl".to_string(), json!(azure_base));
                         obj.insert("azureResourceName".to_string(), json!(resource_name));
                         obj.insert("llmVendor".to_string(), json!("azure"));
                     }
@@ -3922,6 +3924,49 @@ mod tests {
         assert_eq!(
             transport.get("model").and_then(Value::as_str),
             Some("my-gpt4o-deploy")
+        );
+
+        unsafe {
+            match previous_api_key {
+                Some(value) => env::set_var(super::ENV_API_KEY, value),
+                None => env::remove_var(super::ENV_API_KEY),
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_transport_config_json_recomputes_azure_base_url_from_resource_name() {
+        let Some(runtime) = make_test_runtime() else {
+            return;
+        };
+
+        let previous_api_key = env::var(super::ENV_API_KEY).ok();
+        // SAFETY: 单测串行写入进程级环境变量，结束后恢复。
+        unsafe {
+            env::set_var(super::ENV_API_KEY, "test-azure-key");
+        }
+
+        let mut next = runtime.config().clone();
+        next.models.push(ModelProfile {
+            name: "my-gpt4o-deploy".to_string(),
+            api_base: "https://stale-host.example/openai/v1".to_string(),
+            provider: Some(ModelProvider::Azure),
+            reasoning_effort: None,
+            context_length: None,
+            extra: serde_json::Map::from_iter([
+                ("transportKind".to_string(), json!("open-responses")),
+                ("azureResourceName".to_string(), json!("my-openai-resource")),
+            ]),
+        });
+        next.active_model = "my-gpt4o-deploy".to_string();
+
+        let transport = runtime
+            .resolve_transport_config_json_for(&next)
+            .expect("resolve transport config");
+
+        assert_eq!(
+            transport.get("baseUrl").and_then(Value::as_str),
+            Some("https://my-openai-resource.openai.azure.com/openai/v1")
         );
 
         unsafe {
