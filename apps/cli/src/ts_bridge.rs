@@ -33,6 +33,7 @@ use crate::{
         AppConfig, ModelProvider, load_provider_access_key_id_from_keyring,
         load_provider_secret_access_key_from_keyring, normalize_reasoning_effort_value,
     },
+    model_provider_presets::resolve_azure_resource_name,
     plan::{self, PlanMetadata},
     ports::{
         ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
@@ -1926,7 +1927,11 @@ impl TsBridgeRuntime {
                     }
                 }
                 if active.provider == Some(ModelProvider::Azure) {
-                    let resource_name = active.azure_resource_name().ok_or_else(|| {
+                    let resource_name = resolve_azure_resource_name(
+                        active.azure_resource_name(),
+                        &api_base,
+                    )
+                    .ok_or_else(|| {
                         anyhow!("Azure OpenAI 模型缺少 azureResourceName 配置，请使用 Desktop 连接向导导入或 spirit model add --azure-resource-name")
                     })?;
                     if let Some(obj) = transport.as_object_mut() {

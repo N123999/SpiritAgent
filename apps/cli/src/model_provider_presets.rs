@@ -74,6 +74,34 @@ pub(crate) fn azure_api_base_from_resource_name(resource_name: &str) -> String {
     format!("https://{trimmed}.openai.azure.com/openai/v1")
 }
 
+pub(crate) fn extract_azure_resource_name_from_api_base(base_url: &str) -> Option<String> {
+    let normalized = base_url.trim().trim_end_matches('/');
+    let lower = normalized.to_ascii_lowercase();
+    if !lower.starts_with("https://") {
+        return None;
+    }
+    let after_scheme = &normalized[8..];
+    let host_end = after_scheme.find('/').unwrap_or(after_scheme.len());
+    let host = &after_scheme[..host_end];
+    const SUFFIX: &str = ".openai.azure.com";
+    if !host.to_ascii_lowercase().ends_with(SUFFIX) {
+        return None;
+    }
+    let resource = host[..host.len() - SUFFIX.len()].trim();
+    if resource.is_empty() {
+        None
+    } else {
+        Some(resource.to_string())
+    }
+}
+
+pub(crate) fn resolve_azure_resource_name(
+    explicit: Option<String>,
+    api_base: &str,
+) -> Option<String> {
+    explicit.or_else(|| extract_azure_resource_name_from_api_base(api_base))
+}
+
 pub(crate) fn model_add_picker_order_ids() -> &'static [String] {
     &presets().picker_order
 }
@@ -184,6 +212,32 @@ mod tests {
         assert_eq!(
             model_add_default_custom_api_base(ModelTransportKind::Anthropic),
             "https://api.anthropic.com/v1"
+        );
+    }
+
+    #[test]
+    fn extract_azure_resource_name_from_api_base_parses_host() {
+        assert_eq!(
+            super::extract_azure_resource_name_from_api_base(
+                "https://my-openai-resource.openai.azure.com/openai/v1"
+            )
+            .as_deref(),
+            Some("my-openai-resource")
+        );
+        assert!(
+            super::extract_azure_resource_name_from_api_base("https://api.openai.com/v1").is_none()
+        );
+    }
+
+    #[test]
+    fn resolve_azure_resource_name_prefers_explicit_value() {
+        assert_eq!(
+            super::resolve_azure_resource_name(
+                Some("explicit".to_string()),
+                "https://other.openai.azure.com/openai/v1"
+            )
+            .as_deref(),
+            Some("explicit")
         );
     }
 }
