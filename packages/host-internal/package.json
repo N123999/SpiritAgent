@@ -31,6 +31,10 @@
       "types": "./dist/bedrock-region.d.ts",
       "default": "./dist/bedrock-region.js"
     },
+    "./azure-resource": {
+      "types": "./dist/azure-resource.d.ts",
+      "default": "./dist/azure-resource.js"
+    },
     "./bedrock-mantle": {
       "types": "./dist/bedrock-mantle.d.ts",
       "default": "./dist/bedrock-mantle.js"

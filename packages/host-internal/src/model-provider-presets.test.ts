@@ -17,6 +17,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('xai'), 'xai');
   assert.equal(parseModelProviderId('custom'), 'custom');
   assert.equal(parseModelProviderId('moonshot-ai'), 'moonshot-ai');
+  assert.equal(parseModelProviderId('azure'), 'azure');
   assert.equal(parseModelProviderId('kimi'), undefined);
   assert.equal(parseModelProviderId('unknown'), undefined);
   assert.equal(parseModelProviderId(''), undefined);
@@ -78,6 +79,10 @@ test('resolveProviderConnectApiBase uses transport-specific preset bases', () =>
   assert.equal(
     resolveProviderConnectApiBase('google', 'openai-compatible'),
     'https://generativelanguage.googleapis.com/v1beta',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('azure', 'open-responses'),
+    'https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1',
   );
 });
 

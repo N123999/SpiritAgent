@@ -13,6 +13,7 @@ export type ModelProviderId =
   | 'openai'
   | 'google'
   | 'volcengine'
+  | 'azure'
   | 'amazon-bedrock'
   | 'custom';
 export type PresetModelProviderId = Exclude<ModelProviderId, 'custom'>;
@@ -43,6 +44,7 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'alibaba',
   'minimax',
   'volcengine',
+  'azure',
   'amazon-bedrock',
   'custom',
 ];
@@ -62,7 +64,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","google","xai","anthropic","deepseek","vercel-ai-gateway","openrouter","moonshot-ai","alibaba","minimax","volcengine","amazon-bedrock","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","google","xai","anthropic","deepseek","vercel-ai-gateway","openrouter","moonshot-ai","alibaba","minimax","volcengine","azure","amazon-bedrock","custom"]',
     );
   }
 }
@@ -94,6 +96,7 @@ interface ParsedModelProviderPresets {
     | 'openai'
     | 'google'
     | 'volcengine'
+    | 'azure'
     | 'amazon-bedrock',
     string
   >;
@@ -197,6 +200,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     openai: requireStringField(presetRaw, 'openai'),
     google: requireStringField(presetRaw, 'google'),
     volcengine: requireStringField(presetRaw, 'volcengine'),
+    azure: requireStringField(presetRaw, 'azure'),
     'amazon-bedrock': requireStringField(presetRaw, 'amazon-bedrock'),
   };
 
@@ -242,6 +246,7 @@ const openrouterBase = raw.presetApiBaseByProvider.openrouter;
 const openaiBase = raw.presetApiBaseByProvider.openai;
 const googleBase = raw.presetApiBaseByProvider.google;
 const volcengineBase = raw.presetApiBaseByProvider.volcengine;
+const azureBase = raw.presetApiBaseByProvider.azure;
 const amazonBedrockBase = raw.presetApiBaseByProvider['amazon-bedrock'];
 
 export const PROVIDER_PRESET_API_BASE = {
@@ -256,6 +261,7 @@ export const PROVIDER_PRESET_API_BASE = {
   openai: openaiBase,
   google: googleBase,
   volcengine: volcengineBase,
+  azure: azureBase,
   'amazon-bedrock': amazonBedrockBase,
 } as const satisfies Record<Exclude<ModelProviderId, 'custom'>, string>;
 
@@ -331,6 +337,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE.google;
     case 'volcengine':
       return PROVIDER_PRESET_API_BASE.volcengine;
+    case 'azure':
+      return PROVIDER_PRESET_API_BASE.azure;
     case 'amazon-bedrock':
       return PROVIDER_PRESET_API_BASE['amazon-bedrock'];
     case 'custom': {
