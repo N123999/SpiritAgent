@@ -533,7 +533,7 @@ export type DesktopSkillRootKind = 'workspaceSpirit' | 'workspaceAgents' | 'user
 export interface CreateSkillRequest {
   name: string;
   rootKind: DesktopSkillRootKind;
-  /** 写入 frontmatter，必填。 */
+  /** 写入 SKILL.md 正文，必填。 */
   description: string;
 }
 

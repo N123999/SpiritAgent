@@ -848,7 +848,7 @@ function SkillsSettingsPanel({
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeleteSkillRequest | null>(null);
   const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
+  const [newContent, setNewContent] = useState("");
   const [createRootKind, setCreateRootKind] = useState<DesktopSkillRootKind>("user");
 
   const workspaceBindingDisabled = snapshot?.workspaceBinding === "none";
@@ -866,7 +866,7 @@ function SkillsSettingsPanel({
 
   const resetForm = () => {
     setNewName("");
-    setNewDescription("");
+    setNewContent("");
     setCreateRootKind("user");
   };
 
@@ -1059,13 +1059,14 @@ function SkillsSettingsPanel({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="new-skill-desc">{t('settings.description')}</Label>
-              <DesktopFormInput
-                id="new-skill-desc"
-                value={newDescription}
-                onChange={(e) => setNewDescription(e.target.value)}
-                placeholder={t('settings.skillDescPlaceholder')}
+              <Label htmlFor="new-skill-content">{t('settings.content')}</Label>
+              <DesktopFormTextarea
+                id="new-skill-content"
+                value={newContent}
+                onChange={(e) => setNewContent(e.target.value)}
+                placeholder={t('settings.skillContentPlaceholder')}
                 autoComplete="off"
+                className="min-h-24 resize-y"
                 required
               />
             </div>
@@ -1084,7 +1085,7 @@ function SkillsSettingsPanel({
               type="button"
               size="sm"
               disabled={
-                skillsBusy || !newName.trim() || !newDescription.trim()
+                skillsBusy || !newName.trim() || !newContent.trim()
               }
               onClick={() => {
                 void (async () => {
@@ -1092,7 +1093,7 @@ function SkillsSettingsPanel({
                     const payload: CreateSkillRequest = {
                       name: newName,
                       rootKind: createRootKind,
-                      description: newDescription.trim(),
+                      description: newContent.trim(),
                     };
                     await onCreateSkill(payload);
                     setAddDialogOpen(false);

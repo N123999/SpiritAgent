@@ -87,6 +87,12 @@ export function assertPathUnderSkillRoot(
   }
 }
 
+function deriveSkillFrontmatterDescription(content: string, skillName: string): string {
+  const firstLine =
+    content.split(/\r?\n/u).find((line) => line.trim().length > 0)?.trim() ?? '';
+  return firstLine.replace(/^#+\s*/u, '').trim() || skillName;
+}
+
 export async function createSkillFile(
   workspaceRoot: string,
   request: CreateSkillRequest,
@@ -99,8 +105,8 @@ export async function createSkillFile(
     throw new Error(nameIssue);
   }
 
-  const description = (request.description ?? '').trim();
-  if (!description) {
+  const content = (request.description ?? '').trim();
+  if (!content) {
     throw new Error(i18n.t('error.descriptionRequired'));
   }
   const skillDir = resolveSkillDir(instructionPaths, name, rootKind);
@@ -108,13 +114,15 @@ export async function createSkillFile(
     throw new Error(i18n.t('error.skillAlreadyExists', { name }));
   }
 
-  const frontmatterDescription = formatYamlScalarForSkillFrontmatter(description);
+  const frontmatterDescription = formatYamlScalarForSkillFrontmatter(
+    deriveSkillFrontmatterDescription(content, name),
+  );
   const fileContent = `---
 name: ${name}
 description: ${frontmatterDescription}
 ---
 
-在此编写技能正文：步骤、示例、边界条件与相对路径引用。
+${content}
 `;
 
   await mkdir(skillDir, { recursive: true });
