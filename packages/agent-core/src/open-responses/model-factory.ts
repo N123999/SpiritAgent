@@ -1,4 +1,5 @@
 import { createGateway } from '@ai-sdk/gateway';
+import { createAzure } from '@ai-sdk/azure';
 import { createOpenAI, type OpenAIProvider } from '@ai-sdk/openai';
 import { createOpenResponses } from '@ai-sdk/open-responses';
 import {
@@ -33,6 +34,7 @@ import {
   resolveOpenResponsesLanguageModelId,
   resolveOpenResponsesReasoningSummary,
   resolveOpenResponsesSdkProvider,
+  resolveAzureResourceName,
   type OpenResponsesTransportConfig,
 } from './responses-compat.js';
 
@@ -99,6 +101,10 @@ export function createResponsesLanguageModel(config: OpenResponsesTransportConfi
     return createXaiResponsesProvider(config).responses(languageModelId);
   }
 
+  if (provider === 'azure') {
+    return createAzureResponsesProvider(config)(languageModelId);
+  }
+
   // Gateway Perplexity 须走 @ai-sdk/gateway v3 language-model；@ai-sdk/open-responses 会丢弃 provider tools。
   if (shouldUseGatewayWebSearch(config)) {
     const gatewayBaseUrl = resolveGatewaySdkBaseUrl(config);
@@ -123,6 +129,14 @@ function createXaiResponsesProvider(config: OpenResponsesTransportConfig) {
     apiKey: config.apiKey,
     baseURL: config.baseUrl ?? DEFAULT_XAI_BASE_URL,
     fetch: getLlmFetch(),
+  });
+}
+
+function createAzureResponsesProvider(config: OpenResponsesTransportConfig) {
+  return createAzure({
+    apiKey: config.apiKey,
+    resourceName: resolveAzureResourceName(config),
+    fetch: responsesFetchForConfig(config),
   });
 }
 
@@ -200,6 +214,27 @@ export function buildResponsesProviderOptions(
     } satisfies XaiLanguageModelResponsesOptions;
 
     return Object.keys(xaiOptions).length > 0 ? { xai: xaiOptions as JsonObject } : {};
+  }
+
+  if (provider === 'azure') {
+    const azureOptions: JsonObject = {
+      store: config.store ?? false,
+      ...(config.truncation === 'auto' ? { truncation: 'auto' } : { truncation: 'disabled' }),
+    };
+
+    if (reasoningEffort !== undefined) {
+      azureOptions.reasoningEffort = reasoningEffort;
+    }
+
+    if (reasoningSummary !== undefined) {
+      azureOptions.reasoningSummary = reasoningSummary;
+    }
+
+    if (previousResponseId && shouldAttachPreviousResponseId(config)) {
+      azureOptions.previousResponseId = previousResponseId;
+    }
+
+    return { azure: azureOptions };
   }
 
   if (provider !== 'openai') {

@@ -14,6 +14,7 @@ export type ModelReasoningProvider =
   | 'openai'
   | 'google'
   | 'volcengine'
+  | 'azure'
   | 'amazon-bedrock'
   | 'custom';
 

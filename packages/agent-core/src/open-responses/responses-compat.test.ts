@@ -89,6 +89,24 @@ test('resolveOpenResponsesSdkProvider openrouter stays open-responses-compatible
   );
 });
 
+test('resolveOpenResponsesSdkProvider azure uses official azure sdk', () => {
+  assert.equal(
+    resolveOpenResponsesSdkProvider({
+      llmVendor: 'azure',
+      model: 'my-gpt4o-deploy',
+    }),
+    'azure',
+  );
+  assert.equal(
+    resolveOpenResponsesSdkProvider({
+      llmVendor: 'azure',
+      model: 'my-gpt4o-deploy',
+      responsesProvider: 'azure',
+    }),
+    'azure',
+  );
+});
+
 test('isGatewayOpenAiRoutedModel', () => {
   assert.equal(isGatewayOpenAiRoutedModel('openai/gpt-5.1'), true);
   assert.equal(isGatewayOpenAiRoutedModel('gpt-5.1'), false);
