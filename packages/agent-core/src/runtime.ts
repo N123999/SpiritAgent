@@ -48,6 +48,7 @@ import {
   toolNameFromRequest,
 } from './runtime/helpers.js';
 import { formatUserMessageContentForLlm } from './runtime/user-turn-timestamp.js';
+import { prependSubagentWorktreeMeta } from './runtime/subagent-worktree-meta.js';
 import { prepareSubmittedUserTurn as prepareSubmittedUserTurnInternal } from './runtime/context.js';
 import {
   appendHookAdditionalContexts,
@@ -169,6 +170,9 @@ export type {
   RuntimeStatePreparationResult,
   RuntimeToolExecution,
   RuntimeTurnResult,
+  SubagentWorkspaceBootstrap,
+  SubagentWorkspaceBootstrapInput,
+  SubagentWorkspaceBootstrapResult,
 } from './runtime/types.js';
 
 interface PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
@@ -2775,9 +2779,41 @@ export class AgentRuntime<
       },
       llmHistory: [],
     };
+
+    let childToolExecutor: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>['toolExecutor']
+      | undefined;
+    if (request.worktree === true) {
+      const bootstrap = this.options.bootstrapSubagentWorkspace;
+      const parentWorkspaceRoot = resolveHookSessionContext(this.options).workspaceRoot?.trim() ?? '';
+      if (!bootstrap) {
+        return {
+          kind: 'completed',
+          text: '[subagent failed] worktree subagents are not supported on this host.',
+          failed: true,
+        };
+      }
+      const boot = await bootstrap({
+        subagentSessionId: sessionId,
+        task: request.task,
+        worktree: true,
+        parentWorkspaceRoot,
+      });
+      if ('error' in boot) {
+        return { kind: 'completed', text: `[subagent failed] ${boot.error}`, failed: true };
+      }
+      if (boot.worktreePath) {
+        record.summary.worktreePath = boot.worktreePath;
+      }
+      if (boot.branchName) {
+        record.summary.worktreeBranch = boot.branchName;
+      }
+      childToolExecutor = boot.toolExecutor ?? this.options.toolExecutor;
+    }
+
     const childRuntime = this.createChildRuntime(
       record.summary.sessionId,
       record.summary.title,
+      childToolExecutor,
     );
     this.childSessionsStore.push(record);
 
@@ -3015,11 +3051,15 @@ export class AgentRuntime<
           ),
           failed: true,
         };
-    const parentToolResultText = buildParentSubagentToolResultText(
-      pending.childRecord.summary.title,
-      output.text,
-      output.failed,
-      pending.childRecord.summary.sessionId,
+    const parentToolResultText = prependSubagentWorktreeMeta(
+      buildParentSubagentToolResultText(
+        pending.childRecord.summary.title,
+        output.text,
+        output.failed,
+        pending.childRecord.summary.sessionId,
+      ),
+      pending.childRecord.summary.worktreePath,
+      pending.childRecord.summary.worktreeBranch,
     );
 
     pending.childRecord.summary.status = output.failed ? 'failed' : 'completed';
@@ -3102,12 +3142,14 @@ export class AgentRuntime<
   private createChildRuntime(
     subagentSessionId: string,
     subagentTitle: string,
+    childToolExecutor?: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>['toolExecutor'],
   ): AgentRuntime<Config, State, ToolRequest, TrustTarget> {
+    const baseExecutor = childToolExecutor ?? this.options.toolExecutor;
     return new AgentRuntime<Config, State, ToolRequest, TrustTarget>(
       {
         ...this.options,
         toolExecutor: createSubagentToolExecutor(
-          this.options.toolExecutor,
+          baseExecutor,
           subagentSessionId,
           subagentTitle,
         ),
@@ -3353,6 +3395,7 @@ function extractRunSubagentRequest<ToolRequest>(request: ToolRequest): RunSubage
   const filesToInspect = readOptionalStringArrayField(value, 'files_to_inspect', 'filesToInspect');
   const expectedOutput = readOptionalStringField(value, 'expected_output', 'expectedOutput');
   const subagentType = readOptionalStringField(value, 'subagent_type', 'subagentType');
+  const worktree = value.worktree === true ? true : undefined;
 
   return {
     task,
@@ -3361,6 +3404,7 @@ function extractRunSubagentRequest<ToolRequest>(request: ToolRequest): RunSubage
     ...(contextSummary !== undefined ? { contextSummary } : {}),
     ...(filesToInspect !== undefined ? { filesToInspect } : {}),
     ...(expectedOutput !== undefined ? { expectedOutput } : {}),
+    ...(worktree !== undefined ? { worktree } : {}),
   };
 }
 

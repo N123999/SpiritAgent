@@ -1,5 +1,6 @@
 import { stdin, stdout } from 'node:process';
 import { release as osRelease } from 'node:os';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import {
@@ -60,6 +61,7 @@ import type {
   JsonValue,
   LlmMessage,
   McpStatusSnapshot,
+  ToolExecutor,
 } from './ports.js';
 import {
   AgentRuntime,
@@ -69,6 +71,8 @@ import {
   type RuntimeApprovalDecision,
   type RuntimeEvent,
   type RuntimePendingApproval,
+  type SubagentWorkspaceBootstrapInput,
+  type SubagentWorkspaceBootstrapResult,
 } from './runtime.js';
 import {
   runSessionEndHook,
@@ -890,6 +894,80 @@ async function ensureCliHostInternal(workspaceRoot: string): Promise<CliHostInte
   return cliHostInternal;
 }
 
+async function bootstrapCliSubagentWorkspace(
+  input: SubagentWorkspaceBootstrapInput,
+): Promise<SubagentWorkspaceBootstrapResult> {
+  if (!input.worktree) {
+    return { workspaceRoot: input.parentWorkspaceRoot || currentWorkspaceRoot() };
+  }
+
+  const host = cliHostInternal;
+  const modulePath = process.env[ENV_HOST_INTERNAL_MODULE_PATH]?.trim();
+  if (!host || !modulePath) {
+    return { error: 'CLI host-internal is not available for worktree subagents' };
+  }
+
+  try {
+    const gitModulePath = path.join(path.dirname(modulePath), 'git-workspace.js');
+    const git = await import(pathToFileURL(gitModulePath).href) as {
+      resolvePrimaryRepoRoot: (root: string) => Promise<string>;
+      resolveDefaultBranch: (root: string) => Promise<string | undefined>;
+      buildWorktreeRootPath: (repoRoot: string, worktreeName: string) => string;
+      addGitWorktree: (
+        repoRoot: string,
+        input: { worktreePath: string; branchName: string; baseBranch: string },
+      ) => Promise<void>;
+    };
+
+    const parentRoot = input.parentWorkspaceRoot.trim() || currentWorkspaceRoot();
+    const repoRoot = await git.resolvePrimaryRepoRoot(parentRoot);
+    const baseBranch = await git.resolveDefaultBranch(repoRoot);
+    if (!baseBranch) {
+      return { error: 'cannot determine base branch for subagent worktree' };
+    }
+
+    const slug = input.subagentSessionId
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, '-')
+      .replace(/^-+|-+$/gu, '')
+      .slice(0, 48) || 'subagent';
+    const worktreeName = `spirit-subagent-${slug}`;
+    const branchName = `spirit/subagent-${slug}`;
+    const worktreePath = git.buildWorktreeRootPath(repoRoot, worktreeName);
+    await git.addGitWorktree(repoRoot, {
+      worktreePath,
+      branchName,
+      baseBranch,
+    });
+
+    const scopedProxy = new HostToolExecutorProxy(peer);
+    const serviceOptions = buildCliHostToolServiceOptions(host.module, host.extensionManager);
+    const service = new host.module.NodeHostToolService(
+      { workspaceRoot: worktreePath, spiritDataDir: host.spiritDataDir },
+      Object.keys(serviceOptions).length > 0 ? serviceOptions : undefined,
+    );
+    scopedProxy.setLocalHostService(service);
+    scopedProxy.setAgentModeToolExposure(
+      readSpiritAgentModeFromTransportConfig(
+        transportConfig as { spiritAgentMode?: SpiritAgentMode; planMode?: boolean },
+      ),
+    );
+    scopedProxy.setLoopToolExposure(bridgeLoopEnabled);
+    scopedProxy.setTodoToolDefinitions(currentTodoSessionKey ? buildTodoHostToolDefinitions() : []);
+    applyCliLspHostBindings(host.module);
+    await scopedProxy.setLspWorkspaceRoot(worktreePath);
+
+    return {
+      workspaceRoot: worktreePath,
+      worktreePath,
+      branchName,
+      toolExecutor: scopedProxy,
+    } as SubagentWorkspaceBootstrapResult;
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 function transportUsesApplyPatchFileTools(
   config: LlmTransportConfig | undefined,
   agentMode?: SpiritAgentMode,
@@ -1681,6 +1759,7 @@ async function createRuntime(
     },
     ...(hookRunner ? { hookRunner } : {}),
     hookSessionContext: buildCliHookSessionContext(config),
+    bootstrapSubagentWorkspace: bootstrapCliSubagentWorkspace,
     persistPreCompactionHistory: async ({ archive, sessionId }) => {
       const hostInternal = await ensureCliHostInternal(workspaceRoot);
       const persist = hostInternal?.module.persistPreCompactionHistoryArchive;
@@ -1709,7 +1788,7 @@ async function createRuntime(
         // Best-effort orphan cleanup.
       }
     },
-  }, history);
+  }, history) as HostRuntime;
 }
 
 function buildSnapshot(target: HostRuntime): BridgeRuntimeSnapshot {
