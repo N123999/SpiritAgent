@@ -16,6 +16,7 @@ import {
   bedrockMantleApiBaseFromRegion,
   isBedrockMantleOpenAiModel,
   azureApiBaseFromResourceName,
+  vertexApiBaseFromProjectAndLocation,
   type ProviderListedModelEntry,
 } from '@spirit-agent/host-internal';
 
@@ -29,6 +30,7 @@ import type {
   PreviewModelCatalogEntry,
 } from '../types.js';
 import type { BedrockProviderCredentials } from './provider-api-key.js';
+import type { GoogleVertexProviderCredentials } from './provider-api-key.js';
 import {
   isModelCatalogCacheFresh,
   readModelCatalogCache,
@@ -52,7 +54,10 @@ import {
 export { resolveComposerDirectMediaTool, type DirectMediaTool };
 
 export function resolveProfileApiBase(
-  profile: Pick<ModelProfileSnapshot, 'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion' | 'azureResourceName'>,
+  profile: Pick<
+    ModelProfileSnapshot,
+    'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion' | 'azureResourceName' | 'vertexProject' | 'vertexLocation'
+  >,
 ): string {
   if (profile.provider === 'amazon-bedrock') {
     const region = profile.awsRegion?.trim();
@@ -62,6 +67,15 @@ export function resolveProfileApiBase(
       }
       return bedrockApiBaseFromRegion(region);
     }
+  }
+
+  if (profile.provider === 'google-vertex-ai') {
+    const project = profile.vertexProject?.trim();
+    const location = profile.vertexLocation?.trim();
+    if (project && location) {
+      return vertexApiBaseFromProjectAndLocation(project, location);
+    }
+    return profile.apiBase?.trim() || '';
   }
 
   if (profile.provider === 'azure') {
@@ -90,7 +104,7 @@ export function resolveDesktopTransportKind(
   const requested = profile?.transportKind;
   if (requested) {
     if (
-      profile?.provider === 'google'
+      (profile?.provider === 'google' || profile?.provider === 'google-vertex-ai')
       && (requested === 'open-responses' || requested === 'anthropic')
     ) {
       return 'openai-compatible';
@@ -154,6 +168,7 @@ export function buildPrimaryTransportConfig(input: {
   workspaceRoot: string;
   agentMode?: DesktopAgentMode;
   bedrockCredentials?: BedrockProviderCredentials;
+  googleVertexCredentials?: GoogleVertexProviderCredentials;
   profile?: Pick<
     ModelProfileSnapshot,
     | 'provider'
@@ -162,7 +177,8 @@ export function buildPrimaryTransportConfig(input: {
     | 'reasoningEffort'
     | 'supportedReasoningEfforts'
     | 'awsRegion'
-    | 'azureResourceName'
+    | 'vertexProject'
+    | 'vertexLocation'
   >;
 }): LlmTransportConfig {
   const spiritAgentMode = input.agentMode ?? 'agent';
@@ -249,16 +265,10 @@ export function buildPrimaryTransportConfig(input: {
         ? 'openai'
         : input.profile?.provider === 'xai'
           ? 'xai'
-          : input.profile?.provider === 'azure'
-            ? 'azure'
-            : input.profile?.provider === 'vercel-ai-gateway' ||
-                input.profile?.provider === 'openrouter'
-              ? undefined
-              : 'open-responses-compatible';
-    const azureResourceName = input.profile?.azureResourceName?.trim();
-    if (input.profile?.provider === 'azure' && !azureResourceName) {
-      throw new Error('Azure 模型缺少 azureResourceName 配置。');
-    }
+          : input.profile?.provider === 'vercel-ai-gateway' ||
+              input.profile?.provider === 'openrouter'
+            ? undefined
+            : 'open-responses-compatible';
     const reasoningSummary = resolveOpenResponsesReasoningSummary({
       ...(llmVendor ? { llmVendor } : {}),
       model: input.model,
@@ -280,7 +290,6 @@ export function buildPrimaryTransportConfig(input: {
         : {}),
       ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
       ...(reasoningSummary ? { reasoningSummary } : {}),
-      ...(azureResourceName ? { azureResourceName } : {}),
     };
   }
 
@@ -362,12 +371,21 @@ export function buildPrimaryTransportConfig(input: {
       model: input.model,
     },
   );
+  const vertexCredentials = input.googleVertexCredentials;
+  const vertexProject = input.profile?.vertexProject?.trim();
+  const vertexLocation = input.profile?.vertexLocation?.trim();
+  const vertexClientEmail = vertexCredentials?.clientEmail?.trim();
+  const vertexPrivateKey = vertexCredentials?.privateKey?.trim();
   return {
     apiKey: input.apiKey,
     model: input.model,
     baseUrl: input.baseUrl,
     workspaceRoot: input.workspaceRoot,
     ...(llmVendor ? { llmVendor } : {}),
+    ...(vertexProject ? { vertexProject } : {}),
+    ...(vertexLocation ? { vertexLocation } : {}),
+    ...(vertexClientEmail ? { vertexClientEmail } : {}),
+    ...(vertexPrivateKey ? { vertexPrivateKey } : {}),
     ...(input.profile?.capabilities
       ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
       : {}),
@@ -529,6 +547,10 @@ export async function loadPreviewModelsForTransport(input: {
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+  vertexClientEmail?: string;
+  vertexPrivateKey?: string;
   forceRefresh: boolean;
 }): Promise<LoadedPreviewModelsResult> {
   const cached = await readModelCatalogCache(
@@ -554,6 +576,10 @@ export async function loadPreviewModelsForTransport(input: {
     ...(input.awsRegion ? { awsRegion: input.awsRegion } : {}),
     ...(input.accessKeyId ? { accessKeyId: input.accessKeyId } : {}),
     ...(input.secretAccessKey ? { secretAccessKey: input.secretAccessKey } : {}),
+    ...(input.vertexProject ? { vertexProject: input.vertexProject } : {}),
+    ...(input.vertexLocation ? { vertexLocation: input.vertexLocation } : {}),
+    ...(input.vertexClientEmail ? { vertexClientEmail: input.vertexClientEmail } : {}),
+    ...(input.vertexPrivateKey ? { vertexPrivateKey: input.vertexPrivateKey } : {}),
   });
   const modelCatalog = previewModelCatalogForProvider(input.provider, input.transportKind, listedModels);
   const modelIds = listedModels.map((entry) => entry.id);
