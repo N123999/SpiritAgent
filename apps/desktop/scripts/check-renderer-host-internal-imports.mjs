@@ -14,8 +14,9 @@ const desktopSrc = join(repoRoot, 'apps', 'desktop', 'src');
 const RENDERER_SAFE_HOST_INTERNAL_SUBPATHS = new Set([
   'workspace-file-reference-query',
   'model-provider-presets',
-  'openai-models',
+  'openai-api-base',
   'bedrock-region',
+  'bedrock-mantle',
   'google-vertex-endpoints',
   'skill-paths',
   'github-pull-request-url',

@@ -7,10 +7,11 @@ import {
   assertGoogleGeminiApiBase,
   googleNativeModelsListUrl,
 } from './google-gemini-endpoints.js';
-import { listBedrockModels } from './bedrock-models.js';
 import { bedrockApiBaseFromRegion, extractAwsRegionFromBedrockApiBase } from './bedrock-region.js';
-import { listVertexModels } from './google-vertex-models.js';
 import { extractVertexProjectAndLocationFromApiBase } from './google-vertex-endpoints.js';
+import { normalizeOpenAiApiBase } from './openai-api-base.js';
+
+export { normalizeOpenAiApiBase } from './openai-api-base.js';
 
 export type { ProviderModelTransportKind };
 
@@ -38,11 +39,6 @@ export interface ProviderListedModelEntry {
 export const OPENAI_MODELS_PATH = '/models';
 export const ANTHROPIC_MODELS_PATH = '/models';
 const ANTHROPIC_VERSION = '2023-06-01';
-
-/** Trim and remove trailing slashes from API root (e.g. `https://host/v1`). */
-export function normalizeOpenAiApiBase(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
 
 /** Full URL for the models list request. */
 export function openAiCompatibleModelsListUrl(baseUrl: string): string {
@@ -732,6 +728,7 @@ export async function listGoogleVertexProviderModels(
   }
 
   try {
+    const { listVertexModels } = await import('./google-vertex-models.js');
     return await listVertexModels({
       project,
       location,
@@ -759,6 +756,7 @@ export async function listBedrockProviderModels(
   }
 
   try {
+    const { listBedrockModels } = await import('./bedrock-models.js');
     return await listBedrockModels({
       region,
       ...(options.apiKey.trim() ? { apiKey: options.apiKey.trim() } : {}),

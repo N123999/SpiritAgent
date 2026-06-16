@@ -1,4 +1,5 @@
 import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-name';
+import { normalizeOpenAiApiBase } from '@spirit-agent/host-internal/openai-api-base';
 
 import { formatCompactTokenCount } from '@/lib/format-compact-token-count';
 
@@ -11,11 +12,6 @@ import type {
 } from '@/types';
 
 const METADATA_PROVIDERS = new Set<DesktopModelProvider>(['vercel-ai-gateway', 'openrouter']);
-
-/** 与 host-internal `normalizeOpenAiApiBase` 一致；勿从 host-internal 导入以免 renderer 拉入 node:fs。 */
-function normalizeOpenAiApiBase(baseUrl: string): string {
-  return baseUrl.trim().replace(/\/+$/, '');
-}
 
 export function providerSupportsModelCatalogDetail(
   provider: DesktopModelProvider | undefined,

@@ -27,6 +27,10 @@
       "types": "./dist/openai-models.d.ts",
       "default": "./dist/openai-models.js"
     },
+    "./openai-api-base": {
+      "types": "./dist/openai-api-base.d.ts",
+      "default": "./dist/openai-api-base.js"
+    },
     "./bedrock-region": {
       "types": "./dist/bedrock-region.d.ts",
       "default": "./dist/bedrock-region.js"
