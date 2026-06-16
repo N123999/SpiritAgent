@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import type { SubagentWorkspaceBootstrap } from '@spirit-agent/core';
 
+import type { DesktopToolRequest } from './contracts.js';
 import type { DesktopToolExecutor } from './tool-executor.js';
 import {
   createWorkspaceGitWorktree,
@@ -23,7 +24,7 @@ export type DesktopSubagentWorktreeBootstrapDeps = {
 
 export function createDesktopSubagentWorkspaceBootstrap(
   deps: DesktopSubagentWorktreeBootstrapDeps,
-): SubagentWorkspaceBootstrap {
+): SubagentWorkspaceBootstrap<DesktopToolRequest, string> {
   return async (input) => {
     if (!input.worktree) {
       return { workspaceRoot: input.parentWorkspaceRoot || deps.parentWorkspaceRoot };

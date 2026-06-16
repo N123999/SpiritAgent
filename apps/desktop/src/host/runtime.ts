@@ -62,7 +62,7 @@ export function createDesktopRuntime(input: {
   getLoopEnabled?: () => boolean;
   hookRunner?: HookRunner;
   hookSessionContext?: HookSessionContext;
-  bootstrapSubagentWorkspace?: SubagentWorkspaceBootstrap;
+  bootstrapSubagentWorkspace?: SubagentWorkspaceBootstrap<DesktopToolRequest, string>;
 }): DesktopRuntime {
   const resolveLoopEnabled = () => input.getLoopEnabled?.() === true;
   const applyPatchFileToolsPromptSection = resolveApplyPatchFileToolsPromptSection(
@@ -73,7 +73,12 @@ export function createDesktopRuntime(input: {
     input.transportConfig,
   );
 
-  return new AgentRuntime({
+  return new AgentRuntime<
+    LlmTransportConfig,
+    LlmToolAgentState,
+    DesktopToolRequest,
+    string
+  >({
     config: input.transportConfig,
     llmTransport: input.llmTransport,
     toolExecutor: input.toolExecutor,
@@ -165,7 +170,7 @@ export function createDesktopRuntime(input: {
       }),
     removePreCompactionHistoryArchive: async (archivePath) =>
       removePreCompactionHistoryArchive(archivePath),
-  }, input.history.map((message) => normalizeStoredLlmMessage(message))) as DesktopRuntime;
+  }, input.history.map((message) => normalizeStoredLlmMessage(message)));
 }
 
 export function buildDesktopRuntimeBasicInfo(
