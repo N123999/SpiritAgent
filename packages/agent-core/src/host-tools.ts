@@ -259,6 +259,11 @@ export function buildBuiltinHostToolDefinitions(
             items: { type: 'string' },
           },
           expected_output: { type: 'string' },
+          worktree: {
+            type: 'boolean',
+            description:
+              'When true, run the subagent in an isolated git worktree so parallel subagents can edit files without conflicting. Use when the subagent will modify workspace files and other subagents may edit at the same time; omit for read-only tasks.',
+          },
         },
         required: ['task'],
         additionalProperties: false,

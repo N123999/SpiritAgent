@@ -210,6 +210,8 @@ export interface RuntimeSubagentSessionSummary {
   latestMessage?: string;
   finalOutput?: string;
   error?: string;
+  worktreePath?: string;
+  worktreeBranch?: string;
 }
 
 export interface RuntimeSubagentSessionArchiveEntry extends SubagentSessionArchiveEntry {
@@ -416,7 +418,39 @@ export interface AgentRuntimeOptions<
   resolveWorkspaceFilesFromInput?: (
     userInput: string,
   ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];
+  /** Host-provided resolver used when scoping child subagent runtimes to a different workspace root. */
+  resolveWorkspaceFilesForRoot?: (
+    workspaceRoot: string,
+    userInput: string,
+  ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];
+  bootstrapSubagentWorkspace?: SubagentWorkspaceBootstrap<ToolRequest, TrustTarget>;
 }
+
+export interface SubagentWorkspaceBootstrapInput {
+  subagentSessionId: string;
+  task: string;
+  worktree: boolean;
+  parentWorkspaceRoot: string;
+}
+
+export type SubagentWorkspaceBootstrapResult<
+  ToolRequest = unknown,
+  TrustTarget = string,
+> =
+  | {
+      workspaceRoot: string;
+      worktreePath?: string;
+      branchName?: string;
+      toolExecutor?: ToolExecutor<ToolRequest, TrustTarget>;
+    }
+  | { error: string };
+
+export type SubagentWorkspaceBootstrap<
+  ToolRequest = unknown,
+  TrustTarget = string,
+> = (
+  input: SubagentWorkspaceBootstrapInput,
+) => Promise<SubagentWorkspaceBootstrapResult<ToolRequest, TrustTarget>>;
 
 export interface RuntimeTurnContext<ToolRequest> {
   requestTrace: JsonValue[];

@@ -352,6 +352,7 @@ import {
   createDesktopRuntime,
   type DesktopRuntime,
 } from './runtime.js';
+import { createDesktopSubagentWorkspaceBootstrap } from './subagent-worktree-bootstrap.js';
 import {
   buildDreamContextText,
   clearDreamCollectorIssue,
@@ -2150,6 +2151,48 @@ class DesktopHostService {
     });
   }
 
+  private async buildScopedSubagentToolExecutor(
+    workspaceRoot: string,
+    transportConfig: LlmTransportConfig | undefined,
+    parentExecutor: DesktopToolExecutor,
+  ): Promise<DesktopToolExecutor> {
+    const state = this.requireState();
+    const extensions = await this.extensionManager().list();
+    const lsp = await ensureLspServiceReady(this.sharedLspServiceForWorkspace(workspaceRoot));
+    const scoped = new DesktopToolExecutor(workspaceRoot, {
+      mcp: this.sharedMcpServiceForWorkspace(workspaceRoot, state.workspaceBinding),
+      ...(lsp ? { lsp } : {}),
+      extensionToolDefinitions: buildDesktopExtensionToolDefinitions(extensions),
+      hostContributedToolsEnabled: true,
+    });
+    scoped.setApprovalLevel(parentExecutor.approvalLevelSnapshot());
+    scoped.setAgentModeToolExposure(resolveDesktopAgentMode(state.config));
+    scoped.setLoopToolExposure(this.activeBundle().loopEnabled);
+    if (transportConfig) {
+      scoped.setActiveTransportConfig(transportConfig);
+    }
+    return scoped;
+  }
+
+  private createSubagentWorkspaceBootstrap(
+    parentExecutor: DesktopToolExecutor,
+    transportConfig: LlmTransportConfig,
+  ) {
+    const state = this.requireState();
+    return createDesktopSubagentWorkspaceBootstrap({
+      parentWorkspaceRoot: state.workspaceRoot,
+      isGitRepository: state.git.isRepository,
+      resolveBaseBranch: () => {
+        const bundle = this.activeBundle();
+        return bundle.pendingGitBranch ?? state.git.branch;
+      },
+      generateWorktreeNames: (task, baseBranch, repoRoot) =>
+        this.generateWorktreeNamesFromModel(task, baseBranch, repoRoot),
+      buildScopedToolExecutor: (workspaceRoot) =>
+        this.buildScopedSubagentToolExecutor(workspaceRoot, transportConfig, parentExecutor),
+    });
+  }
+
   private buildClientGitSnapshot(): DesktopGitSnapshot {
     const state = this.requireState();
     const bundle = this.activeBundle();
@@ -2558,6 +2601,7 @@ class DesktopHostService {
       getLoopEnabled: () => bundle.loopEnabled,
       hookRunner,
       hookSessionContext,
+      bootstrapSubagentWorkspace: this.createSubagentWorkspaceBootstrap(toolExecutor, transportConfig),
     });
   }
 

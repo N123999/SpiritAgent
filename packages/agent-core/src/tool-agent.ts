@@ -812,6 +812,65 @@ export function buildBasicInfoSystemMessage(
   return lines.join('\n').trimEnd();
 }
 
+export function patchBasicInfoWorkspaceRootInMessages(
+  messages: JsonValue[],
+  workspaceRoot: string,
+): JsonValue[] {
+  const normalized = workspaceRoot.trim();
+  if (!normalized) {
+    return messages;
+  }
+
+  let changed = false;
+  const next = messages.map((message) => {
+    if (!isJsonObject(message) || message.role !== 'system' || typeof message.content !== 'string') {
+      return message;
+    }
+    if (!message.content.includes(BASIC_INFO_SECTION_PREFIX)) {
+      return message;
+    }
+    const nextContent = patchBasicInfoWorkspaceRootInSystemText(message.content, normalized);
+    if (nextContent === message.content) {
+      return message;
+    }
+    changed = true;
+    return { ...message, content: nextContent };
+  });
+  return changed ? next : messages;
+}
+
+/** Matches the Current workspace block emitted by buildBasicInfoSystemMessage. */
+export function patchBasicInfoWorkspaceRootInSystemText(
+  content: string,
+  workspaceRoot: string,
+): string {
+  const normalized = workspaceRoot.trim();
+  if (!normalized || !content.includes(BASIC_INFO_SECTION_PREFIX)) {
+    return content;
+  }
+
+  const workspaceBlock = /Current workspace:\r?\n- [^\r\n]*/;
+  if (!workspaceBlock.test(content)) {
+    return content;
+  }
+  return content.replace(workspaceBlock, `Current workspace:\n- ${normalized}`);
+}
+
+export function patchBasicInfoWorkspaceRootInToolAgentState(
+  state: ToolAgentState,
+  workspaceRoot: string,
+): ToolAgentState {
+  const normalized = workspaceRoot.trim();
+  if (!normalized) {
+    return state;
+  }
+  const messages = patchBasicInfoWorkspaceRootInMessages(state.messages, normalized);
+  if (messages === state.messages) {
+    return state;
+  }
+  return { ...state, messages };
+}
+
 export function hasDreamsSystemMessage(content: string): boolean {
   return content.includes(DREAMS_SECTION_PREFIX);
 }
