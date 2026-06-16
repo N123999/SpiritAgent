@@ -8,8 +8,8 @@ import type {
 import { resolveOpenAiTransportReasoningEffortForContext } from '../reasoning-effort.js';
 import { cloneJsonValue } from '../tool-agent.js';
 
-/** 底层 AI SDK provider：OpenAI 官方 Responses 或 Open Responses 兼容 endpoint。 */
-export type OpenResponsesSdkProvider = 'openai' | 'xai' | 'open-responses-compatible';
+/** 底层 AI SDK provider：OpenAI 官方 Responses、Azure 官方 Responses 或 Open Responses 兼容 endpoint。 */
+export type OpenResponsesSdkProvider = 'openai' | 'xai' | 'azure' | 'open-responses-compatible';
 
 export type OpenResponsesPreviousResponseMode = 'disabled' | 'stored' | 'stateless';
 
@@ -56,11 +56,14 @@ export interface OpenResponsesTransportConfig {
     secretAccessKey: string;
     sessionToken?: string;
   };
+  /** Azure OpenAI 资源名；与 `@ai-sdk/azure` 的 `resourceName` 对齐。 */
+  azureResourceName?: string;
 }
 
 export type OpenResponsesRequestTraceKind =
   | 'openai_sdk_responses'
   | 'xai_sdk_responses'
+  | 'azure_sdk_responses'
   | 'open_responses_sdk_responses'
   | 'alibaba_open_responses';
 
@@ -148,6 +151,10 @@ export function resolveOpenResponsesSdkProvider(
 
   if (config.llmVendor === 'xai') {
     return 'xai';
+  }
+
+  if (config.llmVendor === 'azure') {
+    return 'azure';
   }
 
   // Gateway-routed OpenAI models (e.g. `openai/gpt-5.4`) MUST use the generic
@@ -242,7 +249,9 @@ export function buildOpenResponsesRequestTrace(
         ? 'openai_sdk_responses'
         : provider === 'xai'
           ? 'xai_sdk_responses'
-          : 'open_responses_sdk_responses';
+          : provider === 'azure'
+            ? 'azure_sdk_responses'
+            : 'open_responses_sdk_responses';
 
   const trace: OpenResponsesRequestTrace = {
     kind,
@@ -270,4 +279,26 @@ export function normalizeOpenResponsesApiBase(baseUrl: string | undefined): stri
 export function openResponsesPostUrl(baseUrl: string | undefined): string {
   const normalized = normalizeOpenResponsesApiBase(baseUrl);
   return normalized.endsWith('/responses') ? normalized : `${normalized}/responses`;
+}
+
+export function extractAzureResourceNameFromApiBase(baseUrl: string): string | undefined {
+  const normalized = baseUrl.trim().replace(/\/+$/, '');
+  const match = normalized.match(/^https:\/\/([^.]+)\.openai\.azure\.com(?:\/|$)/i);
+  return match?.[1]?.trim() || undefined;
+}
+
+export function resolveAzureResourceName(
+  config: Pick<OpenResponsesTransportConfig, 'azureResourceName' | 'baseUrl'>,
+): string {
+  const explicit = config.azureResourceName?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const fromBase = extractAzureResourceNameFromApiBase(config.baseUrl ?? '');
+  if (fromBase) {
+    return fromBase;
+  }
+
+  throw new Error('Azure OpenAI 缺少 azureResourceName 配置。');
 }

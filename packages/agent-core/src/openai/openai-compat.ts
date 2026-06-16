@@ -15,6 +15,7 @@ export type OpenAiLlmVendor =
   | 'openai'
   | 'google'
   | 'volcengine'
+  | 'azure'
   | 'custom';
 
 export type OpenAiModelCapabilities = LlmModelCapabilities;
