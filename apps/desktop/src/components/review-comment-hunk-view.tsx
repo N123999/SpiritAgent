@@ -132,7 +132,7 @@ export function ReviewCommentHunkView({
     return (
       <pre
         className={cn(
-          "w-full overflow-x-auto whitespace-pre-wrap break-words border border-border/20 p-2 font-mono text-xs leading-relaxed text-muted-foreground",
+          "w-full overflow-x-auto whitespace-pre border border-border/20 p-2 font-mono text-xs leading-relaxed text-muted-foreground",
           reviewDiffSurfaceClass(surface),
           className,
         )}
@@ -164,7 +164,7 @@ export function ReviewCommentHunkView({
     return (
       <div
         className={cn(
-          "w-full border-t border-border/20",
+          "w-full overflow-x-auto border-t border-border/20",
           reviewDiffSurfaceClass(surface),
           className,
         )}
@@ -177,11 +177,12 @@ export function ReviewCommentHunkView({
   return (
     <ScrollArea
       className={cn(
-        "max-h-48 rounded-md border border-border/20",
+        "max-h-48 overflow-x-auto rounded-md border border-border/20",
         reviewDiffSurfaceClass(surface),
         className,
       )}
       type="always"
+      scrollbars="both"
     >
       {diffContent}
     </ScrollArea>
