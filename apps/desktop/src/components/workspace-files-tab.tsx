@@ -557,7 +557,7 @@ export function WorkspaceFilesTab({
           {saveError ? (
             <p className="mb-1 shrink-0 text-xs text-destructive/90">{saveError}</p>
           ) : null}
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-border/50">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {doc?.status === "loading" ? (
               <div className="h-full min-h-0 w-full" />
             ) : doc?.status === "error" ? (
