@@ -869,9 +869,6 @@ function normalizeDesktopTransportKind(
   if (provider === 'amazon-bedrock') {
     return 'bedrock';
   }
-  if (provider === 'azure') {
-    return 'open-responses';
-  }
 
   return undefined;
 }
