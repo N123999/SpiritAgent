@@ -6,7 +6,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- Apache-2.0: 15 package(s)
+- Apache-2.0: 14 package(s)
 - MIT: 3 package(s)
 - BSD-3-Clause: 1 package(s)
 
@@ -16,15 +16,13 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/vercel/ai
 - **@ai-sdk/amazon-bedrock** 4.0.117 — Apache-2.0
   - https://github.com/vercel/ai
-- **@ai-sdk/anthropic** 2.0.79 — Apache-2.0
-  - https://github.com/vercel/ai
-- **@ai-sdk/azure** 3.0.74 — Apache-2.0
-  - https://github.com/vercel/ai
-- **@ai-sdk/deepseek** 2.0.38 — Apache-2.0
+- **@ai-sdk/anthropic** 2.0.82 — Apache-2.0
   - https://github.com/vercel/ai
 - **@ai-sdk/gateway** 3.0.121 — Apache-2.0
   - https://github.com/vercel/ai
 - **@ai-sdk/google** 3.0.82 — Apache-2.0
+  - https://github.com/vercel/ai
+- **@ai-sdk/google-vertex** 3.0.142 — Apache-2.0
   - https://github.com/vercel/ai
 - **@ai-sdk/moonshotai** 2.0.23 — Apache-2.0
   - https://github.com/vercel/ai
@@ -58,11 +56,10 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 **Used by:**
 - @ai-sdk/alibaba 1.0.22
 - @ai-sdk/amazon-bedrock 4.0.117
-- @ai-sdk/anthropic 2.0.79
-- @ai-sdk/azure 3.0.74
-- @ai-sdk/deepseek 2.0.38
+- @ai-sdk/anthropic 2.0.82
 - @ai-sdk/gateway 3.0.121
 - @ai-sdk/google 3.0.82
+- @ai-sdk/google-vertex 3.0.142
 - @ai-sdk/moonshotai 2.0.23
 - @ai-sdk/open-responses 1.0.16
 - @ai-sdk/openai 3.0.71

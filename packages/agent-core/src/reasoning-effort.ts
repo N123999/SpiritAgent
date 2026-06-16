@@ -13,6 +13,7 @@ export type ModelReasoningProvider =
   | 'openrouter'
   | 'openai'
   | 'google'
+  | 'google-vertex-ai'
   | 'volcengine'
   | 'azure'
   | 'amazon-bedrock'
@@ -307,7 +308,7 @@ export function isXaiReasoningEffortModel(
 export function isGoogleReasoningEffortModel(
   context?: ModelReasoningEffortContext,
 ): boolean {
-  return context?.provider === 'google';
+  return context?.provider === 'google' || context?.provider === 'google-vertex-ai';
 }
 
 export function isAnthropicReasoningEffortModel(

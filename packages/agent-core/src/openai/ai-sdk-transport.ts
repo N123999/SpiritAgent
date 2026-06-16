@@ -11,6 +11,7 @@ import {
   createGoogleGenerativeAI,
   type GoogleGenerativeAIProviderOptions,
 } from '@ai-sdk/google';
+import { createVertex } from '@ai-sdk/google-vertex';
 import {
   createMoonshotAI,
   type MoonshotAILanguageModelOptions,
@@ -604,7 +605,8 @@ function buildAiSdkRequestTrace(
     !isAlibabaOfficialAiSdkProvider(config) &&
     !isVercelAiGatewayProvider(config) &&
     !isOpenAiOfficialAiSdkProvider(config) &&
-    !isGoogleOfficialAiSdkProvider(config)
+    !isGoogleOfficialAiSdkProvider(config) &&
+    !isGoogleVertexOfficialAiSdkProvider(config)
   ) {
     return requestTrace;
   }
@@ -624,9 +626,11 @@ function buildAiSdkRequestTrace(
           ? 'alibaba_sdk_chat_completions'
           : isVercelAiGatewayProvider(config)
             ? 'gateway_sdk_chat_completions'
-            : isGoogleOfficialAiSdkProvider(config)
-              ? 'google_sdk_generate_content'
-              : 'openai_official_sdk_chat_completions';
+            : isGoogleVertexOfficialAiSdkProvider(config)
+              ? 'google_vertex_sdk_generate_content'
+              : isGoogleOfficialAiSdkProvider(config)
+                ? 'google_sdk_generate_content'
+                : 'openai_official_sdk_chat_completions';
 
   const alibabaExtraBody = isAlibabaOfficialAiSdkProvider(config)
     && shouldUseAlibabaChatCompletionsBuiltInTools(config)
@@ -666,6 +670,10 @@ function createAiSdkLanguageModel(config: OpenAiTransportConfig): any {
 
   if (isGoogleOfficialAiSdkProvider(config)) {
     return createAiSdkGoogleProvider(config).chat(config.model);
+  }
+
+  if (isGoogleVertexOfficialAiSdkProvider(config)) {
+    return createAiSdkGoogleVertexProvider(config)(config.model);
   }
 
   if (isMoonshotOfficialAiSdkProvider(config)) {
@@ -773,6 +781,41 @@ function createAiSdkGoogleProvider(config: OpenAiTransportConfig) {
     baseURL: config.baseUrl ?? DEFAULT_GOOGLE_BASE_URL,
     fetch: getLlmFetch(),
   });
+}
+
+function createAiSdkGoogleVertexProvider(config: OpenAiTransportConfig) {
+  const project = config.vertexProject?.trim();
+  const location = config.vertexLocation?.trim();
+  const apiKey = config.apiKey?.trim();
+  const clientEmail = config.vertexClientEmail?.trim();
+  const privateKey = config.vertexPrivateKey?.trim();
+  const expressOnly = Boolean(apiKey) && !clientEmail && !privateKey && !project && !location;
+
+  if (expressOnly) {
+    return createVertex({
+      apiKey,
+      ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+      fetch: getLlmFetch(),
+    } as Parameters<typeof createVertex>[0]);
+  }
+
+  const googleAuthOptions = clientEmail && privateKey
+    ? {
+        credentials: {
+          client_email: clientEmail,
+          private_key: privateKey.replace(/\\n/g, '\n'),
+        },
+      }
+    : config.vertexGoogleAuthOptions;
+
+  return createVertex({
+    ...(project ? { project } : {}),
+    ...(location ? { location } : {}),
+    ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+    ...(googleAuthOptions ? { googleAuthOptions } : {}),
+    ...(apiKey ? { apiKey } as Record<string, string> : {}),
+    fetch: getLlmFetch(),
+  } as Parameters<typeof createVertex>[0]);
 }
 
 function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
@@ -902,6 +945,21 @@ function buildAiSdkProviderOptions(
 
     return {
       google: googleOptions as JsonObject,
+    };
+  }
+
+  if (isGoogleVertexOfficialAiSdkProvider(config)) {
+    const thinkingConfig = buildGoogleThinkingConfig(config);
+    if (thinkingConfig === undefined) {
+      return {};
+    }
+
+    const vertexOptions = {
+      thinkingConfig,
+    } satisfies GoogleGenerativeAIProviderOptions;
+
+    return {
+      vertex: vertexOptions as JsonObject,
     };
   }
 
@@ -1636,6 +1694,10 @@ function isOpenAiOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
 
 function isGoogleOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'google';
+}
+
+function isGoogleVertexOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
+  return config.llmVendor === 'google-vertex-ai';
 }
 
 function isGoogleGemini3Model(model: string): boolean {

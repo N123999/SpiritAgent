@@ -14,6 +14,7 @@ export type OpenAiLlmVendor =
   | 'openrouter'
   | 'openai'
   | 'google'
+  | 'google-vertex-ai'
   | 'volcengine'
   | 'azure'
   | 'custom';
@@ -93,6 +94,19 @@ export interface OpenAiTransportConfig {
    * 缺省为 `true`（enabled）；设为 `false` 时发送 `disabled`。
    */
   vendorExtendedThinking?: boolean;
+  /** Google Vertex AI 项目 ID（Express 模式可省略）。 */
+  vertexProject?: string;
+  /** Google Vertex AI 区域，如 `us-central1`（Express 模式可省略）。 */
+  vertexLocation?: string;
+  /** 服务账号 `client_email`（与 `vertexPrivateKey` 成对）。 */
+  vertexClientEmail?: string;
+  /** 服务账号 `private_key`（与 `vertexClientEmail` 成对）。 */
+  vertexPrivateKey?: string;
+  /**
+   * 透传 `createVertex` 的 `googleAuthOptions`（如 ADC 自定义或测试用 `authClient`）。
+   * 若已设置 `vertexClientEmail` / `vertexPrivateKey`，宿主构建的 credentials 优先于此字段。
+   */
+  vertexGoogleAuthOptions?: Record<string, unknown>;
 }
 
 export interface OpenAiRequestTrace extends JsonObject {
