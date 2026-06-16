@@ -42,13 +42,36 @@ function explorerEntryGitCheckIgnorePath(
   return entry.kind === 'dir' ? `${relativePath}/` : relativePath;
 }
 
+export interface ResolveWorkspaceExplorerIgnoreFlagsOptions {
+  /** Explorer 热路径：优先走内存 ignore 匹配，避免每次 spawn git check-ignore。 */
+  preferInProcess?: boolean;
+}
+
 export async function resolveWorkspaceExplorerIgnoreFlags(
   workspaceRoot: string,
   parentRelPath: string,
   entries: readonly WorkspaceExplorerIgnoreEntry[],
+  options?: ResolveWorkspaceExplorerIgnoreFlagsOptions,
 ): Promise<boolean[]> {
   if (entries.length === 0) {
     return [];
+  }
+
+  if (options?.preferInProcess === true) {
+    try {
+      return await resolveViaIgnoreLibrary(workspaceRoot, parentRelPath, entries);
+    } catch {
+      // 非阻塞：内存匹配失败时回退 git。
+    }
+    try {
+      const viaGit = await resolveViaGitCheckIgnore(workspaceRoot, parentRelPath, entries);
+      if (viaGit !== null) {
+        return viaGit;
+      }
+    } catch {
+      // 非阻塞
+    }
+    return entries.map(() => false);
   }
 
   try {

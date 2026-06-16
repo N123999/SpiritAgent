@@ -104,7 +104,9 @@ export async function listWorkspaceExplorerChildren(
   const normalizedParent = relativePath.replace(/\\/g, '/').trim();
   let ignoreFlags: boolean[];
   try {
-    ignoreFlags = await resolveWorkspaceExplorerIgnoreFlags(workspaceRoot, normalizedParent, entries);
+    ignoreFlags = await resolveWorkspaceExplorerIgnoreFlags(workspaceRoot, normalizedParent, entries, {
+      preferInProcess: true,
+    });
   } catch {
     ignoreFlags = entries.map(() => false);
   }

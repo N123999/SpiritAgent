@@ -369,7 +369,12 @@ export function WorkspaceFilesPanel({
 
   const loadDir = useCallback(
     async (rel: string) => {
-      setCache((c) => ({ ...c, [rel]: { status: "loading" } }));
+      setCache((c) => {
+        if (c[rel]?.status === "ready") {
+          return c;
+        }
+        return { ...c, [rel]: { status: "loading" } };
+      });
       try {
         const { entries } = await listExplorerChildren(rel);
         setCache((c) => ({ ...c, [rel]: { status: "ready", entries } }));
