@@ -7,6 +7,7 @@ import {
   createWorkspaceGitWorktree,
   readPrimaryRepoRoot,
   readWorkspaceGitSnapshot,
+  removeWorkspaceGitWorktree,
 } from './git.js';
 
 export type DesktopSubagentWorktreeBootstrapDeps = {
@@ -33,9 +34,11 @@ export function createDesktopSubagentWorkspaceBootstrap(
       return { error: 'worktree subagents require a git repository' };
     }
 
+    let repoRoot: string | undefined;
+    let createdWorktreePath: string | undefined;
     try {
       const parentRoot = input.parentWorkspaceRoot.trim() || deps.parentWorkspaceRoot;
-      const repoRoot = await readPrimaryRepoRoot(parentRoot);
+      repoRoot = await readPrimaryRepoRoot(parentRoot);
       const worktreeContext = await readWorkspaceGitSnapshot(parentRoot);
       if (worktreeContext.isWorktreeSession) {
         return { error: 'worktree subagents cannot start from inside an existing worktree session' };
@@ -48,6 +51,7 @@ export function createDesktopSubagentWorkspaceBootstrap(
 
       const names = await deps.generateWorktreeNames(input.task, baseBranch, repoRoot);
       const created = await createWorkspaceGitWorktree(repoRoot, names, baseBranch);
+      createdWorktreePath = created.worktreePath;
       const scopedExecutor = await deps.buildScopedToolExecutor(created.worktreePath);
 
       return {
@@ -57,6 +61,13 @@ export function createDesktopSubagentWorkspaceBootstrap(
         toolExecutor: scopedExecutor,
       };
     } catch (error) {
+      if (repoRoot && createdWorktreePath) {
+        try {
+          await removeWorkspaceGitWorktree(repoRoot, createdWorktreePath);
+        } catch {
+          // bootstrap 失败时的 best-effort 回滚；残留 worktree 由用户设置页清理兜底。
+        }
+      }
       const message = error instanceof Error ? error.message : String(error);
       return { error: message };
     }
