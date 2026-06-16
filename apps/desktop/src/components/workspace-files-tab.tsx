@@ -751,7 +751,7 @@ export function WorkspaceFilesTab({
                         <MarkdownMessage
                           content={draftText}
                           className="text-sm"
-                          allowGitHubHtml
+                          allowHtml
                           readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
                         />
                       ) : (
