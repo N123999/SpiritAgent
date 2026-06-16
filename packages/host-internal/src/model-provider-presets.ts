@@ -12,6 +12,7 @@ export type ModelProviderId =
   | 'openrouter'
   | 'openai'
   | 'google'
+  | 'google-vertex-ai'
   | 'volcengine'
   | 'azure'
   | 'amazon-bedrock'
@@ -46,6 +47,7 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'volcengine',
   'azure',
   'amazon-bedrock',
+  'google-vertex-ai',
   'custom',
 ];
 
@@ -64,7 +66,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","google","xai","anthropic","deepseek","vercel-ai-gateway","openrouter","moonshot-ai","alibaba","minimax","volcengine","azure","amazon-bedrock","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","google","xai","anthropic","deepseek","vercel-ai-gateway","openrouter","moonshot-ai","alibaba","minimax","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
     );
   }
 }
@@ -95,6 +97,7 @@ interface ParsedModelProviderPresets {
     | 'openrouter'
     | 'openai'
     | 'google'
+    | 'google-vertex-ai'
     | 'volcengine'
     | 'azure'
     | 'amazon-bedrock',
@@ -199,6 +202,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     openrouter: requireStringField(presetRaw, 'openrouter'),
     openai: requireStringField(presetRaw, 'openai'),
     google: requireStringField(presetRaw, 'google'),
+    'google-vertex-ai': requireStringField(presetRaw, 'google-vertex-ai'),
     volcengine: requireStringField(presetRaw, 'volcengine'),
     azure: requireStringField(presetRaw, 'azure'),
     'amazon-bedrock': requireStringField(presetRaw, 'amazon-bedrock'),
@@ -245,6 +249,7 @@ const vercelAiGatewayBase = raw.presetApiBaseByProvider['vercel-ai-gateway'];
 const openrouterBase = raw.presetApiBaseByProvider.openrouter;
 const openaiBase = raw.presetApiBaseByProvider.openai;
 const googleBase = raw.presetApiBaseByProvider.google;
+const googleVertexAiBase = raw.presetApiBaseByProvider['google-vertex-ai'];
 const volcengineBase = raw.presetApiBaseByProvider.volcengine;
 const azureBase = raw.presetApiBaseByProvider.azure;
 const amazonBedrockBase = raw.presetApiBaseByProvider['amazon-bedrock'];
@@ -260,6 +265,7 @@ export const PROVIDER_PRESET_API_BASE = {
   openrouter: openrouterBase,
   openai: openaiBase,
   google: googleBase,
+  'google-vertex-ai': googleVertexAiBase,
   volcengine: volcengineBase,
   azure: azureBase,
   'amazon-bedrock': amazonBedrockBase,
@@ -335,6 +341,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE.openai;
     case 'google':
       return PROVIDER_PRESET_API_BASE.google;
+    case 'google-vertex-ai':
+      return PROVIDER_PRESET_API_BASE['google-vertex-ai'];
     case 'volcengine':
       return PROVIDER_PRESET_API_BASE.volcengine;
     case 'azure':

@@ -9,6 +9,8 @@ import {
 } from './google-gemini-endpoints.js';
 import { listBedrockModels } from './bedrock-models.js';
 import { bedrockApiBaseFromRegion, extractAwsRegionFromBedrockApiBase } from './bedrock-region.js';
+import { listVertexModels } from './google-vertex-models.js';
+import { extractVertexProjectAndLocationFromApiBase } from './google-vertex-endpoints.js';
 
 export type { ProviderModelTransportKind };
 
@@ -503,6 +505,10 @@ export interface ListProviderModelIdsOptions {
   accessKeyId?: string;
   secretAccessKey?: string;
   sessionToken?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+  vertexClientEmail?: string;
+  vertexPrivateKey?: string;
   signal?: AbortSignal;
 }
 
@@ -700,6 +706,10 @@ export async function listProviderModels(
     return listGoogleModels(options);
   }
 
+  if (options.provider === 'google-vertex-ai') {
+    return listGoogleVertexProviderModels(options);
+  }
+
   if (options.provider === 'amazon-bedrock') {
     return listBedrockProviderModels(options);
   }
@@ -709,6 +719,35 @@ export async function listProviderModels(
   }
 
   return listOpenAiCompatibleModels(options);
+}
+
+export async function listGoogleVertexProviderModels(
+  options: ListProviderModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  const extracted = extractVertexProjectAndLocationFromApiBase(options.baseUrl);
+  const project = options.vertexProject?.trim() || extracted.project;
+  const location = options.vertexLocation?.trim() || extracted.location;
+  if (!project || !location) {
+    throw new Error('Google Vertex 列模型需要填写 GCP 项目 ID 与区域（location）。');
+  }
+
+  try {
+    return await listVertexModels({
+      project,
+      location,
+      ...(options.apiKey.trim() ? { apiKey: options.apiKey.trim() } : {}),
+      ...(options.vertexClientEmail?.trim()
+        ? { vertexClientEmail: options.vertexClientEmail.trim() }
+        : {}),
+      ...(options.vertexPrivateKey?.trim()
+        ? { vertexPrivateKey: options.vertexPrivateKey.trim() }
+        : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`列模型失败（Google Vertex AI）：${message}`);
+  }
 }
 
 export async function listBedrockProviderModels(
@@ -735,6 +774,10 @@ export async function listBedrockProviderModels(
 }
 
 export { bedrockApiBaseFromRegion, extractAwsRegionFromBedrockApiBase } from './bedrock-region.js';
+export {
+  vertexApiBaseFromProjectAndLocation,
+  extractVertexProjectAndLocationFromApiBase,
+} from './google-vertex-endpoints.js';
 
 export async function listMoonshotModels(
   options: ListOpenAiCompatibleModelIdsOptions,

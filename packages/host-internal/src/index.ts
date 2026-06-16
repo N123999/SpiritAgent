@@ -15,6 +15,8 @@ export * from './extensions.js';
 export * from './file-rewind.js';
 export * from './marketplace.js';
 export * from './google-gemini-endpoints.js';
+export * from './google-vertex-endpoints.js';
+export * from './google-vertex-models.js';
 export * from './bedrock-models.js';
 export * from './bedrock-region.js';
 export * from './azure-resource.js';
