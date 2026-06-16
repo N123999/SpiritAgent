@@ -565,6 +565,9 @@ export async function addModelCommand(
     if (!name) {
       throw new Error(i18n.t('error.modelNameRequired'));
     }
+    if (provider === 'azure' && /\s/u.test(name)) {
+      throw new Error(i18n.t('error.azureDeploymentNameWhitespace'));
+    }
     if (!apiKey) {
       throw new Error(i18n.t('error.apiKeyRequired'));
     }

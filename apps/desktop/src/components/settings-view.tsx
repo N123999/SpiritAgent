@@ -2904,6 +2904,9 @@ function ModelsSettingsPanel({
     if (!name) {
       throw new Error(t('settings.azureDeploymentNameRequired'));
     }
+    if (/\s/u.test(name)) {
+      throw new Error(t('settings.azureDeploymentNameWhitespace'));
+    }
     if (!connectApiKey.trim()) {
       throw new Error(t('settings.apiKeyRequired'));
     }
