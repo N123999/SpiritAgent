@@ -2821,7 +2821,11 @@ export class AgentRuntime<
     );
     this.childSessionsStore.push(record);
 
-    const subagentStartDenied = await this.runSubagentStartHook(sessionId, request);
+    const subagentStartDenied = await this.runSubagentStartHook(
+      sessionId,
+      request,
+      childWorkspaceRoot,
+    );
     if (subagentStartDenied) {
       record.summary.status = 'failed';
       record.summary.updatedAtUnixMs = Date.now();
@@ -3078,7 +3082,11 @@ export class AgentRuntime<
       delete pending.childRecord.summary.error;
     }
 
-    await this.runSubagentEndHook(pending, output);
+    await this.runSubagentEndHook(
+      pending,
+      output,
+      pending.childRecord.summary.worktreePath,
+    );
 
     const finishedExecution = {
       toolCallId: pending.parentToolCallId,
@@ -3175,6 +3183,7 @@ export class AgentRuntime<
   private async runSubagentStartHook(
     subagentSessionId: string,
     request: RunSubagentRequest,
+    hookWorkspaceRoot?: string,
   ): Promise<string | undefined> {
     const hookRunner = resolveHookRunner(this.options);
     if (!hookRunner) {
@@ -3182,10 +3191,11 @@ export class AgentRuntime<
     }
 
     const context = resolveHookSessionContext(this.options);
+    const workspaceRoot = hookWorkspaceRoot?.trim() || context.workspaceRoot;
     const result = await hookRunner.runSubagentStart({
       sessionId: context.sessionId,
       conversationPath: context.conversationPath,
-      workspaceRoot: context.workspaceRoot,
+      workspaceRoot,
       model: context.model,
       subagentSessionId,
       subagentType: request.subagentType ?? 'generalPurpose',
@@ -3208,6 +3218,7 @@ export class AgentRuntime<
   >(
     pending: Pending,
     output: { text: string; failed: boolean },
+    hookWorkspaceRoot?: string,
   ): Promise<void> {
     const hookRunner = resolveHookRunner(this.options);
     if (!hookRunner) {
@@ -3216,10 +3227,11 @@ export class AgentRuntime<
 
     const subagentRequest = extractRunSubagentRequest(pending.parentRequest);
     const context = resolveHookSessionContext(this.options);
+    const workspaceRoot = hookWorkspaceRoot?.trim() || context.workspaceRoot;
     const result = await hookRunner.runSubagentEnd({
       sessionId: context.sessionId,
       conversationPath: context.conversationPath,
-      workspaceRoot: context.workspaceRoot,
+      workspaceRoot,
       model: context.model,
       subagentSessionId: pending.childRecord.summary.sessionId,
       subagentType: subagentRequest?.subagentType ?? 'generalPurpose',

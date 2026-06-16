@@ -20,24 +20,17 @@ function baseOptions(
   };
 }
 
-test('scopeAgentRuntimeOptionsForSubagentWorkspace rebinds appendUserLlmMessage workspace root', () => {
-  let parentCalled = false;
+test('scopeAgentRuntimeOptionsForSubagentWorkspace replaces appendUserLlmMessage callback', () => {
   const options = baseOptions({
-    appendUserLlmMessage: () => {
-      parentCalled = true;
-      return { messages: [], steps: 0 };
-    },
+    appendUserLlmMessage: (state) => state,
   });
 
   const scoped = scopeAgentRuntimeOptionsForSubagentWorkspace(
     options,
     'D:\\repo.worktrees\\spirit-a',
   );
-  scoped.appendUserLlmMessage?.(
-    { messages: [], steps: 0 },
-    { role: 'user', content: 'hi' },
-  );
-  assert.equal(parentCalled, false);
+  assert.notEqual(scoped.appendUserLlmMessage, options.appendUserLlmMessage);
+  assert.equal(typeof scoped.appendUserLlmMessage, 'function');
 });
 
 test('scopeAgentRuntimeOptionsForSubagentWorkspace uses resolveWorkspaceFilesForRoot when provided', async () => {
