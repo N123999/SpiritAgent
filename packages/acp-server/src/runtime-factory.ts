@@ -44,7 +44,8 @@ import {
 } from '@spirit-agent/host-internal';
 
 import { createNoopPeer } from './noop-peer.js';
-import { toLlmTransportConfig, type AcpServerConfig } from './types.js';
+import { resolveTransportConfig } from './transport/resolve-transport.js';
+import type { AcpServerConfig } from './types.js';
 
 export type AcpHostRuntime = AgentRuntime<LlmTransportConfig, LlmToolAgentState, JsonValue, JsonValue>;
 
@@ -73,7 +74,7 @@ export async function createAcpRuntime(
   onEvent: (event: RuntimeEvent<JsonValue>) => void,
   initialMode: SpiritAgentMode = 'agent',
 ): Promise<AcpRuntimeResult> {
-  const transportConfig = toLlmTransportConfig(config);
+  const transportConfig = resolveTransportConfig(config);
   const workspaceRoot = config.workspaceRoot;
   const spiritDataDir = config.spiritDataDir;
 
