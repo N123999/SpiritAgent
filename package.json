@@ -3,8 +3,7 @@
   "private": true,
   "description": "Spirit Agent — root scripts for TS build + Rust CLI",
   "workspaces": [
-    "packages/*",
-    "apps/desktop"
+    "packages/*"
   ],
   "scripts": {
     "build:agent-core": "npm --prefix packages/agent-core run build",
