@@ -1021,12 +1021,20 @@ function providerWebSearchPromptSectionForConfig(
   return buildProviderWebSearchPromptSection(config);
 }
 
+function normalizeOptionalPlanPath(value: string | null | undefined): string | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
 async function reloadHostMetadataFromInternal(
   agentMode: SpiritAgentMode,
-  nextActivePlanPath?: string,
+  nextActivePlanPath?: string | null,
 ): Promise<boolean> {
   if (nextActivePlanPath !== undefined) {
-    activePlanPath = nextActivePlanPath.trim() || undefined;
+    activePlanPath = normalizeOptionalPlanPath(nextActivePlanPath);
   }
   const hostInternal = await ensureCliHostInternal(currentWorkspaceRoot());
   if (!hostInternal) {
@@ -1980,7 +1988,7 @@ peer.on('runtime.reloadHostMetadata', async (rawParams) => {
   const params = (rawParams ?? {}) as {
     planMode?: boolean;
     agentMode?: SpiritAgentMode;
-    activePlanPath?: string;
+    activePlanPath?: string | null;
   };
   const agentMode = normalizeSpiritAgentMode(params);
   await reloadHostMetadataFromInternal(agentMode, params.activePlanPath);
