@@ -181,6 +181,7 @@ jobs:
 
       - name: Install desktop dependencies
         working-directory: apps/desktop
+        shell: bash
         run: |
           rm -rf node_modules
           npm --no-workspaces ci
