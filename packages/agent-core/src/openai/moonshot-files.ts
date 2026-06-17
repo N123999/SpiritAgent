@@ -17,7 +17,7 @@ export function normalizeMoonshotApiBase(baseUrl: string | undefined): string {
   return normalizeOpenAiCompatibleApiBase(baseUrl ?? DEFAULT_MOONSHOT_BASE_URL);
 }
 
-/** OpenAI 兼容 Files API（purpose=video）→ `ms://{fileId}`，Moonshot / Xiaomi 等同协议。 */
+/** OpenAI 兼容 Files API（purpose=video）→ `ms://{fileId}`，供 Moonshot 等支持 Files 上传的厂商使用。 */
 export async function uploadOpenAiCompatibleVideoFile(
   config: Pick<OpenAiTransportConfig, 'apiKey' | 'baseUrl'>,
   absolutePath: string,

@@ -98,6 +98,7 @@ import {
   llmHistoryToOpenAiMessages,
   resolveMoonshotVideoUrlsInOpenAiMessages,
 } from './openai-multimodal-messages.js';
+import { resolveXiaomiVideoUrlsInOpenAiMessages } from './xiaomi-video-messages.js';
 import { normalizeMoonshotApiBase } from './moonshot-files.js';
 import {
   buildJsonSchemaCompletionMessages,
@@ -267,7 +268,7 @@ export class AiSdkOpenAiCompatibleTransport
     request: OpenAiJsonSchemaCompletionRequest,
   ): Promise<OpenAiJsonSchemaCompletionResult<T>> {
     const rawMessages = buildJsonSchemaCompletionMessages(config, request);
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    await resolveOpenAiCompatibleVideoInputsInMessages(
       config,
       rawMessages,
       openAiTransportAssetRoot(config),
@@ -307,7 +308,7 @@ export class AiSdkOpenAiCompatibleTransport
       steps: state.steps + 1,
     };
 
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    await resolveOpenAiCompatibleVideoInputsInMessages(
       config,
       nextState.messages,
       openAiTransportAssetRoot(config),
@@ -393,7 +394,7 @@ export class AiSdkOpenAiCompatibleTransport
       steps: state.steps + 1,
     };
 
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    await resolveOpenAiCompatibleVideoInputsInMessages(
       config,
       nextState.messages,
       openAiTransportAssetRoot(config),
@@ -1610,6 +1611,15 @@ function tryCountContentLines(argumentsJson: string): number | undefined {
 
 function openAiTransportAssetRoot(config: Pick<OpenAiTransportConfig, 'workspaceRoot'>): string {
   return config.workspaceRoot ?? process.cwd();
+}
+
+async function resolveOpenAiCompatibleVideoInputsInMessages(
+  config: OpenAiTransportConfig,
+  messages: JsonValue[],
+  assetRoot: string,
+): Promise<void> {
+  await resolveMoonshotVideoUrlsInOpenAiMessages(config, messages, assetRoot);
+  resolveXiaomiVideoUrlsInOpenAiMessages(config, messages, assetRoot);
 }
 
 function prepareMoonshotChatCompletionRequest(

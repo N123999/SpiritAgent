@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { extname, isAbsolute, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 
 import {
   cloneLlmProviderState,
@@ -10,6 +10,10 @@ import {
   type LlmMessage,
 } from '../ports.js';
 import { uploadOpenAiCompatibleVideoFile } from './moonshot-files.js';
+import {
+  pathToLocalVideoReference,
+  resolveLocalMediaPath,
+} from './openai-multimodal-media-path.js';
 import {
   resolveOpenAiModelCompatibilityProfile,
   type OpenAiTransportConfig,
@@ -86,13 +90,13 @@ export function llmMessageToOpenAiMessage(message: LlmMessage, assetRoot: string
   };
 }
 
-/** Moonshot / Xiaomi：将本地视频路径上传为 Files API（purpose=video），并改写为 ms:// 引用。 */
+/** Moonshot AI：将本地视频路径上传为 Files API（purpose=video），并改写为 ms:// 引用。 */
 export async function resolveMoonshotVideoUrlsInOpenAiMessages(
   config: OpenAiTransportConfig,
   messages: JsonValue[],
   assetRoot = process.cwd(),
 ): Promise<void> {
-  if (config.llmVendor !== 'moonshot-ai' && config.llmVendor !== 'xiaomi') {
+  if (config.llmVendor !== 'moonshot-ai') {
     return;
   }
 
@@ -140,29 +144,6 @@ function needsMoonshotVideoUpload(url: string): boolean {
     && !url.startsWith('data:')
     && !url.startsWith('ms://')
   );
-}
-
-function resolveLocalMediaPath(path: string, assetRoot: string): string {
-  const normalized = path.trim();
-  if (isAbsolute(normalized)) {
-    return normalized;
-  }
-
-  return resolve(assetRoot, normalized);
-}
-
-function pathToLocalVideoReference(path: string, assetRoot: string): string {
-  const normalized = path.trim();
-  if (
-    normalized.startsWith('http://')
-    || normalized.startsWith('https://')
-    || normalized.startsWith('data:')
-    || normalized.startsWith('ms://')
-  ) {
-    return normalized;
-  }
-
-  return resolveLocalMediaPath(normalized, assetRoot).replace(/\\/g, '/');
 }
 
 function pathToImageUrl(path: string, assetRoot: string): string {

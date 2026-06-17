@@ -16,6 +16,7 @@ import {
   llmMessageToOpenAiMessage,
   resolveMoonshotVideoUrlsInOpenAiMessages,
 } from './openai-multimodal-messages.js';
+import { resolveXiaomiVideoUrlsInOpenAiMessages } from './xiaomi-video-messages.js';
 
 const MINIMAL_MP4_HEADER = Buffer.from([
   0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
@@ -86,15 +87,11 @@ test('resolveMoonshotVideoUrlsInOpenAiMessages uploads local video_url reference
   }
 });
 
-test('resolveMoonshotVideoUrlsInOpenAiMessages uploads xiaomi local video_url references', async () => {
+test('resolveXiaomiVideoUrlsInOpenAiMessages embeds local video as data URL base64', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-agent-core-xiaomi-resolve-'));
   const videoPath = join(workspaceRoot, 'clip.mp4');
   try {
     await writeFile(videoPath, MINIMAL_MP4_HEADER);
-    clearMoonshotVideoUploadCache();
-
-    setLlmFetchTransportOverrideForTests(async () =>
-      new Response(JSON.stringify({ id: 'file-xiaomi' }), { status: 200 }));
 
     const messages = [
       llmMessageToOpenAiMessage(
@@ -106,7 +103,7 @@ test('resolveMoonshotVideoUrlsInOpenAiMessages uploads xiaomi local video_url re
       ),
     ];
 
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    resolveXiaomiVideoUrlsInOpenAiMessages(
       {
         apiKey: 'test-key',
         baseUrl: 'https://api.xiaomimimo.com/v1',
@@ -118,11 +115,10 @@ test('resolveMoonshotVideoUrlsInOpenAiMessages uploads xiaomi local video_url re
       workspaceRoot,
     );
 
-    const content = (messages[0] as { content: Array<{ video_url: { url: string } }> }).content;
-    assert.equal(content[0]?.video_url.url, 'ms://file-xiaomi');
+    const url = (messages[0] as { content: Array<{ video_url: { url: string } }> }).content[0]?.video_url.url ?? '';
+    assert.match(url, /^data:video\/mp4;base64,/);
+    assert.equal(url.slice('data:video/mp4;base64,'.length), MINIMAL_MP4_HEADER.toString('base64'));
   } finally {
-    setLlmFetchTransportOverrideForTests(undefined);
-    clearMoonshotVideoUploadCache();
     await rm(workspaceRoot, { recursive: true, force: true });
   }
 });
