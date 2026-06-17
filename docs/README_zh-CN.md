@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://github.com/user-attachments/assets/fa10cc7d-381c-4a70-b4ab-d145ba1363f1" alt="Spirit Agent" />
+<img width="1552" height="1032" alt="Spirit Agent Desktop" src="https://github.com/user-attachments/assets/7b07e79d-c800-405a-bee6-40dda9d75b13" />
 
 # Spirit Agent
 
@@ -101,6 +101,9 @@ Agent Core 决定模型如何「看见」项目上下文：
 Desktop 专属开发与目录说明见 [apps/desktop/README.md](../apps/desktop/README.md)。
 
 ## CLI
+
+<img width="1014" height="744" alt="Spirit Agent CLI" src="https://github.com/user-attachments/assets/ecf4fcec-6a9b-4562-b0da-cc14816f36d3" />
+
 
 [Rust CLI](../apps/cli)（`spirit-agent`）提供终端优先的宿主，可选 Ratatui 界面。通过 Node 桥接共享同一套 Agent Core 运行时，适合脚本化、SSH 会话与极简环境。
 
