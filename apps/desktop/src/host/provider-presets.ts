@@ -8,6 +8,7 @@ export {
   isProviderConnectSiteId,
   listProviderConnectSiteOptions,
   providerSupportsSiteSelection,
+  providerConnectSiteRequiresWorkspaceId,
   resolveConnectApiBase,
   resolveProviderConnectApiBase,
 } from '@spirit-agent/host-internal/model-provider-presets';

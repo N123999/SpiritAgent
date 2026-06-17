@@ -101,6 +101,7 @@ import {
   PROVIDER_PICKER_ROWS,
   defaultProviderConnectSite,
   listProviderConnectSiteOptions,
+  providerConnectSiteRequiresWorkspaceId,
   providerSupportsSiteSelection,
   resolveConnectApiBase,
   resolveProviderConnectApiBase,
@@ -2469,6 +2470,7 @@ function ModelsSettingsPanel({
     "openai-compatible",
   );
   const [connectProviderSite, setConnectProviderSite] = useState("");
+  const [connectAlibabaWorkspaceId, setConnectAlibabaWorkspaceId] = useState("");
   const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
     "single",
   );
@@ -2571,6 +2573,7 @@ function ModelsSettingsPanel({
     setConnectContextLength("");
     setConnectTransportKind("openai-compatible");
     setConnectProviderSite("");
+    setConnectAlibabaWorkspaceId("");
     setCustomConnectMode("single");
     setBedrockConnectMode("bearer");
     setVertexConnectMode("adc");
@@ -2766,6 +2769,20 @@ function ModelsSettingsPanel({
     connectTransportKind,
   );
 
+  const connectProviderSiteForRequest = connectProviderSite.trim() || undefined;
+  const connectAlibabaWorkspaceIdForRequest = connectAlibabaWorkspaceId.trim() || undefined;
+  const connectAlibabaWorkspaceRequired =
+    selectedProvider === "alibaba"
+    && connectProviderSiteForRequest !== undefined
+    && providerConnectSiteRequiresWorkspaceId("alibaba", connectProviderSiteForRequest);
+  const connectProviderSiteForApiBase =
+    connectProviderSiteForRequest
+    && selectedProvider !== null
+    && providerConnectSiteRequiresWorkspaceId(selectedProvider, connectProviderSiteForRequest)
+    && !connectAlibabaWorkspaceIdForRequest
+      ? undefined
+      : connectProviderSiteForRequest;
+
   const effectiveApiBase =
     selectedProvider === null
       ? ""
@@ -2781,9 +2798,12 @@ function ModelsSettingsPanel({
           ? resolveProviderConnectApiBase(
               selectedProvider,
               connectTransportKindForRequest,
-              connectProviderSite.trim()
-                ? { site: connectProviderSite.trim() }
-                : undefined,
+              {
+                ...(connectProviderSiteForApiBase ? { site: connectProviderSiteForApiBase } : {}),
+                ...(connectAlibabaWorkspaceIdForRequest
+                  ? { workspaceId: connectAlibabaWorkspaceIdForRequest }
+                  : {}),
+              },
             )
           : resolveConnectApiBase(selectedProvider, "");
 
@@ -2801,8 +2821,6 @@ function ModelsSettingsPanel({
     ...(connectVertexClientEmail.trim() ? { vertexClientEmail: connectVertexClientEmail.trim() } : {}),
     ...(connectVertexPrivateKey.trim() ? { vertexPrivateKey: connectVertexPrivateKey.trim() } : {}),
   };
-
-  const connectProviderSiteForRequest = connectProviderSite.trim() || undefined;
 
   const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {
@@ -2832,6 +2850,9 @@ function ModelsSettingsPanel({
     } else if (!connectApiKey.trim()) {
       throw new Error(t('settings.apiKeyRequired'));
     }
+    if (connectAlibabaWorkspaceRequired && !connectAlibabaWorkspaceIdForRequest) {
+      throw new Error(t('settings.alibabaWorkspaceIdRequired'));
+    }
     const res = await onPreviewModels({
       apiBase: effectiveApiBase,
       apiKey: connectApiKey,
@@ -2848,6 +2869,9 @@ function ModelsSettingsPanel({
         ? { transportKind: connectTransportKindForRequest }
         : {}),
       ...(connectProviderSiteForRequest ? { providerSite: connectProviderSiteForRequest } : {}),
+      ...(connectAlibabaWorkspaceIdForRequest
+        ? { alibabaWorkspaceId: connectAlibabaWorkspaceIdForRequest }
+        : {}),
       forceRefresh,
     });
     if (res.modelIds.length === 0) {
@@ -2871,6 +2895,9 @@ function ModelsSettingsPanel({
         ? { transportKind: connectTransportKindForRequest }
         : {}),
       ...(connectProviderSiteForRequest ? { providerSite: connectProviderSiteForRequest } : {}),
+      ...(connectAlibabaWorkspaceIdForRequest
+        ? { alibabaWorkspaceId: connectAlibabaWorkspaceIdForRequest }
+        : {}),
     };
     await onAddProviderModels(bulk);
     setConnectDialogOpen(false);
@@ -3661,6 +3688,8 @@ function ModelsSettingsPanel({
                       ? t('settings.moonshotConnectionDescription')
                       : selectedProvider === "minimax"
                         ? t('settings.minimaxConnectionDescription')
+                        : selectedProvider === "alibaba"
+                          ? t('settings.alibabaConnectionDescription')
                   : providerShowsConnectTransportPicker(selectedProvider)
                       ? t('settings.providerConnectionDescription')
                       : t('settings.providerSimpleDescription')}
@@ -3691,6 +3720,18 @@ function ModelsSettingsPanel({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            ) : null}
+            {connectAlibabaWorkspaceRequired ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-alibaba-workspace-id">{t('settings.alibabaWorkspaceId')}</Label>
+                <DesktopFormInput
+                  id="connect-alibaba-workspace-id"
+                  value={connectAlibabaWorkspaceId}
+                  onChange={(e) => setConnectAlibabaWorkspaceId(e.target.value)}
+                  placeholder={t('settings.alibabaWorkspaceIdPlaceholder')}
+                  autoComplete="off"
+                />
               </div>
             ) : null}
             {selectedProvider && providerShowsConnectTransportPicker(selectedProvider) ? (

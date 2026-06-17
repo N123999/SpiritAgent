@@ -482,6 +482,7 @@ impl TuiShell {
         context_length: Option<u64>,
         azure_resource_name: Option<&str>,
         provider_site: Option<&str>,
+        alibaba_workspace_id: Option<&str>,
     ) -> Result<(), String> {
         let mut config = self.runtime.config().clone();
         if config.has_model(name) {
@@ -505,6 +506,9 @@ impl TuiShell {
         }
         if let Some(site) = provider_site.map(str::trim).filter(|v| !v.is_empty()) {
             extra.insert("providerSite".to_string(), serde_json::json!(site));
+        }
+        if let Some(workspace_id) = alibaba_workspace_id.map(str::trim).filter(|v| !v.is_empty()) {
+            extra.insert("alibabaWorkspaceId".to_string(), serde_json::json!(workspace_id));
         }
 
         config.add_model(ModelProfile {

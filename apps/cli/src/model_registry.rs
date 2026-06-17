@@ -244,6 +244,16 @@ impl ModelProfile {
             .map(ToOwned::to_owned)
     }
 
+    pub fn alibaba_workspace_id(&self) -> Option<String> {
+        self.extra
+            .get("alibabaWorkspaceId")
+            .or_else(|| self.extra.get("alibaba_workspace_id"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
     pub fn aws_region(&self) -> Option<String> {
         self.extra
             .get("awsRegion")
@@ -1139,6 +1149,26 @@ mod tests {
         assert_eq!(model.provider, Some(super::ModelProvider::Minimax));
         assert_eq!(model.provider_site().as_deref(), Some("intl"));
         assert_eq!(model.transport_kind(), super::ModelTransportKind::Anthropic);
+    }
+
+    #[test]
+    fn deserializes_alibaba_provider_site_and_workspace_from_desktop_config() {
+        let raw = r#"{
+          "models": [{
+            "name": "qwen3.6-plus",
+            "apiBase": "https://ws123.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+            "provider": "alibaba",
+            "providerSite": "ap-southeast-1",
+            "alibabaWorkspaceId": "ws123",
+            "transportKind": "openai-compatible"
+          }],
+          "activeModel": "qwen3.6-plus"
+        }"#;
+        let cfg: super::AppConfig = serde_json::from_str(raw).expect("parse config");
+        let model = cfg.models.first().expect("model");
+        assert_eq!(model.provider, Some(super::ModelProvider::Alibaba));
+        assert_eq!(model.provider_site().as_deref(), Some("ap-southeast-1"));
+        assert_eq!(model.alibaba_workspace_id().as_deref(), Some("ws123"));
     }
 }
 

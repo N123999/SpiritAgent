@@ -15,6 +15,8 @@ use crate::{
         model_add_siliconflow_site_api_base, model_add_siliconflow_site_id_from_choice,
         model_add_moonshot_site_api_base, model_add_moonshot_site_id_from_choice,
         model_add_minimax_site_api_base, model_add_minimax_site_id_from_choice,
+        model_add_alibaba_site_api_base, model_add_alibaba_site_id_from_choice,
+        model_add_alibaba_site_ids, model_add_alibaba_site_requires_workspace_id,
         azure_api_base_from_resource_name,
         is_valid_azure_resource_name,
     },
@@ -84,6 +86,13 @@ fn model_add_minimax_provider_index() -> usize {
         .iter()
         .position(|id| id == "minimax")
         .unwrap_or(11)
+}
+
+fn model_add_alibaba_provider_index() -> usize {
+    model_add_picker_order_ids()
+        .iter()
+        .position(|id| id == "alibaba")
+        .unwrap_or(10)
 }
 
 fn model_add_vertex_provider_index() -> usize {
@@ -385,6 +394,36 @@ fn model_add_minimax_site_field(selected: usize) -> BottomFormFieldView {
     }
 }
 
+fn model_add_alibaba_site_field(selected: usize) -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.site.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: model_add_alibaba_site_ids()
+                .iter()
+                .map(|site| (*site).to_string())
+                .collect(),
+            selected: selected.min(model_add_alibaba_site_ids().len().saturating_sub(1)),
+        },
+    }
+}
+
+fn model_add_alibaba_workspace_id_field(value: &str) -> BottomFormFieldView {
+    let value = value.to_string();
+    let cursor = value.chars().count();
+    BottomFormFieldView {
+        label: t!("form.model.field.alibaba_workspace_id.label").into_owned(),
+        help: t!("form.model.field.alibaba_workspace_id.help").into_owned(),
+        editor: BottomFormFieldEditorView::Text {
+            value,
+            placeholder: t!("form.model.field.alibaba_workspace_id.placeholder").into_owned(),
+            cursor,
+            mask: false,
+            disabled: false,
+        },
+    }
+}
+
 fn model_add_volcengine_transport_field(selected: usize) -> BottomFormFieldView {
     BottomFormFieldView {
         label: t!("form.model.field.api_kind.label").into_owned(),
@@ -428,6 +467,16 @@ fn model_add_transport_kind(form: &BottomFormView, provider: ModelProvider) -> M
                     ModelTransportKind::Anthropic
                 } else {
                     ModelTransportKind::OpenAiCompatible
+                }
+            }
+            _ => ModelTransportKind::OpenAiCompatible,
+        },
+        ModelProvider::Alibaba => match form.fields.get(3).map(|f| &f.editor) {
+            Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() > 2 => {
+                match *selected {
+                    1 => ModelTransportKind::OpenResponses,
+                    2 => ModelTransportKind::Anthropic,
+                    _ => ModelTransportKind::OpenAiCompatible,
                 }
             }
             _ => ModelTransportKind::OpenAiCompatible,
@@ -711,6 +760,18 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         }
         _ => 0,
     };
+    let alibaba_site_selected = match form.fields.get(2).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 4 => {
+            (*selected).min(3)
+        }
+        _ => 0,
+    };
+    let alibaba_transport_selected = match form.fields.get(3).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() > 2 => {
+            (*selected).min(2)
+        }
+        _ => 0,
+    };
 
     let name_raw = if old_len == 7 || old_len == 5 {
         bottom_form_text_value(form, if old_len == 5 { 2 } else { 3 })
@@ -758,6 +819,12 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         } else {
             ""
         };
+    let alibaba_workspace_raw =
+        if old_len == 6 && provider_idx == model_add_alibaba_provider_index() {
+            bottom_form_text_value(form, 4)
+        } else {
+            ""
+        };
 
     let bulk_custom = !model_add_is_preset_provider(provider_idx) && mode_custom == 1;
 
@@ -783,6 +850,15 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
             model_add_mode_field_preset(),
             model_add_minimax_site_field(minimax_site_selected),
             model_add_siliconflow_transport_field(minimax_transport_selected),
+            model_add_api_key_field(api_key_raw),
+        ]
+    } else if provider_idx == model_add_alibaba_provider_index() {
+        vec![
+            model_add_provider_field(provider_idx),
+            model_add_mode_field_preset(),
+            model_add_alibaba_site_field(alibaba_site_selected),
+            model_add_transport_field(alibaba_transport_selected),
+            model_add_alibaba_workspace_id_field(alibaba_workspace_raw),
             model_add_api_key_field(api_key_raw),
         ]
     } else if provider_idx == model_add_volcengine_provider_index() {
@@ -870,6 +946,7 @@ pub(crate) struct ParsedModelAddForm {
     pub vertex_client_email: Option<String>,
     pub vertex_private_key: Option<String>,
     pub provider_site: Option<String>,
+    pub alibaba_workspace_id: Option<String>,
 }
 
 pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
@@ -1518,6 +1595,7 @@ pub(crate) fn parse_model_add_connection(
             vertex_client_email: None,
             vertex_private_key: None,
             provider_site: None,
+            alibaba_workspace_id: None,
         });
     }
 
@@ -1554,6 +1632,7 @@ pub(crate) fn parse_model_add_connection(
 
     let bulk = model_add_mode_bulk(form, provider_idx);
     let mut provider_site = None;
+    let mut alibaba_workspace_id = None;
     let api_base = if provider == ModelProvider::Siliconflow {
         let site_selected = match form.fields.get(2).map(|f| &f.editor) {
             Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 2 => {
@@ -1586,6 +1665,26 @@ pub(crate) fn parse_model_add_connection(
         let site = model_add_minimax_site_id_from_choice(site_selected);
         provider_site = Some(site.to_string());
         model_add_minimax_site_api_base(site, transport_kind)
+            .ok_or_else(|| t!("form.model.validation.site_invalid").into_owned())?
+    } else if provider == ModelProvider::Alibaba {
+        let site_selected = match form.fields.get(2).map(|f| &f.editor) {
+            Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 4 => {
+                (*selected).min(3)
+            }
+            _ => 0,
+        };
+        let site = model_add_alibaba_site_id_from_choice(site_selected);
+        let workspace_id = bottom_form_text_value(form, 4).trim().to_string();
+        if model_add_alibaba_site_requires_workspace_id(site) && workspace_id.is_empty() {
+            return Err(t!("form.model.validation.alibaba_workspace_id_required").into_owned());
+        }
+        provider_site = Some(site.to_string());
+        alibaba_workspace_id = if workspace_id.is_empty() {
+            None
+        } else {
+            Some(workspace_id.clone())
+        };
+        model_add_alibaba_site_api_base(site, &workspace_id, transport_kind)
             .ok_or_else(|| t!("form.model.validation.site_invalid").into_owned())?
     } else if provider == ModelProvider::GoogleVertexAi {
         vertex_api_base_from_project_and_location(
@@ -1645,6 +1744,7 @@ pub(crate) fn parse_model_add_connection(
         vertex_client_email,
         vertex_private_key,
         provider_site,
+        alibaba_workspace_id,
     })
 }
 
@@ -2474,8 +2574,8 @@ mod tests {
             }
         }
         sync_model_add_form_fields(&mut form);
-        assert_eq!(form.fields.len(), 3);
-        form.selected_field = 2;
+        assert_eq!(form.fields.len(), 6);
+        form.selected_field = 5;
         insert_text(&mut form, "sk-ali");
 
         let parsed = parse_model_add_connection(&form).expect("parse");
@@ -2484,6 +2584,8 @@ mod tests {
         assert!(parsed.model_name.is_none());
         assert_eq!(parsed.api_base, "https://dashscope.aliyuncs.com/compatible-mode/v1");
         assert_eq!(parsed.api_key, "sk-ali");
+        assert_eq!(parsed.provider_site.as_deref(), Some("cn-beijing"));
+        assert!(parsed.alibaba_workspace_id.is_none());
     }
 
     #[test]

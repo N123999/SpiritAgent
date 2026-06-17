@@ -144,6 +144,7 @@ export interface PreviewModelsRequest {
   transportKind?: DesktopTransportKind;
   /** SiliconFlow 等站点型提供商：cn / intl。 */
   providerSite?: DesktopProviderConnectSiteId;
+  alibabaWorkspaceId?: string;
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
@@ -172,6 +173,7 @@ export interface AddProviderModelsRequest {
   transportKind?: DesktopTransportKind;
   /** SiliconFlow 等站点型提供商：cn / intl。 */
   providerSite?: DesktopProviderConnectSiteId;
+  alibabaWorkspaceId?: string;
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
@@ -207,6 +209,7 @@ export interface AddModelRequest {
   awsRegion?: string;
   /** 站点型提供商区域（如 SiliconFlow cn / intl）。 */
   providerSite?: DesktopProviderConnectSiteId;
+  alibabaWorkspaceId?: string;
   /** Azure 资源名；`azure` 必填。 */
   azureResourceName?: string;
   /** Google Vertex GCP 项目 ID。 */
@@ -1067,6 +1070,8 @@ export interface ModelProfileSnapshot {
   transportKind?: DesktopTransportKind;
   /** 站点型提供商区域（如 SiliconFlow cn / intl）。 */
   providerSite?: DesktopProviderConnectSiteId;
+  /** Alibaba 业务空间 ID；新加坡/法兰克福等区域必填。 */
+  alibabaWorkspaceId?: string;
   /** Amazon Bedrock AWS 区域（如 `us-east-1`）；仅 `amazon-bedrock` 使用。 */
   awsRegion?: string;
   /** Azure 资源名；仅 `azure` 使用。 */
