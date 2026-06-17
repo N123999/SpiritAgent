@@ -259,6 +259,7 @@ pub(in crate::ui) fn suggestion_summary(suggestion: &InputSuggestion) -> String 
     match suggestion.label.as_str() {
         "/help" => t!("ui.suggestion.summary.help").into_owned(),
         "/clear" => t!("ui.suggestion.summary.clear").into_owned(),
+        "/new" => t!("ui.suggestion.summary.new").into_owned(),
         "/quit" | "/exit" => t!("ui.suggestion.summary.quit").into_owned(),
         "/continue" => t!("ui.suggestion.summary.continue").into_owned(),
         "/loop" => t!("ui.suggestion.summary.loop").into_owned(),

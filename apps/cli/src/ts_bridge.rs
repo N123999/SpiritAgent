@@ -1819,6 +1819,35 @@ impl TsBridgeRuntime {
         Ok(())
     }
 
+    pub fn reset_session(&mut self) -> Result<()> {
+        if self.bridge_failed {
+            return Err(anyhow!("TS bridge 已失效，无法开始新会话"));
+        }
+        let new_rewind = rewind::create_desktop_rewind_metadata();
+        let archive = crate::ports::ChatArchive {
+            messages: vec![],
+            assistant_aux: vec![],
+            llm_history: vec![],
+            loop_enabled: false,
+            approval_level: "default".to_string(),
+            subagent_sessions: vec![],
+            desktop_messages: None,
+            rewind: Some(new_rewind.as_json()),
+            session_display_name: None,
+        };
+        self.replace_runtime_archive(&archive)?;
+        self.rewind = new_rewind;
+        self.active_plan_path = None;
+        self.plan_metadata = plan::plan_metadata_snapshot(
+            self.plan_metadata.spirit_agent_mode(),
+            None,
+        );
+        let session_key = self.rewind.session_id.clone();
+        self.set_todo_session_key(&session_key)?;
+        self.replace_session_todos(vec![])?;
+        Ok(())
+    }
+
     pub fn add_pending_image(&mut self, path: String) {
         if self.bridge_failed {
             return;

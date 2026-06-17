@@ -38,6 +38,7 @@ const START_IMPLEMENTING_SLASH: &str = "/start-implementing";
 const DEFAULT_SLASH_COMMANDS: &[&str] = &[
     "/help",
     "/clear",
+    "/new",
     "/quit",
     "/exit",
     "/continue",
@@ -63,6 +64,7 @@ const DEFAULT_SLASH_COMMANDS: &[&str] = &[
 const RESERVED_SLASH_COMMANDS: &[&str] = &[
     "/help",
     "/clear",
+    "/new",
     "/quit",
     "/exit",
     "/continue",
@@ -96,7 +98,9 @@ pub(crate) fn default_commands() -> Vec<String> {
 pub(crate) fn slash_commands_for_shell(shell: &TuiShell) -> Vec<String> {
     let mut commands = default_commands();
     if shell.has_active_plan() {
-        commands.insert(7, START_IMPLEMENTING_SLASH.to_string());
+        if let Some(index) = commands.iter().position(|command| command == "/compact") {
+            commands.insert(index, START_IMPLEMENTING_SLASH.to_string());
+        }
     }
     commands
 }
@@ -366,6 +370,7 @@ pub(crate) fn help_text(has_active_plan: bool, can_continue_last_turn: bool) -> 
         "可用指令:".to_string(),
         "- /help".to_string(),
         "- /clear".to_string(),
+        "- /new".to_string(),
         "- /quit".to_string(),
     ];
 
@@ -459,7 +464,7 @@ pub(crate) fn handle_command(shell: &mut TuiShell, message: &str) {
             shell.has_active_plan(),
             shell.can_continue_last_turn(),
         )),
-        "/clear" => shell.clear_chat_for_slash(),
+        "/clear" | "/new" => shell.start_new_session_for_slash(),
         "/continue" => shell.handle_continue_slash(),
         "/loop" => shell.handle_loop_slash(&parts[1..]),
         START_IMPLEMENTING_SLASH => shell.handle_start_implementing_slash(),
@@ -508,6 +513,13 @@ mod tests {
             prompt_slash_alias("github", "issue_to_fix_workflow"),
             "/github_issue_to_fix_workflow"
         );
+    }
+
+    #[test]
+    fn default_commands_include_new_session_slash() {
+        let commands = default_commands();
+        assert!(commands.contains(&"/new".to_string()));
+        assert!(commands.contains(&"/clear".to_string()));
     }
 
     #[test]

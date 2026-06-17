@@ -385,25 +385,42 @@ impl TuiShell {
         });
     }
 
-    pub(crate) fn clear_chat_for_slash(&mut self) {
+    pub(crate) fn start_new_session_for_slash(&mut self) {
+        if self.runtime.is_busy() {
+            self.runtime.abort();
+            self.apply_runtime_events();
+        }
+        if let Err(err) = self.runtime.reset_session() {
+            self.push_agent_message(t!("tui.session.new_failed", err = err).into_owned());
+            return;
+        }
+        self.reset_conversation_ui_for_new_session();
+        self.apply_runtime_events();
+    }
+
+    fn reset_conversation_ui_for_new_session(&mut self) {
+        self.reset_primary_picker_overlay();
+        self.close_marketplace_view();
         self.messages.clear();
         self.assistant_aux_by_message.clear();
         self.clear_input_history();
         self.persisted_standalone_pending_aux = None;
         self.persisted_standalone_pending_aux_anchor = None;
-        self.exit_rewind_picker_mode();
-        self.last_completed_assistant_msg_index = None;
         self.subagent.picker_active = false;
         self.close_subagent_view();
+        self.session_display_name = None;
+        self.todo_items.clear();
+        self.todo_strip_expanded = false;
+        self.pending_assistant_msg_index = None;
+        self.last_completed_assistant_msg_index = None;
+        self.last_turn_can_continue = false;
         let mcp_status = self.runtime.mcp_status_snapshot();
         self.messages.push(welcome_message(
             &self.runtime.config().active_model,
             &mcp_status.welcome_line(),
         ));
         self.last_mcp_status_revision = mcp_status.revision;
-        self.pending_assistant_msg_index = None;
-        self.last_completed_assistant_msg_index = None;
-        self.last_turn_can_continue = false;
+        self.scroll_history_to_bottom();
     }
 
     pub(crate) fn compact_history_for_slash(&mut self) {
