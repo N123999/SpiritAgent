@@ -829,6 +829,10 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             typeof model.awsRegion === 'string' && model.awsRegion.trim().length > 0
               ? model.awsRegion.trim()
               : undefined;
+          const providerSite =
+            typeof model.providerSite === 'string' && model.providerSite.trim().length > 0
+              ? model.providerSite.trim()
+              : undefined;
           const vertexProject =
             typeof model.vertexProject === 'string' && model.vertexProject.trim().length > 0
               ? model.vertexProject.trim()
@@ -857,6 +861,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(capabilities ? { capabilities } : {}),
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
+            ...(providerSite ? { providerSite } : {}),
             ...(awsRegion ? { awsRegion } : {}),
             ...(vertexProject ? { vertexProject } : {}),
             ...(vertexLocation ? { vertexLocation } : {}),

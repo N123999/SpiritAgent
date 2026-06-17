@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path, workspace_mcp_config_path,
     },
-    model_provider_presets::{azure_api_base_from_resource_name, model_add_default_custom_api_base, model_add_preset_api_base_by_provider, validate_azure_resource_name},
+    model_provider_presets::{azure_api_base_from_resource_name, model_add_default_custom_api_base, model_add_preset_api_base_by_provider, model_add_siliconflow_site_api_base, validate_azure_resource_name},
     model_registry::{
         AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, ModelTransportKind,
     },
@@ -30,6 +30,7 @@ pub enum ModelCommand {
         context_length: Option<u64>,
         key: Option<String>,
         azure_resource_name: Option<String>,
+        provider_site: Option<String>,
     },
     Remove {
         name: String,
@@ -158,6 +159,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             context_length,
             key,
             azure_resource_name,
+            provider_site,
         } => {
             if cfg.has_model(&name) {
                 println!("模型已存在: {}", name);
@@ -200,6 +202,17 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                         return azure_api_base_from_resource_name(
                             azure_resource_name.as_deref().unwrap_or(""),
                         );
+                    }
+                    if provider == Some(ModelProvider::Siliconflow) {
+                        if let Some(site) = provider_site
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            if let Some(base) = model_add_siliconflow_site_api_base(site) {
+                                return base;
+                            }
+                        }
                     }
                     if let Some(provider) = provider {
                         if let Some(preset) = model_add_preset_api_base_by_provider(provider) {
@@ -256,6 +269,13 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                         "azureResourceName".to_string(),
                         serde_json::json!(resource_name),
                     );
+                }
+                if let Some(site) = provider_site
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    extra.insert("providerSite".to_string(), serde_json::json!(site));
                 }
 
                 cfg.add_model(ModelProfile {
@@ -483,7 +503,10 @@ fn parse_model_transport_kind(
             Err(anyhow!("provider=anthropic 时 transport-kind 不能是 openai-compatible 或 open-responses"))
         }
         (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::ZhipuAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba), ModelTransportKind::Anthropic) => {
-            Err(anyhow!("只有 provider=custom 或 anthropic 时可以选择 anthropic transport-kind"))
+            Err(anyhow!("只有 provider=custom、siliconflow 或 anthropic 时可以选择 anthropic transport-kind"))
+        }
+        (Some(ModelProvider::Siliconflow), ModelTransportKind::OpenResponses | ModelTransportKind::Bedrock) => {
+            Err(anyhow!("provider=siliconflow 仅支持 openai-compatible 或 anthropic transport-kind"))
         }
         (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::ZhipuAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba), ModelTransportKind::OpenResponses) => {
             Err(anyhow!("只有 provider=openai 或 custom 时可以选择 open-responses transport-kind"))

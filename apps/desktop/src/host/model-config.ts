@@ -56,7 +56,7 @@ export { resolveComposerDirectMediaTool, type DirectMediaTool };
 export function resolveProfileApiBase(
   profile: Pick<
     ModelProfileSnapshot,
-    'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion' | 'azureResourceName' | 'vertexProject' | 'vertexLocation'
+    'name' | 'provider' | 'transportKind' | 'apiBase' | 'awsRegion' | 'azureResourceName' | 'vertexProject' | 'vertexLocation' | 'providerSite'
   >,
 ): string {
   if (profile.provider === 'amazon-bedrock') {
@@ -91,7 +91,11 @@ export function resolveProfileApiBase(
   }
 
   if (profile.provider && profile.provider !== 'custom') {
-    return defaultApiBaseForTransport(profile.provider, resolveDesktopTransportKind(profile));
+    return defaultApiBaseForTransport(
+      profile.provider,
+      resolveDesktopTransportKind(profile),
+      profile.providerSite,
+    );
   }
 
   const trimmed = profile.apiBase?.trim();
@@ -127,6 +131,7 @@ export function resolveDesktopTransportKind(
 export function defaultApiBaseForTransport(
   provider?: DesktopModelProvider,
   transportKind?: DesktopTransportKind,
+  providerSite?: ModelProfileSnapshot['providerSite'],
 ): string {
   if (!provider) {
     return DEFAULT_API_BASE;
@@ -135,6 +140,7 @@ export function defaultApiBaseForTransport(
   return resolveProviderConnectApiBase(
     provider,
     transportKind ?? resolveDesktopTransportKind({ provider }),
+    providerSite ? { site: providerSite } : undefined,
   );
 }
 

@@ -27,6 +27,7 @@ pub enum ModelProvider {
     ZhipuAi,
     Minimax,
     Xiaomi,
+    Siliconflow,
     Alibaba,
     Anthropic,
     #[serde(rename = "vercel-ai-gateway", alias = "vercelaigateway")]
@@ -53,6 +54,7 @@ impl ModelProvider {
             Self::ZhipuAi => "zhipu-ai",
             Self::Minimax => "minimax",
             Self::Xiaomi => "xiaomi",
+            Self::Siliconflow => "siliconflow",
             Self::Alibaba => "alibaba",
             Self::Anthropic => "anthropic",
             Self::VercelAiGateway => "vercel-ai-gateway",
@@ -80,6 +82,7 @@ impl FromStr for ModelProvider {
             "zhipu-ai" => Ok(Self::ZhipuAi),
             "minimax" => Ok(Self::Minimax),
             "xiaomi" => Ok(Self::Xiaomi),
+            "siliconflow" => Ok(Self::Siliconflow),
             "alibaba" => Ok(Self::Alibaba),
             "anthropic" => Ok(Self::Anthropic),
             "vercel-ai-gateway" => Ok(Self::VercelAiGateway),
@@ -179,6 +182,7 @@ impl ModelProfile {
             Some(ModelProvider::Deepseek) => false,
             Some(ModelProvider::Moonshot) => false,
             Some(ModelProvider::Xiaomi) => false,
+            Some(ModelProvider::Siliconflow) => false,
             Some(ModelProvider::Xai)
             | Some(ModelProvider::ZAi)
             | Some(ModelProvider::ZhipuAi)
@@ -228,6 +232,16 @@ impl ModelProfile {
         } else {
             Some(capabilities)
         }
+    }
+
+    pub fn provider_site(&self) -> Option<String> {
+        self.extra
+            .get("providerSite")
+            .or_else(|| self.extra.get("provider_site"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
     }
 
     pub fn aws_region(&self) -> Option<String> {
@@ -1070,6 +1084,25 @@ mod tests {
         super::normalize_transport_kind(&mut model);
         assert_eq!(model.transport_kind(), super::ModelTransportKind::OpenAiCompatible);
         assert!(model.extra.get("transportKind").is_none());
+    }
+
+    #[test]
+    fn deserializes_siliconflow_provider_site_from_desktop_config() {
+        let raw = r#"{
+          "models": [{
+            "name": "deepseek-ai/DeepSeek-V3",
+            "apiBase": "https://api.siliconflow.cn/v1",
+            "provider": "siliconflow",
+            "providerSite": "cn",
+            "transportKind": "anthropic"
+          }],
+          "activeModel": "deepseek-ai/DeepSeek-V3"
+        }"#;
+        let cfg: super::AppConfig = serde_json::from_str(raw).expect("parse config");
+        let model = cfg.models.first().expect("model");
+        assert_eq!(model.provider, Some(super::ModelProvider::Siliconflow));
+        assert_eq!(model.provider_site().as_deref(), Some("cn"));
+        assert_eq!(model.transport_kind(), super::ModelTransportKind::Anthropic);
     }
 }
 

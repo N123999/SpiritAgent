@@ -3497,6 +3497,7 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::ZhipuAi => "zhipu-ai",
         ModelProvider::Minimax => "minimax",
         ModelProvider::Xiaomi => "xiaomi",
+        ModelProvider::Siliconflow => "siliconflow",
         ModelProvider::Alibaba => "alibaba",
         ModelProvider::Anthropic => {
             unreachable!("Anthropic 不应映射到 openai-compatible llmVendor")

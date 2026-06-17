@@ -12,6 +12,7 @@ use crate::{
         model_add_preset_api_base_by_choice_index,
         model_add_picker_order_ids, model_add_provider_at_choice_index,
         model_add_provider_id_at_choice_index,         model_add_requires_manual_single_provider,
+        model_add_siliconflow_site_api_base, model_add_siliconflow_site_id_from_choice,
         azure_api_base_from_resource_name,
         is_valid_azure_resource_name,
     },
@@ -59,6 +60,13 @@ fn model_add_volcengine_provider_index() -> usize {
     model_add_picker_order_ids()
         .iter()
         .position(|id| id == "volcengine")
+        .unwrap_or(14)
+}
+
+fn model_add_siliconflow_provider_index() -> usize {
+    model_add_picker_order_ids()
+        .iter()
+        .position(|id| id == "siliconflow")
         .unwrap_or(13)
 }
 
@@ -66,7 +74,7 @@ fn model_add_vertex_provider_index() -> usize {
     model_add_picker_order_ids()
         .iter()
         .position(|id| id == "google-vertex-ai")
-        .unwrap_or(16)
+        .unwrap_or(17)
 }
 
 const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
@@ -244,6 +252,8 @@ fn model_add_provider_label(id: &str) -> String {
         "zhipu-ai" => t!("form.model.provider.zhipu-ai"),
         "alibaba" => t!("form.model.provider.alibaba"),
         "minimax" => t!("form.model.provider.minimax"),
+        "xiaomi" => t!("form.model.provider.xiaomi"),
+        "siliconflow" => t!("form.model.provider.siliconflow"),
         "volcengine" => t!("form.model.provider.volcengine"),
         "azure" => t!("form.model.provider.azure"),
         "amazon-bedrock" => t!("form.model.provider.amazon_bedrock"),
@@ -303,6 +313,34 @@ fn model_add_transport_field(selected: usize) -> BottomFormFieldView {
     }
 }
 
+fn model_add_siliconflow_transport_field(selected: usize) -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.api_kind.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: vec![
+                t!("form.model.api_kind.openai_compatible").into_owned(),
+                t!("form.model.api_kind.anthropic").into_owned(),
+            ],
+            selected: selected.min(1),
+        },
+    }
+}
+
+fn model_add_siliconflow_site_field(selected: usize) -> BottomFormFieldView {
+    BottomFormFieldView {
+        label: t!("form.model.field.site.label").into_owned(),
+        help: String::new(),
+        editor: BottomFormFieldEditorView::Choice {
+            options: vec![
+                t!("form.model.provider.siliconflow.site.cn").into_owned(),
+                t!("form.model.provider.siliconflow.site.intl").into_owned(),
+            ],
+            selected: selected.min(1),
+        },
+    }
+}
+
 fn model_add_volcengine_transport_field(selected: usize) -> BottomFormFieldView {
     BottomFormFieldView {
         label: t!("form.model.field.api_kind.label").into_owned(),
@@ -324,6 +362,16 @@ fn model_add_transport_kind(form: &BottomFormView, provider: ModelProvider) -> M
             Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 2 => {
                 if *selected == 1 {
                     ModelTransportKind::OpenResponses
+                } else {
+                    ModelTransportKind::OpenAiCompatible
+                }
+            }
+            _ => ModelTransportKind::OpenAiCompatible,
+        },
+        ModelProvider::Siliconflow => match form.fields.get(3).map(|f| &f.editor) {
+            Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 2 => {
+                if *selected == 1 {
+                    ModelTransportKind::Anthropic
                 } else {
                     ModelTransportKind::OpenAiCompatible
                 }
@@ -578,6 +626,18 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
         }
         _ => 0,
     };
+    let siliconflow_site_selected = match form.fields.get(2).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 2 => {
+            (*selected).min(1)
+        }
+        _ => 1,
+    };
+    let siliconflow_transport_selected = match form.fields.get(3).map(|f| &f.editor) {
+        Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 2 => {
+            (*selected).min(1)
+        }
+        _ => 0,
+    };
 
     let name_raw = if old_len == 7 || old_len == 5 {
         bottom_form_text_value(form, if old_len == 5 { 2 } else { 3 })
@@ -629,7 +689,15 @@ fn sync_model_add_form_fields(form: &mut BottomFormView) {
     let bulk_custom = !model_add_is_preset_provider(provider_idx) && mode_custom == 1;
 
     let new_fields: Vec<BottomFormFieldView> =
-        if provider_idx == model_add_volcengine_provider_index() {
+        if provider_idx == model_add_siliconflow_provider_index() {
+        vec![
+            model_add_provider_field(provider_idx),
+            model_add_mode_field_preset(),
+            model_add_siliconflow_site_field(siliconflow_site_selected),
+            model_add_siliconflow_transport_field(siliconflow_transport_selected),
+            model_add_api_key_field(api_key_raw),
+        ]
+    } else if provider_idx == model_add_volcengine_provider_index() {
         vec![
             model_add_provider_field(provider_idx),
             model_add_mode_field_preset(),
@@ -713,6 +781,7 @@ pub(crate) struct ParsedModelAddForm {
     pub vertex_location: Option<String>,
     pub vertex_client_email: Option<String>,
     pub vertex_private_key: Option<String>,
+    pub provider_site: Option<String>,
 }
 
 pub(crate) fn new_rules_form(entries: &[RuleEntry]) -> BottomFormView {
@@ -1360,6 +1429,7 @@ pub(crate) fn parse_model_add_connection(
             vertex_location: None,
             vertex_client_email: None,
             vertex_private_key: None,
+            provider_site: None,
         });
     }
 
@@ -1395,7 +1465,19 @@ pub(crate) fn parse_model_add_connection(
     }
 
     let bulk = model_add_mode_bulk(form, provider_idx);
-    let api_base = if provider == ModelProvider::GoogleVertexAi {
+    let mut provider_site = None;
+    let api_base = if provider == ModelProvider::Siliconflow {
+        let site_selected = match form.fields.get(2).map(|f| &f.editor) {
+            Some(BottomFormFieldEditorView::Choice { selected, options }) if options.len() == 2 => {
+                (*selected).min(1)
+            }
+            _ => 1,
+        };
+        let site = model_add_siliconflow_site_id_from_choice(site_selected);
+        provider_site = Some(site.to_string());
+        model_add_siliconflow_site_api_base(site)
+            .ok_or_else(|| t!("form.model.validation.site_invalid").into_owned())?
+    } else if provider == ModelProvider::GoogleVertexAi {
         vertex_api_base_from_project_and_location(
             vertex_project.as_deref().unwrap_or(""),
             vertex_location.as_deref().unwrap_or(""),
@@ -1452,6 +1534,7 @@ pub(crate) fn parse_model_add_connection(
         vertex_location,
         vertex_client_email,
         vertex_private_key,
+        provider_site,
     })
 }
 
@@ -2135,7 +2218,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 17;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 18;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -2319,7 +2402,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 13;
+                *selected = 14;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2346,11 +2429,40 @@ mod tests {
     }
 
     #[test]
+    fn model_add_form_parses_siliconflow_preset_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 13;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        assert_eq!(form.fields.len(), 5);
+        if let Some(f) = form.fields.get_mut(3) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 1;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        form.selected_field = 4;
+        insert_text(&mut form, "sk-sf");
+
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::Siliconflow);
+        assert_eq!(parsed.transport_kind, ModelTransportKind::Anthropic);
+        assert!(parsed.bulk);
+        assert!(parsed.model_name.is_none());
+        assert_eq!(parsed.api_base, "https://api.siliconflow.com/v1");
+        assert_eq!(parsed.provider_site.as_deref(), Some("intl"));
+        assert_eq!(parsed.api_key, "sk-sf");
+    }
+
+    #[test]
     fn model_add_form_parses_azure_connection() {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 14;
+                *selected = 15;
             }
         }
         sync_model_add_form_fields(&mut form);

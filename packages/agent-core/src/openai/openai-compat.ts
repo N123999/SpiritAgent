@@ -12,6 +12,7 @@ export type OpenAiLlmVendor =
   | 'zhipu-ai'
   | 'minimax'
   | 'xiaomi'
+  | 'siliconflow'
   | 'alibaba'
   | 'vercel-ai-gateway'
   | 'openrouter'
@@ -158,6 +159,13 @@ export function resolveOpenAiModelCompatibilityProfile(
   }
 
   if (config.llmVendor === 'xiaomi') {
+    return {
+      hasExplicitCapabilities: true,
+      capabilities: {},
+    };
+  }
+
+  if (config.llmVendor === 'siliconflow') {
     return {
       hasExplicitCapabilities: true,
       capabilities: {},

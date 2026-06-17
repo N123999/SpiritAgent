@@ -1,4 +1,4 @@
-import type { ModelProviderId } from '@spirit-agent/host-internal/model-provider-presets';
+import type { ModelProviderId, ProviderConnectSiteId } from '@spirit-agent/host-internal/model-provider-presets';
 import type { ModelReasoningEffort } from '@spirit-agent/core/reasoning-effort';
 import type { LspWriteDiagnosticsUi } from '@spirit-agent/core';
 
@@ -110,6 +110,7 @@ export interface DesktopDreamConfigUpdate {
 
 /** 模型提供方（与 `packages/host-internal` 中 `ModelProviderId` 同源）。 */
 export type DesktopModelProvider = ModelProviderId;
+export type DesktopProviderConnectSiteId = ProviderConnectSiteId;
 
 export type DesktopTransportKind = 'openai-compatible' | 'open-responses' | 'anthropic' | 'bedrock';
 
@@ -141,6 +142,8 @@ export interface PreviewModelsRequest {
   apiKey: string;
   provider?: DesktopModelProvider;
   transportKind?: DesktopTransportKind;
+  /** SiliconFlow 等站点型提供商：cn / intl。 */
+  providerSite?: DesktopProviderConnectSiteId;
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
@@ -167,6 +170,8 @@ export interface AddProviderModelsRequest {
   modelCatalog?: PreviewModelCatalogEntry[];
   provider?: DesktopModelProvider;
   transportKind?: DesktopTransportKind;
+  /** SiliconFlow 等站点型提供商：cn / intl。 */
+  providerSite?: DesktopProviderConnectSiteId;
   awsRegion?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
@@ -200,6 +205,8 @@ export interface AddModelRequest {
   contextLength?: number;
   /** Amazon Bedrock AWS 区域；`amazon-bedrock` 必填。 */
   awsRegion?: string;
+  /** 站点型提供商区域（如 SiliconFlow cn / intl）。 */
+  providerSite?: DesktopProviderConnectSiteId;
   /** Azure 资源名；`azure` 必填。 */
   azureResourceName?: string;
   /** Google Vertex GCP 项目 ID。 */
@@ -1058,6 +1065,8 @@ export interface ModelProfileSnapshot {
   provider?: DesktopModelProvider;
   /** 传输族；当前主要用于区分 Anthropic 与 OpenAI-compatible。 */
   transportKind?: DesktopTransportKind;
+  /** 站点型提供商区域（如 SiliconFlow cn / intl）。 */
+  providerSite?: DesktopProviderConnectSiteId;
   /** Amazon Bedrock AWS 区域（如 `us-east-1`）；仅 `amazon-bedrock` 使用。 */
   awsRegion?: string;
   /** Azure 资源名；仅 `azure` 使用。 */

@@ -57,6 +57,11 @@
     "alibaba": "Alibaba",
     "minimax": "MiniMax",
     "xiaomi": "Xiaomi",
+    "siliconflow": "SiliconFlow",
+    "siliconflowSite": {
+      "cn": "China",
+      "intl": "International"
+    },
     "volcengine": "Volcengine",
     "azure": "Azure",
     "amazonBedrock": "Amazon Bedrock",
@@ -288,6 +293,8 @@
     "transportVolcengineResponses": "Volcengine Ark Responses API (`/api/v3/responses`), including context caching.",
     "providerSimpleDescription": "Fill in API Key to connect.",
     "apiType": "API Type",
+    "site": "Site",
+    "siliconflowConnectionDescription": "Select site and API type, then enter the API key for that site.",
     "modelAddMode": "Model Add Mode",
     "addSingle": "Add Single Only",
     "addAll": "Add All",

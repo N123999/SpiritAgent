@@ -8,6 +8,37 @@ import {
   usesProviderListedModelCatalogMetadata,
 } from '../../dist-electron/src/host/model-catalog-metadata.js';
 
+test('siliconflow provider uses listed model catalog metadata', () => {
+  assert.equal(
+    usesProviderListedModelCatalogMetadata({ provider: 'siliconflow', transportKind: 'openai-compatible' }),
+    true,
+  );
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'siliconflow',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      { id: 'deepseek-ai/DeepSeek-V3' },
+      { id: 'black-forest-labs/FLUX.1-schnell', supportsImageGeneration: true },
+      { id: 'Wan-AI/Wan2.2-T2V-A14B', supportsVideoGeneration: true },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    { id: 'deepseek-ai/DeepSeek-V3', displayName: 'Deepseek Ai DeepSeek V3', capabilities: ['chat'] },
+    {
+      id: 'black-forest-labs/FLUX.1-schnell',
+      displayName: 'Black Forest Labs FLUX.1 Schnell',
+      capabilities: ['imageGeneration'],
+    },
+    {
+      id: 'Wan-AI/Wan2.2-T2V-A14B',
+      displayName: 'Wan AI Wan2.2 T2V A14B',
+      capabilities: ['chat', 'videoGeneration'],
+    },
+  ]);
+});
+
 test('custom anthropic transport consumes Anthropic model catalog metadata', () => {
   assert.equal(
     usesAnthropicModelCatalogMetadata({ provider: 'custom', transportKind: 'anthropic' }),

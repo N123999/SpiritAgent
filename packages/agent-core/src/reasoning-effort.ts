@@ -10,6 +10,7 @@ export type ModelReasoningProvider =
   | 'zhipu-ai'
   | 'minimax'
   | 'xiaomi'
+  | 'siliconflow'
   | 'alibaba'
   | 'anthropic'
   | 'vercel-ai-gateway'

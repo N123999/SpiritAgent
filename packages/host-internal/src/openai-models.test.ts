@@ -8,6 +8,7 @@ import {
   parseOpenAiCompatibleModelEntriesPayload,
   parseMoonshotModelEntriesPayload,
   parseOpenRouterModelEntriesPayload,
+  parseSiliconFlowModelEntriesPayload,
   parseVercelAiGatewayModelEntriesPayload,
   parseVolcengineModelEntriesPayload,
   parseXiaomiModelEntriesPayload,
@@ -303,6 +304,45 @@ test('parseXiaomiModelEntriesPayload marks multimodal allowlist models', () => {
       supportsImageInput: false,
       supportsVideoInput: false,
     },
+  ]);
+});
+
+test('parseSiliconFlowModelEntriesPayload marks capabilities by list kind', () => {
+  const chatEntries = parseSiliconFlowModelEntriesPayload(
+    {
+      object: 'list',
+      data: [
+        { id: 'Qwen/Qwen2.5-VL-7B-Instruct', object: 'model' },
+        { id: 'deepseek-ai/DeepSeek-V3', object: 'model' },
+      ],
+    },
+    'chat',
+  );
+  assert.deepEqual(chatEntries, [
+    { id: 'Qwen/Qwen2.5-VL-7B-Instruct', supportsImageInput: true },
+    { id: 'deepseek-ai/DeepSeek-V3' },
+  ]);
+
+  const imageEntries = parseSiliconFlowModelEntriesPayload(
+    {
+      object: 'list',
+      data: [{ id: 'black-forest-labs/FLUX.1-schnell', object: 'model' }],
+    },
+    'image',
+  );
+  assert.deepEqual(imageEntries, [
+    { id: 'black-forest-labs/FLUX.1-schnell', supportsImageGeneration: true },
+  ]);
+
+  const videoEntries = parseSiliconFlowModelEntriesPayload(
+    {
+      object: 'list',
+      data: [{ id: 'Wan-AI/Wan2.2-T2V-A14B', object: 'model' }],
+    },
+    'video',
+  );
+  assert.deepEqual(videoEntries, [
+    { id: 'Wan-AI/Wan2.2-T2V-A14B', supportsVideoGeneration: true },
   ]);
 });
 

@@ -373,6 +373,7 @@ impl TuiShell {
                     parsed.transport_kind,
                     parsed.context_length,
                     parsed.azure_resource_name.as_deref(),
+                    parsed.provider_site.as_deref(),
                 ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {
@@ -538,6 +539,9 @@ impl TuiShell {
                 if let Some(location) = parsed.vertex_location.as_deref() {
                     extra.insert("vertexLocation".to_string(), serde_json::json!(location));
                 }
+            }
+            if let Some(site) = parsed.provider_site.as_deref() {
+                extra.insert("providerSite".to_string(), serde_json::json!(site));
             }
             config.add_model(ModelProfile {
                 name: id.clone(),

@@ -81,6 +81,7 @@ import {
   type OpenAiTransportConfig,
   type OpenAiVideoGenerationConfig,
 } from './openai-compat.js';
+import { generateSiliconFlowImage } from '../image-generation/siliconflow-backend.js';
 import { generateVideoWithRouter } from '../video-generation/router.js';
 import { getLlmFetch } from '../llm-fetch.js';
 import { createAlibabaChatCompletionsAwareFetch } from '../open-responses/alibaba-chat-completions-fetch.js';
@@ -203,6 +204,10 @@ export class AiSdkOpenAiCompatibleTransport
     const imageConfig = config.imageGeneration;
     if (!imageConfig) {
       throw new Error('No image generation model is configured.');
+    }
+
+    if (imageConfig.llmVendor === 'siliconflow') {
+      return generateSiliconFlowImage(imageConfig, request, saveGeneratedImage);
     }
 
     const requestUrl = buildAiSdkImageGenerationUrl(imageConfig);

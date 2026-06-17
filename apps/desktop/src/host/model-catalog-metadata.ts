@@ -30,6 +30,9 @@ export function usesProviderListedModelCatalogMetadata(input: {
   if (input.provider === 'xiaomi') {
     return true;
   }
+  if (input.provider === 'siliconflow') {
+    return true;
+  }
   if (
     input.provider === 'vercel-ai-gateway'
     || input.provider === 'openrouter'

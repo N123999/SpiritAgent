@@ -57,6 +57,11 @@
     "alibaba": "Alibaba",
     "minimax": "MiniMax",
     "xiaomi": "Xiaomi",
+    "siliconflow": "SiliconFlow",
+    "siliconflowSite": {
+      "cn": "中国站",
+      "intl": "国际站"
+    },
     "volcengine": "火山引擎",
     "azure": "Azure",
     "amazonBedrock": "Amazon Bedrock",
@@ -288,6 +293,8 @@
     "transportVolcengineResponses": "火山方舟 Responses API（`/api/v3/responses`），支持上下文缓存等能力。",
     "providerSimpleDescription": "填写 API Key 即可连接。",
     "apiType": "API 类型",
+    "site": "站点",
+    "siliconflowConnectionDescription": "请选择站点与 API 类型，并填写对应站点的 API Key。",
     "modelAddMode": "模型添加方式",
     "addSingle": "仅添加单个",
     "addAll": "添加所有",

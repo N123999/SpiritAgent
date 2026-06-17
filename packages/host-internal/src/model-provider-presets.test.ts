@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  defaultProviderConnectSite,
+  listProviderConnectSiteOptions,
   parseModelProviderId,
   parsePresetModelProviderId,
+  parseProviderSiteSelection,
   partitionModelsByProvider,
+  providerSupportsSiteSelection,
   resolveProviderConnectApiBase,
+  resolveProviderConnectSiteApiBase,
 } from './model-provider-presets.js';
 
 test('parse model provider helpers accept canonical ids and reject invalid values', () => {
@@ -20,6 +25,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('z-ai'), 'z-ai');
   assert.equal(parseModelProviderId('zhipu-ai'), 'zhipu-ai');
   assert.equal(parseModelProviderId('xiaomi'), 'xiaomi');
+  assert.equal(parseModelProviderId('siliconflow'), 'siliconflow');
   assert.equal(parseModelProviderId('azure'), 'azure');
   assert.equal(parseModelProviderId('kimi'), undefined);
   assert.equal(parseModelProviderId('unknown'), undefined);
@@ -141,5 +147,72 @@ test('resolveProviderConnectApiBase accepts override only for custom provider', 
   assert.equal(
     resolveProviderConnectApiBase('custom', 'openai-compatible', 'https://custom.example/v1'),
     'https://custom.example/v1',
+  );
+});
+
+test('parseProviderSiteSelection validates site definitions', () => {
+  const parsed = parseProviderSiteSelection({
+    xiaomi: {
+      defaultSite: 'cn',
+      sites: {
+        cn: {
+          labelKey: 'providers.test.site.cn',
+          fallbackLabel: 'China',
+          apiBase: 'https://api.example.cn/v1',
+        },
+        intl: {
+          labelKey: 'providers.test.site.intl',
+          fallbackLabel: 'International',
+          apiBase: 'https://api.example.com/v1',
+        },
+      },
+    },
+  });
+
+  assert.equal(parsed.xiaomi?.defaultSite, 'cn');
+  assert.equal(parsed.xiaomi?.sites.cn?.apiBase, 'https://api.example.cn/v1');
+  assert.deepEqual(parseProviderSiteSelection({}), {});
+});
+
+test('parseProviderSiteSelection rejects invalid defaultSite', () => {
+  assert.throws(
+    () =>
+      parseProviderSiteSelection({
+        xiaomi: {
+          defaultSite: 'missing',
+          sites: {
+            cn: {
+              labelKey: 'providers.test.site.cn',
+              fallbackLabel: 'China',
+              apiBase: 'https://api.example.cn/v1',
+            },
+          },
+        },
+      }),
+    /defaultSite must exist in sites/,
+  );
+});
+
+test('provider site helpers are inactive until providerSiteSelection is configured', () => {
+  assert.equal(providerSupportsSiteSelection('xiaomi'), false);
+  assert.equal(defaultProviderConnectSite('xiaomi'), undefined);
+  assert.deepEqual(listProviderConnectSiteOptions('xiaomi'), []);
+  assert.equal(resolveProviderConnectSiteApiBase('xiaomi', 'cn'), undefined);
+});
+
+test('resolveProviderConnectApiBase prefers site apiBase for siliconflow', () => {
+  assert.equal(providerSupportsSiteSelection('siliconflow'), true);
+  assert.equal(defaultProviderConnectSite('siliconflow'), 'intl');
+  assert.equal(
+    resolveProviderConnectApiBase('siliconflow', 'openai-compatible', { site: 'cn' }),
+    'https://api.siliconflow.cn/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('siliconflow', 'anthropic', { site: 'intl' }),
+    'https://api.siliconflow.com/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('siliconflow', 'openai-compatible'),
+    'https://api.siliconflow.com/v1',
   );
 });

@@ -9,6 +9,7 @@ export type ModelProviderId =
   | 'zhipu-ai'
   | 'minimax'
   | 'xiaomi'
+  | 'siliconflow'
   | 'alibaba'
   | 'anthropic'
   | 'vercel-ai-gateway'
@@ -50,6 +51,7 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'alibaba',
   'minimax',
   'xiaomi',
+  'siliconflow',
   'volcengine',
   'azure',
   'amazon-bedrock',
@@ -72,7 +74,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","z-ai","zhipu-ai","alibaba","minimax","xiaomi","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","z-ai","zhipu-ai","alibaba","minimax","xiaomi","siliconflow","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
     );
   }
 }
@@ -80,6 +82,35 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
 type PresetApiBaseByTransport = Partial<
   Record<PresetModelProviderId, Partial<Record<ProviderModelTransportKind, string>>>
 >;
+
+/** 连接向导站点 id（如 SiliconFlow 的 cn / intl）。 */
+export type ProviderConnectSiteId = string;
+
+export interface ProviderConnectSiteDefinition {
+  labelKey: string;
+  fallbackLabel: string;
+  apiBase: string;
+}
+
+export interface ProviderConnectSiteOption {
+  id: ProviderConnectSiteId;
+  labelKey: string;
+  fallbackLabel: string;
+}
+
+export interface ProviderSiteSelectionConfig {
+  defaultSite: ProviderConnectSiteId;
+  sites: Record<ProviderConnectSiteId, ProviderConnectSiteDefinition>;
+}
+
+type ProviderSiteSelectionByProvider = Partial<
+  Record<PresetModelProviderId, ProviderSiteSelectionConfig>
+>;
+
+export interface ResolveProviderConnectApiBaseOptions {
+  site?: ProviderConnectSiteId;
+  customApiBaseTrimmed?: string;
+}
 
 export interface ProviderPickerLabel {
   labelKey: string;
@@ -100,6 +131,7 @@ interface ParsedModelProviderPresets {
     | 'zhipu-ai'
     | 'minimax'
     | 'xiaomi'
+    | 'siliconflow'
     | 'alibaba'
     | 'anthropic'
     | 'vercel-ai-gateway'
@@ -113,6 +145,7 @@ interface ParsedModelProviderPresets {
     string
   >;
   presetApiBaseByTransport: PresetApiBaseByTransport;
+  providerSiteSelection: ProviderSiteSelectionByProvider;
   pickerOrder: readonly ModelProviderId[];
   pickerLabels: Record<ModelProviderId, ProviderPickerLabel>;
 }
@@ -172,6 +205,62 @@ function parsePresetApiBaseByTransport(data: unknown): PresetApiBaseByTransport 
   return result;
 }
 
+export function parseProviderSiteSelection(data: unknown): ProviderSiteSelectionByProvider {
+  if (data === undefined) {
+    return {};
+  }
+  if (!isJsonRecord(data)) {
+    throw new Error('model-provider-presets.json: providerSiteSelection must be an object');
+  }
+
+  const result: ProviderSiteSelectionByProvider = {};
+
+  for (const [providerKey, selectionRaw] of Object.entries(data)) {
+    if (!isPresetModelProviderId(providerKey)) {
+      throw new Error(
+        `model-provider-presets.json: providerSiteSelection.${providerKey} is not a preset provider id`,
+      );
+    }
+    if (!isJsonRecord(selectionRaw)) {
+      throw new Error(
+        `model-provider-presets.json: providerSiteSelection.${providerKey} must be an object`,
+      );
+    }
+
+    const defaultSite = requireStringField(selectionRaw, 'defaultSite');
+    const sitesRaw = selectionRaw.sites;
+    if (!isJsonRecord(sitesRaw) || Object.keys(sitesRaw).length === 0) {
+      throw new Error(
+        `model-provider-presets.json: providerSiteSelection.${providerKey}.sites must be a non-empty object`,
+      );
+    }
+
+    const sites: Record<ProviderConnectSiteId, ProviderConnectSiteDefinition> = {};
+    for (const [siteId, siteRaw] of Object.entries(sitesRaw)) {
+      if (!isJsonRecord(siteRaw)) {
+        throw new Error(
+          `model-provider-presets.json: providerSiteSelection.${providerKey}.sites.${siteId} must be an object`,
+        );
+      }
+      sites[siteId] = {
+        labelKey: requireStringField(siteRaw, 'labelKey'),
+        fallbackLabel: requireStringField(siteRaw, 'fallbackLabel'),
+        apiBase: requireStringField(siteRaw, 'apiBase'),
+      };
+    }
+
+    if (!(defaultSite in sites)) {
+      throw new Error(
+        `model-provider-presets.json: providerSiteSelection.${providerKey}.defaultSite must exist in sites`,
+      );
+    }
+
+    result[providerKey] = { defaultSite, sites };
+  }
+
+  return result;
+}
+
 function parsePickerLabel(data: unknown, id: ModelProviderId): ProviderPickerLabel {
   if (!isJsonRecord(data)) {
     throw new Error(`model-provider-presets.json: pickerLabels.${id} must be an object`);
@@ -208,6 +297,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     'zhipu-ai': requireStringField(presetRaw, 'zhipu-ai'),
     minimax: requireStringField(presetRaw, 'minimax'),
     xiaomi: requireStringField(presetRaw, 'xiaomi'),
+    siliconflow: requireStringField(presetRaw, 'siliconflow'),
     alibaba: requireStringField(presetRaw, 'alibaba'),
     anthropic: requireStringField(presetRaw, 'anthropic'),
     'vercel-ai-gateway': requireStringField(presetRaw, 'vercel-ai-gateway'),
@@ -238,10 +328,13 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
       ? {}
       : parsePresetApiBaseByTransport(presetApiBaseByTransportRaw);
 
+  const providerSiteSelection = parseProviderSiteSelection(data.providerSiteSelection);
+
   return {
     defaultCustomApiBase,
     presetApiBaseByProvider,
     presetApiBaseByTransport,
+    providerSiteSelection,
     pickerOrder,
     pickerLabels: pickerLabels as Record<ModelProviderId, ProviderPickerLabel>,
   };
@@ -258,6 +351,7 @@ const zAiBase = raw.presetApiBaseByProvider['z-ai'];
 const zhipuAiBase = raw.presetApiBaseByProvider['zhipu-ai'];
 const minimaxBase = raw.presetApiBaseByProvider.minimax;
 const xiaomiBase = raw.presetApiBaseByProvider.xiaomi;
+const siliconflowBase = raw.presetApiBaseByProvider.siliconflow;
 const alibabaBase = raw.presetApiBaseByProvider.alibaba;
 const anthropicBase = raw.presetApiBaseByProvider.anthropic;
 const vercelAiGatewayBase = raw.presetApiBaseByProvider['vercel-ai-gateway'];
@@ -277,6 +371,7 @@ export const PROVIDER_PRESET_API_BASE = {
   'zhipu-ai': zhipuAiBase,
   minimax: minimaxBase,
   xiaomi: xiaomiBase,
+  siliconflow: siliconflowBase,
   alibaba: alibabaBase,
   anthropic: anthropicBase,
   'vercel-ai-gateway': vercelAiGatewayBase,
@@ -334,6 +429,76 @@ export function partitionModelsByProvider<Model extends { provider?: ModelProvid
   return { matched, unmatched };
 }
 
+function normalizeResolveProviderConnectApiBaseOptions(
+  options?: ResolveProviderConnectApiBaseOptions | string,
+): ResolveProviderConnectApiBaseOptions {
+  if (typeof options === 'string') {
+    return { customApiBaseTrimmed: options };
+  }
+  return options ?? {};
+}
+
+export function providerSupportsSiteSelection(provider: ModelProviderId): boolean {
+  if (provider === 'custom') {
+    return false;
+  }
+  return raw.providerSiteSelection[provider] !== undefined;
+}
+
+export function defaultProviderConnectSite(
+  provider: ModelProviderId,
+): ProviderConnectSiteId | undefined {
+  if (provider === 'custom') {
+    return undefined;
+  }
+  return raw.providerSiteSelection[provider]?.defaultSite;
+}
+
+export function listProviderConnectSiteOptions(
+  provider: ModelProviderId,
+): ProviderConnectSiteOption[] {
+  if (provider === 'custom') {
+    return [];
+  }
+  const selection = raw.providerSiteSelection[provider];
+  if (!selection) {
+    return [];
+  }
+  return Object.entries(selection.sites).map(([id, site]) => ({
+    id,
+    labelKey: site.labelKey,
+    fallbackLabel: site.fallbackLabel,
+  }));
+}
+
+export function resolveProviderConnectSiteApiBase(
+  provider: ModelProviderId,
+  site: ProviderConnectSiteId,
+): string | undefined {
+  if (provider === 'custom') {
+    return undefined;
+  }
+  const selection = raw.providerSiteSelection[provider];
+  if (!selection) {
+    return undefined;
+  }
+  return selection.sites[site]?.apiBase;
+}
+
+export function isProviderConnectSiteId(
+  provider: ModelProviderId,
+  site: unknown,
+): site is ProviderConnectSiteId {
+  if (typeof site !== 'string' || site.trim() === '') {
+    return false;
+  }
+  if (provider === 'custom') {
+    return false;
+  }
+  const selection = raw.providerSiteSelection[provider];
+  return selection !== undefined && site in selection.sites;
+}
+
 export function resolveConnectApiBase(
   provider: ModelProviderId,
   customApiBaseTrimmed: string,
@@ -353,6 +518,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE.minimax;
     case 'xiaomi':
       return PROVIDER_PRESET_API_BASE.xiaomi;
+    case 'siliconflow':
+      return PROVIDER_PRESET_API_BASE.siliconflow;
     case 'alibaba':
       return PROVIDER_PRESET_API_BASE.alibaba;
     case 'anthropic':
@@ -385,10 +552,17 @@ export function resolveConnectApiBase(
 export function resolveProviderConnectApiBase(
   provider: ModelProviderId,
   transportKind: ProviderModelTransportKind,
-  customApiBaseTrimmed = '',
+  options?: ResolveProviderConnectApiBaseOptions | string,
 ): string {
+  const { site, customApiBaseTrimmed = '' } = normalizeResolveProviderConnectApiBaseOptions(options);
+
   if (provider === 'custom') {
     return customApiBaseTrimmed.trim();
+  }
+
+  const siteBase = site ? resolveProviderConnectSiteApiBase(provider, site) : undefined;
+  if (siteBase) {
+    return siteBase;
   }
 
   if (provider === 'openai') {
@@ -401,5 +575,5 @@ export function resolveProviderConnectApiBase(
     return transportBase;
   }
 
-  return resolveConnectApiBase(provider, '');
+  return resolveConnectApiBase(provider, customApiBaseTrimmed);
 }

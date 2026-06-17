@@ -8,11 +8,26 @@ import type {
 import { AiSdkGatewayVideoBackend } from './ai-sdk-gateway-backend.js';
 import { OpenRouterVideosBackend } from './openrouter-videos-backend.js';
 import { VolcengineArkVideoBackend } from './volcengine-ark-backend.js';
+import { SiliconFlowVideoBackend } from './siliconflow-backend.js';
 import type { VideoGenerationBackend } from './types.js';
 
 const volcengineArkBackend = new VolcengineArkVideoBackend();
 const openRouterVideosBackend = new OpenRouterVideosBackend();
 const aiSdkGatewayBackend = new AiSdkGatewayVideoBackend();
+const siliconFlowVideoBackend = new SiliconFlowVideoBackend();
+
+export function isSiliconFlowApiBase(baseUrl: string | undefined): boolean {
+  if (!baseUrl) {
+    return false;
+  }
+
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname.includes('siliconflow.com') || hostname.includes('siliconflow.cn');
+  } catch {
+    return false;
+  }
+}
 
 export function isVolcengineArkApiBase(baseUrl: string | undefined): boolean {
   if (!baseUrl) {
@@ -38,12 +53,16 @@ export function resolveVideoGenerationBackend(
     return openRouterVideosBackend;
   }
 
+  if (config.llmVendor === 'siliconflow' || isSiliconFlowApiBase(config.baseUrl)) {
+    return siliconFlowVideoBackend;
+  }
+
   if (isVolcengineArkApiBase(config.baseUrl)) {
     return volcengineArkBackend;
   }
 
   throw new Error(
-    'No video generation backend is configured for the selected video model. Use Volcengine Ark, Vercel AI Gateway, or OpenRouter.',
+    'No video generation backend is configured for the selected video model. Use Volcengine Ark, Vercel AI Gateway, OpenRouter, or SiliconFlow.',
   );
 }
 

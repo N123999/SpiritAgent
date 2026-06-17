@@ -86,6 +86,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
     return parseXiaomiModelEntriesPayload(body);
   }
 
+  if (provider === 'siliconflow') {
+    return parseSiliconFlowModelEntriesPayload(body, 'chat');
+  }
+
   if (provider === 'google') {
     return parseGoogleModelEntriesPayload(body);
   }
@@ -151,6 +155,143 @@ export function parseMoonshotModelEntriesPayload(body: unknown): ProviderListedM
     entries.push(modelEntry);
   }
   return entries;
+}
+
+export type SiliconFlowModelListKind = 'chat' | 'image' | 'video';
+
+/** SiliconFlow `GET /v1/models`：OpenAI-shaped list；能力由请求 query 来源标注。 */
+export function parseSiliconFlowModelEntriesPayload(
+  body: unknown,
+  kind: SiliconFlowModelListKind,
+): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('data' in body)) {
+    return [];
+  }
+  const raw = (body as { data?: unknown }).data;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry)) {
+      continue;
+    }
+    const id = (entry as { id?: unknown }).id;
+    if (typeof id !== 'string' || id.trim().length === 0) {
+      continue;
+    }
+
+    const modelEntry: ProviderListedModelEntry = { id: id.trim() };
+    switch (kind) {
+      case 'image':
+        modelEntry.supportsImageGeneration = true;
+        break;
+      case 'video':
+        modelEntry.supportsVideoGeneration = true;
+        break;
+      case 'chat':
+        if (inferSiliconFlowVisionInputFromModelId(modelEntry.id)) {
+          modelEntry.supportsImageInput = true;
+        }
+        break;
+      default:
+        break;
+    }
+    entries.push(modelEntry);
+  }
+  return entries;
+}
+
+function inferSiliconFlowVisionInputFromModelId(modelId: string): boolean {
+  const normalized = modelId.trim().toLowerCase();
+  return (
+    normalized.includes('vl')
+    || normalized.includes('vision')
+    || normalized.includes('omni')
+    || normalized.includes('multimodal')
+  );
+}
+
+function mergeSiliconFlowListedModelEntries(
+  entries: readonly ProviderListedModelEntry[],
+): ProviderListedModelEntry[] {
+  const byId = new Map<string, ProviderListedModelEntry>();
+  for (const entry of entries) {
+    const existing = byId.get(entry.id);
+    if (!existing) {
+      byId.set(entry.id, { ...entry });
+      continue;
+    }
+    byId.set(entry.id, {
+      ...existing,
+      ...entry,
+      ...(existing.supportsImageInput || entry.supportsImageInput
+        ? { supportsImageInput: true }
+        : {}),
+      ...(existing.supportsVideoInput || entry.supportsVideoInput
+        ? { supportsVideoInput: true }
+        : {}),
+      ...(existing.supportsImageGeneration || entry.supportsImageGeneration
+        ? { supportsImageGeneration: true }
+        : {}),
+      ...(existing.supportsVideoGeneration || entry.supportsVideoGeneration
+        ? { supportsVideoGeneration: true }
+        : {}),
+      ...(existing.supportsReasoning || entry.supportsReasoning
+        ? { supportsReasoning: true }
+        : {}),
+      ...(existing.contextLength ?? entry.contextLength
+        ? { contextLength: existing.contextLength ?? entry.contextLength }
+        : {}),
+      ...(existing.supportedReasoningEfforts ?? entry.supportedReasoningEfforts
+        ? {
+            supportedReasoningEfforts:
+              existing.supportedReasoningEfforts ?? entry.supportedReasoningEfforts,
+          }
+        : {}),
+    });
+  }
+  return [...byId.values()];
+}
+
+async function fetchSiliconFlowModelsPayload(
+  options: ListOpenAiCompatibleModelIdsOptions,
+  query: string,
+): Promise<unknown> {
+  const baseListUrl = openAiCompatibleModelsListUrl(options.baseUrl);
+  const url = `${baseListUrl}?${query}`;
+  const key = options.apiKey.trim();
+  if (!key) {
+    throw new Error('API Key 不能为空。');
+  }
+
+  const init: RequestInit = {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${key}`,
+    },
+    ...(options.signal !== undefined ? { signal: options.signal } : {}),
+  };
+  return fetchModelsListJson(url, init);
+}
+
+export async function listSiliconFlowModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  const queries: Array<{ kind: SiliconFlowModelListKind; query: string }> = [
+    { kind: 'chat', query: 'type=text&sub_type=chat' },
+    { kind: 'image', query: 'type=image' },
+    { kind: 'video', query: 'sub_type=text-to-video' },
+  ];
+
+  const allEntries: ProviderListedModelEntry[] = [];
+  for (const { kind, query } of queries) {
+    const json = await fetchSiliconFlowModelsPayload(options, query);
+    allEntries.push(...parseSiliconFlowModelEntriesPayload(json, kind));
+  }
+
+  return mergeSiliconFlowListedModelEntries(allEntries).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** Xiaomi Mimo：上游 /models 不返回能力字段，多模态模型需维护 allowlist。 */
@@ -715,6 +856,10 @@ export async function listProviderModels(
       apiKey: options.apiKey,
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
     });
+  }
+
+  if (options.provider === 'siliconflow') {
+    return listSiliconFlowModels(options);
   }
 
   if (
