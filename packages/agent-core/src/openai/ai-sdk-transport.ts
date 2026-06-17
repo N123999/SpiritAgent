@@ -98,6 +98,7 @@ import {
   llmHistoryToOpenAiMessages,
   resolveMoonshotVideoUrlsInOpenAiMessages,
 } from './openai-multimodal-messages.js';
+import { resolveXiaomiVideoUrlsInOpenAiMessages } from './xiaomi-video-messages.js';
 import { normalizeMoonshotApiBase } from './moonshot-files.js';
 import {
   buildJsonSchemaCompletionMessages,
@@ -267,7 +268,7 @@ export class AiSdkOpenAiCompatibleTransport
     request: OpenAiJsonSchemaCompletionRequest,
   ): Promise<OpenAiJsonSchemaCompletionResult<T>> {
     const rawMessages = buildJsonSchemaCompletionMessages(config, request);
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    await resolveOpenAiCompatibleVideoInputsInMessages(
       config,
       rawMessages,
       openAiTransportAssetRoot(config),
@@ -307,7 +308,7 @@ export class AiSdkOpenAiCompatibleTransport
       steps: state.steps + 1,
     };
 
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    await resolveOpenAiCompatibleVideoInputsInMessages(
       config,
       nextState.messages,
       openAiTransportAssetRoot(config),
@@ -393,7 +394,7 @@ export class AiSdkOpenAiCompatibleTransport
       steps: state.steps + 1,
     };
 
-    await resolveMoonshotVideoUrlsInOpenAiMessages(
+    await resolveOpenAiCompatibleVideoInputsInMessages(
       config,
       nextState.messages,
       openAiTransportAssetRoot(config),
@@ -700,23 +701,35 @@ function createAiSdkOpenAiCompatibleProvider(
   const vendorExtras = options.includeChatVendorExtras === false
     ? {}
     : openAiVendorChatCompletionBodyExtras(transportConfig);
-  const fetchWrapper =
-    Object.keys(vendorExtras).length === 0
-      ? undefined
-      : async (input: RequestInfo | URL, init?: RequestInit) => {
-          const body = tryParseRequestBody(init?.body);
-          if (!isJsonObject(body)) {
-            return getLlmFetch()(input, init);
-          }
+  const needsVideoStash = usesOpenAiCompatibleVideoMessageStash(transportConfig.llmVendor);
+  const needsFetchWrapper = needsVideoStash || Object.keys(vendorExtras).length > 0;
+  const fetchWrapper = !needsFetchWrapper
+    ? undefined
+    : async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = tryParseRequestBody(init?.body);
+        if (!isJsonObject(body)) {
+          return getLlmFetch()(input, init);
+        }
 
-          return getLlmFetch()(input, {
-            ...init,
-            body: JSON.stringify({
-              ...body,
-              ...vendorExtras,
-            }),
-          });
-        };
+        const requestUrl =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : 'request';
+        const stashedMessages = needsVideoStash && requestUrl.includes('/chat/completions')
+          ? takeMoonshotChatCompletionMessages()
+          : undefined;
+
+        return getLlmFetch()(input, {
+          ...init,
+          body: JSON.stringify({
+            ...body,
+            ...vendorExtras,
+            ...(stashedMessages ? { messages: stashedMessages } : {}),
+          }),
+        });
+      };
 
   const headers = {
     ...(config.organization ? { 'OpenAI-Organization': config.organization } : {}),
@@ -1600,19 +1613,37 @@ function openAiTransportAssetRoot(config: Pick<OpenAiTransportConfig, 'workspace
   return config.workspaceRoot ?? process.cwd();
 }
 
+async function resolveOpenAiCompatibleVideoInputsInMessages(
+  config: OpenAiTransportConfig,
+  messages: JsonValue[],
+  assetRoot: string,
+): Promise<void> {
+  await resolveMoonshotVideoUrlsInOpenAiMessages(config, messages, assetRoot);
+  resolveXiaomiVideoUrlsInOpenAiMessages(config, messages, assetRoot);
+}
+
 function prepareMoonshotChatCompletionRequest(
   config: OpenAiTransportConfig,
   requestMessages: JsonValue[],
 ): void {
-  if (config.llmVendor === 'moonshot-ai' && openAiMessagesContainVideoUrl(requestMessages)) {
+  if (
+    usesOpenAiCompatibleVideoMessageStash(config.llmVendor)
+    && openAiMessagesContainVideoUrl(requestMessages)
+  ) {
     stashMoonshotChatCompletionMessages(requestMessages);
   }
 }
 
 function clearMoonshotChatCompletionRequest(config: OpenAiTransportConfig): void {
-  if (config.llmVendor === 'moonshot-ai') {
+  if (usesOpenAiCompatibleVideoMessageStash(config.llmVendor)) {
     clearMoonshotChatCompletionMessages();
   }
+}
+
+function usesOpenAiCompatibleVideoMessageStash(
+  vendor: OpenAiTransportConfig['llmVendor'],
+): boolean {
+  return vendor === 'moonshot-ai' || vendor === 'xiaomi';
 }
 
 function normalizeMessagesForRequest(

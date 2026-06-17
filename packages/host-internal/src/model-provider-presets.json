@@ -13,6 +13,7 @@
     "openai": "https://api.openai.com/v1",
     "google": "https://generativelanguage.googleapis.com/v1beta",
     "google-vertex-ai": "https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/us-central1",
+    "xiaomi": "https://api.xiaomimimo.com/v1",
     "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
     "azure": "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1",
     "amazon-bedrock": "https://bedrock.us-east-1.amazonaws.com"
@@ -26,6 +27,10 @@
       "openai-compatible": "https://api.deepseek.com/v1",
       "anthropic": "https://api.deepseek.com/anthropic"
     },
+    "xiaomi": {
+      "openai-compatible": "https://api.xiaomimimo.com/v1",
+      "anthropic": "https://api.xiaomimimo.com/anthropic"
+    },
     "alibaba": {
       "openai-compatible": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "anthropic": "https://dashscope.aliyuncs.com/apps/anthropic",
@@ -38,7 +43,7 @@
       "open-responses": "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1"
     }
   },
-  "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "z-ai", "alibaba", "minimax", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
+  "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "z-ai", "alibaba", "minimax", "xiaomi", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
   "pickerLabels": {
     "deepseek": {
       "labelKey": "providers.deepseek",
@@ -59,6 +64,10 @@
     "minimax": {
       "labelKey": "providers.minimax",
       "fallbackLabel": "MiniMax"
+    },
+    "xiaomi": {
+      "labelKey": "providers.xiaomi",
+      "fallbackLabel": "Xiaomi"
     },
     "alibaba": {
       "labelKey": "providers.alibaba",

@@ -10,6 +10,7 @@ import {
   parseOpenRouterModelEntriesPayload,
   parseVercelAiGatewayModelEntriesPayload,
   parseVolcengineModelEntriesPayload,
+  parseXiaomiModelEntriesPayload,
 } from './openai-models.js';
 
 test('parseAnthropicModelEntriesPayload extracts image input and supported effort levels', () => {
@@ -272,6 +273,53 @@ test('parseOpenRouterModelEntriesPayload extracts display metadata and pricing',
         outputPerTokenUsd: '0.000015',
         requestPerCallUsd: '0',
       },
+    },
+  ]);
+});
+
+test('parseXiaomiModelEntriesPayload marks multimodal allowlist models', () => {
+  const entries = parseXiaomiModelEntriesPayload({
+    object: 'list',
+    data: [
+      { id: 'mimo-v2.5', object: 'model', owned_by: 'xiaomi' },
+      { id: 'mimo-v2-omni', object: 'model', owned_by: 'xiaomi' },
+      { id: 'mimo-v2-flash', object: 'model', owned_by: 'xiaomi' },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'mimo-v2.5',
+      supportsImageInput: true,
+      supportsVideoInput: true,
+    },
+    {
+      id: 'mimo-v2-omni',
+      supportsImageInput: true,
+      supportsVideoInput: true,
+    },
+    {
+      id: 'mimo-v2-flash',
+      supportsImageInput: false,
+      supportsVideoInput: false,
+    },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload routes xiaomi provider to xiaomi parser', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload(
+    {
+      object: 'list',
+      data: [{ id: 'mimo-v2.5', object: 'model' }],
+    },
+    'xiaomi',
+  );
+
+  assert.deepEqual(entries, [
+    {
+      id: 'mimo-v2.5',
+      supportsImageInput: true,
+      supportsVideoInput: true,
     },
   ]);
 });

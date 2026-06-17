@@ -482,10 +482,10 @@ fn parse_model_transport_kind(
         (Some(ModelProvider::Anthropic), ModelTransportKind::OpenAiCompatible | ModelTransportKind::OpenResponses) => {
             Err(anyhow!("provider=anthropic 时 transport-kind 不能是 openai-compatible 或 open-responses"))
         }
-        (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::Minimax | ModelProvider::Alibaba), ModelTransportKind::Anthropic) => {
+        (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba), ModelTransportKind::Anthropic) => {
             Err(anyhow!("只有 provider=custom 或 anthropic 时可以选择 anthropic transport-kind"))
         }
-        (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::Minimax | ModelProvider::Alibaba), ModelTransportKind::OpenResponses) => {
+        (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba), ModelTransportKind::OpenResponses) => {
             Err(anyhow!("只有 provider=openai 或 custom 时可以选择 open-responses transport-kind"))
         }
         (Some(ModelProvider::Openai), ModelTransportKind::Anthropic) => {
@@ -500,7 +500,7 @@ fn parse_model_transport_kind(
         (Some(ModelProvider::Azure), transport_kind) if transport_kind != ModelTransportKind::OpenResponses => {
             Err(anyhow!("provider=azure 仅支持 open-responses transport-kind"))
         }
-        (Some(ModelProvider::Anthropic | ModelProvider::Openai | ModelProvider::Google | ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::Minimax | ModelProvider::Alibaba | ModelProvider::Xai | ModelProvider::VercelAiGateway | ModelProvider::Openrouter | ModelProvider::Volcengine | ModelProvider::Custom), ModelTransportKind::Bedrock) => {
+        (Some(ModelProvider::Anthropic | ModelProvider::Openai | ModelProvider::Google | ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba | ModelProvider::Xai | ModelProvider::VercelAiGateway | ModelProvider::Openrouter | ModelProvider::Volcengine | ModelProvider::Custom), ModelTransportKind::Bedrock) => {
             Err(anyhow!("只有 provider=amazon-bedrock 时可以选择 bedrock transport-kind"))
         }
         (None, ModelTransportKind::Anthropic) => {

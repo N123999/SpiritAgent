@@ -208,6 +208,40 @@ test('moonshot-ai video input maps to video capability not videoGeneration', () 
   ]);
 });
 
+test('xiaomi provider consumes Xiaomi model catalog metadata', () => {
+  assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'xiaomi' }), true);
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'xiaomi',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'mimo-v2.5',
+        supportsImageInput: true,
+        supportsVideoInput: true,
+      },
+      {
+        id: 'mimo-v2-flash',
+        supportsImageInput: false,
+        supportsVideoInput: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'mimo-v2.5',
+      displayName: 'Mimo V2.5',
+      capabilities: ['chat', 'image', 'video'],
+    },
+    {
+      id: 'mimo-v2-flash',
+      displayName: 'Mimo V2 Flash',
+      capabilities: ['chat'],
+    },
+  ]);
+});
+
 test('volcengine provider maps domain-derived traits to catalog capabilities', () => {
   assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'volcengine' }), true);
 

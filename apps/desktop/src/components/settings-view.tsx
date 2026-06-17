@@ -311,6 +311,7 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
       return [connectTransportOptionCatalog.chatCompletions];
     case "minimax":
     case "deepseek":
+    case "xiaomi":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.messagesApi];
     case "alibaba":
       return [
@@ -361,6 +362,7 @@ function providerSupportsConnectTransportPicker(
     provider === "xai" ||
     provider === "minimax" ||
     provider === "deepseek" ||
+    provider === "xiaomi" ||
     provider === "alibaba" ||
     provider === "custom" ||
     provider === "openrouter" ||

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { extname, isAbsolute, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 
 import {
   cloneLlmProviderState,
@@ -9,7 +9,11 @@ import {
   type JsonValue,
   type LlmMessage,
 } from '../ports.js';
-import { uploadMoonshotVideoFile } from './moonshot-files.js';
+import { uploadOpenAiCompatibleVideoFile } from './moonshot-files.js';
+import {
+  pathToLocalVideoReference,
+  resolveLocalMediaPath,
+} from './openai-multimodal-media-path.js';
 import {
   resolveOpenAiModelCompatibilityProfile,
   type OpenAiTransportConfig,
@@ -127,7 +131,7 @@ export async function resolveMoonshotVideoUrlsInOpenAiMessages(
       }
 
       const absolutePath = resolveLocalMediaPath(url, assetRoot);
-      rawVideoUrl['url'] = await uploadMoonshotVideoFile(config, absolutePath);
+      rawVideoUrl['url'] = await uploadOpenAiCompatibleVideoFile(config, absolutePath);
     }
   }
 }
@@ -140,29 +144,6 @@ function needsMoonshotVideoUpload(url: string): boolean {
     && !url.startsWith('data:')
     && !url.startsWith('ms://')
   );
-}
-
-function resolveLocalMediaPath(path: string, assetRoot: string): string {
-  const normalized = path.trim();
-  if (isAbsolute(normalized)) {
-    return normalized;
-  }
-
-  return resolve(assetRoot, normalized);
-}
-
-function pathToLocalVideoReference(path: string, assetRoot: string): string {
-  const normalized = path.trim();
-  if (
-    normalized.startsWith('http://')
-    || normalized.startsWith('https://')
-    || normalized.startsWith('data:')
-    || normalized.startsWith('ms://')
-  ) {
-    return normalized;
-  }
-
-  return resolveLocalMediaPath(normalized, assetRoot).replace(/\\/g, '/');
 }
 
 function pathToImageUrl(path: string, assetRoot: string): string {

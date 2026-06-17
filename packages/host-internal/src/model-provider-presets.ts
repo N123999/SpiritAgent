@@ -7,6 +7,7 @@ export type ModelProviderId =
   | 'moonshot-ai'
   | 'z-ai'
   | 'minimax'
+  | 'xiaomi'
   | 'alibaba'
   | 'anthropic'
   | 'vercel-ai-gateway'
@@ -46,6 +47,7 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'z-ai',
   'alibaba',
   'minimax',
+  'xiaomi',
   'volcengine',
   'azure',
   'amazon-bedrock',
@@ -68,7 +70,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","z-ai","alibaba","minimax","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","z-ai","alibaba","minimax","xiaomi","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
     );
   }
 }
@@ -94,6 +96,7 @@ interface ParsedModelProviderPresets {
     | 'moonshot-ai'
     | 'z-ai'
     | 'minimax'
+    | 'xiaomi'
     | 'alibaba'
     | 'anthropic'
     | 'vercel-ai-gateway'
@@ -200,6 +203,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     'moonshot-ai': requireStringField(presetRaw, 'moonshot-ai'),
     'z-ai': requireStringField(presetRaw, 'z-ai'),
     minimax: requireStringField(presetRaw, 'minimax'),
+    xiaomi: requireStringField(presetRaw, 'xiaomi'),
     alibaba: requireStringField(presetRaw, 'alibaba'),
     anthropic: requireStringField(presetRaw, 'anthropic'),
     'vercel-ai-gateway': requireStringField(presetRaw, 'vercel-ai-gateway'),
@@ -248,6 +252,7 @@ const xaiBase = raw.presetApiBaseByProvider.xai;
 const moonshotAiBase = raw.presetApiBaseByProvider['moonshot-ai'];
 const zAiBase = raw.presetApiBaseByProvider['z-ai'];
 const minimaxBase = raw.presetApiBaseByProvider.minimax;
+const xiaomiBase = raw.presetApiBaseByProvider.xiaomi;
 const alibabaBase = raw.presetApiBaseByProvider.alibaba;
 const anthropicBase = raw.presetApiBaseByProvider.anthropic;
 const vercelAiGatewayBase = raw.presetApiBaseByProvider['vercel-ai-gateway'];
@@ -265,6 +270,7 @@ export const PROVIDER_PRESET_API_BASE = {
   'moonshot-ai': moonshotAiBase,
   'z-ai': zAiBase,
   minimax: minimaxBase,
+  xiaomi: xiaomiBase,
   alibaba: alibabaBase,
   anthropic: anthropicBase,
   'vercel-ai-gateway': vercelAiGatewayBase,
@@ -337,6 +343,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE['z-ai'];
     case 'minimax':
       return PROVIDER_PRESET_API_BASE.minimax;
+    case 'xiaomi':
+      return PROVIDER_PRESET_API_BASE.xiaomi;
     case 'alibaba':
       return PROVIDER_PRESET_API_BASE.alibaba;
     case 'anthropic':

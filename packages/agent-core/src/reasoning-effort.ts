@@ -8,6 +8,7 @@ export type ModelReasoningProvider =
   | 'moonshot-ai'
   | 'z-ai'
   | 'minimax'
+  | 'xiaomi'
   | 'alibaba'
   | 'anthropic'
   | 'vercel-ai-gateway'

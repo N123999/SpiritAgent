@@ -207,21 +207,25 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(11).as_deref(),
-            Some("https://ark.cn-beijing.volces.com/api/v3")
+            Some("https://api.xiaomimimo.com/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(12).as_deref(),
-            Some("https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1")
+            Some("https://ark.cn-beijing.volces.com/api/v3")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(13).as_deref(),
-            Some("https://bedrock.us-east-1.amazonaws.com")
+            Some("https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(14).as_deref(),
+            Some("https://bedrock.us-east-1.amazonaws.com")
+        );
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(15).as_deref(),
             Some("https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/us-central1")
         );
-        assert!(model_add_preset_api_base_by_choice_index(15).is_none());
+        assert!(model_add_preset_api_base_by_choice_index(16).is_none());
     }
 
     #[test]

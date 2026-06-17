@@ -18,6 +18,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('custom'), 'custom');
   assert.equal(parseModelProviderId('moonshot-ai'), 'moonshot-ai');
   assert.equal(parseModelProviderId('z-ai'), 'z-ai');
+  assert.equal(parseModelProviderId('xiaomi'), 'xiaomi');
   assert.equal(parseModelProviderId('azure'), 'azure');
   assert.equal(parseModelProviderId('kimi'), undefined);
   assert.equal(parseModelProviderId('unknown'), undefined);
@@ -60,6 +61,14 @@ test('resolveProviderConnectApiBase uses transport-specific preset bases', () =>
   assert.equal(
     resolveProviderConnectApiBase('deepseek', 'anthropic'),
     'https://api.deepseek.com/anthropic',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('xiaomi', 'openai-compatible'),
+    'https://api.xiaomimimo.com/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('xiaomi', 'anthropic'),
+    'https://api.xiaomimimo.com/anthropic',
   );
   assert.equal(
     resolveProviderConnectApiBase('alibaba', 'openai-compatible'),

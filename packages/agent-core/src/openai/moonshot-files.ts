@@ -9,14 +9,24 @@ const DEFAULT_MOONSHOT_BASE_URL = 'https://api.moonshot.cn/v1';
 
 const uploadCache = new Map<string, string>();
 
-export function normalizeMoonshotApiBase(baseUrl: string | undefined): string {
-  return (baseUrl ?? DEFAULT_MOONSHOT_BASE_URL).trim().replace(/\/+$/, '');
+export function normalizeOpenAiCompatibleApiBase(baseUrl: string | undefined): string {
+  return (baseUrl ?? '').trim().replace(/\/+$/, '');
 }
 
-export async function uploadMoonshotVideoFile(
+export function normalizeMoonshotApiBase(baseUrl: string | undefined): string {
+  return normalizeOpenAiCompatibleApiBase(baseUrl ?? DEFAULT_MOONSHOT_BASE_URL);
+}
+
+/** OpenAI 兼容 Files API（purpose=video）→ `ms://{fileId}`，供 Moonshot 等支持 Files 上传的厂商使用。 */
+export async function uploadOpenAiCompatibleVideoFile(
   config: Pick<OpenAiTransportConfig, 'apiKey' | 'baseUrl'>,
   absolutePath: string,
 ): Promise<string> {
+  const apiBase = normalizeOpenAiCompatibleApiBase(config.baseUrl);
+  if (!apiBase) {
+    throw new Error('Video upload requires baseUrl');
+  }
+
   const metadata = await stat(absolutePath);
   const cacheKey = `${absolutePath}\0${metadata.mtimeMs}`;
   const cached = uploadCache.get(cacheKey);
@@ -29,7 +39,7 @@ export async function uploadMoonshotVideoFile(
   form.append('file', new Blob([bytes]), basename(absolutePath));
   form.append('purpose', 'video');
 
-  const response = await getLlmFetch()(`${normalizeMoonshotApiBase(config.baseUrl)}/files`, {
+  const response = await getLlmFetch()(`${apiBase}/files`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -39,12 +49,12 @@ export async function uploadMoonshotVideoFile(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Moonshot video upload failed (${response.status}): ${body}`);
+    throw new Error(`Video upload failed (${response.status}): ${body}`);
   }
 
   const payload = (await response.json()) as { id?: unknown };
   if (typeof payload.id !== 'string' || payload.id.trim().length === 0) {
-    throw new Error('Moonshot video upload returned no file id');
+    throw new Error('Video upload returned no file id');
   }
 
   const url = `ms://${payload.id.trim()}`;
@@ -52,6 +62,18 @@ export async function uploadMoonshotVideoFile(
   return url;
 }
 
+export async function uploadMoonshotVideoFile(
+  config: Pick<OpenAiTransportConfig, 'apiKey' | 'baseUrl'>,
+  absolutePath: string,
+): Promise<string> {
+  return uploadOpenAiCompatibleVideoFile(
+    { ...config, baseUrl: config.baseUrl ?? DEFAULT_MOONSHOT_BASE_URL },
+    absolutePath,
+  );
+}
+
 export function clearMoonshotVideoUploadCache(): void {
   uploadCache.clear();
 }
+
+export const clearOpenAiCompatibleVideoUploadCache = clearMoonshotVideoUploadCache;

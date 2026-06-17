@@ -10,6 +10,7 @@ export type OpenAiLlmVendor =
   | 'moonshot-ai'
   | 'z-ai'
   | 'minimax'
+  | 'xiaomi'
   | 'alibaba'
   | 'vercel-ai-gateway'
   | 'openrouter'
@@ -149,6 +150,13 @@ export function resolveOpenAiModelCompatibilityProfile(
   }
 
   if (config.llmVendor === 'moonshot-ai') {
+    return {
+      hasExplicitCapabilities: true,
+      capabilities: {},
+    };
+  }
+
+  if (config.llmVendor === 'xiaomi') {
     return {
       hasExplicitCapabilities: true,
       capabilities: {},
