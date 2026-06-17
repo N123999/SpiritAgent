@@ -60,7 +60,7 @@ export class SpiritAcpAgent implements acp.Agent {
       agentInfo: {
         name: 'spirit-agent',
         title: 'Spirit Agent',
-        version: '0.2.5',
+        version: '0.2.6',
       },
       authMethods,
     };
