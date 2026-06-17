@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import type { SettingsFormState } from "@/components/settings-view";
+import type { SettingsFormState } from "@/components/settings/types";
 import {
   Dialog,
   DialogContent,

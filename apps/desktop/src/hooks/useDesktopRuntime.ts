@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from '@/lib/i18n';
 
-import type { SettingsFormState } from "@/components/settings-view";
+import type { SettingsFormState } from "@/components/settings/types";
 import { useHostApi } from "@/hooks/useHostApi";
 import {
   clearComposerDraft,

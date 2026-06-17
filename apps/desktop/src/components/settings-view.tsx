@@ -118,130 +118,13 @@ import {
   hasGoogleVertexServiceAccountCredentials,
 } from "@/host/provider-api-key";
 import { AgentsSettingsPanel } from "@/components/agents-settings-panel";
+import { settingsPageTitleKey, themeSelectOptions } from "@/components/settings/constants";
+import { formatExtensionInstalledAt, fileToBase64, formatSettingsTime } from "@/components/settings/formatters";
+import { SettingsRow } from "@/components/settings/settings-row";
+import type { SettingsFormState, SettingsViewProps } from "@/components/settings/types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-export type SettingsFormState = {
-  activeModel: string;
-  imageGenerationModel: string;
-  videoGenerationModel: string;
-  lightweightChatModel: string;
-  apiBase: string;
-  uiLocale: string;
-  apiKey: string;
-  windowsMica: boolean;
-  agentMode: DesktopAgentMode;
-  webHostEnabled: boolean;
-  webHostHost: string;
-  webHostPort: number;
-  dreamEnabled: boolean;
-  dreamDebugMode: boolean;
-  lspEnabled: boolean;
-  llmHttpVersion: 'http1.1' | 'http2';
-};
-
-type SettingsViewProps = {
-  tab: SettingsSidebarTab;
-  extensionSettingsId?: string | null;
-  theme: ThemePreference;
-  onThemeChange: (value: ThemePreference) => void;
-  font: FontPreference;
-  onFontChange: (value: FontPreference) => void;
-  clickablePointerCursor: boolean;
-  onClickablePointerCursorChange: (enabled: boolean) => void;
-  settings: SettingsFormState;
-  snapshot: DesktopSnapshot | null;
-  runtimeError: string;
-  apiReady: boolean;
-  busyAction: string;
-  modelsBusy: boolean;
-  modelsPreviewBusy: boolean;
-  mcpsBusy: boolean;
-  hooksBusy: boolean;
-  skillsBusy: boolean;
-  rulesBusy: boolean;
-  extensionsBusy: boolean;
-  lspInstallBusy: boolean;
-  isElectronShell: boolean;
-  onSavePatch: (patch: Partial<SettingsFormState>) => Promise<void>;
-  onInstallLspProvider: (providerId: string) => Promise<void>;
-  onResetWebHostPairing?: () => Promise<void>;
-  onAddModel: (request: AddModelRequest) => Promise<void>;
-  onAddProviderModels: (request: AddProviderModelsRequest) => Promise<void>;
-  onPreviewModels: (request: PreviewModelsRequest) => Promise<PreviewModelsResponse>;
-  onRemoveModel: (name: string) => Promise<void>;
-  onRemoveProviderModels: (provider: DesktopModelProvider) => Promise<void>;
-  onAddMcpServer: (request: AddMcpServerRequest) => Promise<void>;
-  onImportExtension: (request: ImportExtensionRequest) => Promise<void>;
-  onDeleteExtension: (request: DeleteExtensionRequest) => Promise<void>;
-  onUpdateExtensionSettings: (request: UpdateExtensionSettingsRequest) => Promise<void>;
-  onUpdateExtensionSecret: (request: UpdateExtensionSecretRequest) => Promise<void>;
-  onDeleteMcpServer: (request: DeleteMcpServerRequest) => Promise<void>;
-  onSaveHookEntry: (request: SaveHookEntryRequest) => Promise<void>;
-  onDeleteHookEntry: (request: DeleteHookEntryRequest) => Promise<void>;
-  onInspectMcpServer: (name: string) => Promise<DesktopMcpServerInspection>;
-  onCreateSkill: (request: CreateSkillRequest) => Promise<void>;
-  onDeleteSkill: (request: DeleteSkillRequest) => Promise<void>;
-  onCreateRule: (request: CreateRuleRequest) => Promise<void>;
-  onDeleteRule: (request: DeleteRuleRequest) => Promise<void>;
-  onListDreamsOverview: () => Promise<DesktopDreamOverviewItem[]>;
-  /** Skills 页「生成 Skill」：回到主对话区并插入 create-skill Chip，后续直接写自然语言。 */
-  onGenerateSkillNavigate?: () => void;
-  /** Rules 页「生成规则」：回到主对话区并插入 create-rule Chip。 */
-  onGenerateRuleNavigate?: () => void;
-  /** 开发者页：在对话区播放上下文压缩 UI 演示（不调用模型）。 */
-  onStartCompactionUiDemo?: () => void;
-  /** Windows 云母 / macOS Vibrancy：内层透明以避免与 settings-shell 双层 tint 叠深。 */
-  useMicaBackdrop?: boolean;
-  getGitHubAuthStatus: () => Promise<GitHubAuthStatus>;
-  beginGitHubDeviceLogin: () => Promise<GitHubDeviceAuthChallenge>;
-  completeGitHubDeviceLogin: () => Promise<GitHubAuthStatus>;
-  cancelGitHubDeviceLogin: () => Promise<void>;
-  disconnectGitHub: () => Promise<GitHubAuthStatus>;
-};
-
-const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = [
-  { value: "system", labelKey: "settings.themeSystem" },
-  { value: "light", labelKey: "settings.themeLight" },
-  { value: "dark", labelKey: "settings.themeDark" },
-];
-
-const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
-  models: "settings.models",
-  agents: "settings.agents",
-  extensions: "settings.extensions",
-  mcps: "settings.mcps",
-  hooks: "settings.hooks",
-  skills: "settings.skills",
-  rules: "settings.rules",
-  dreams: "settings.dreams",
-  appearance: "settings.appearance",
-  networks: "settings.networks",
-  integrations: "settings.integrations",
-  developer: "settings.developer",
-};
-
-function formatExtensionInstalledAt(unixMs: number): string {
-  return new Date(unixMs).toLocaleString("zh-CN", {
-    hour12: false,
-  });
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error(i18n.t('settings.readFileFailed')));
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error(i18n.t('settings.readFileFailed')));
-        return;
-      }
-      const marker = "base64,";
-      const markerIndex = reader.result.indexOf(marker);
-      resolve(markerIndex >= 0 ? reader.result.slice(markerIndex + marker.length) : reader.result);
-    };
-    reader.readAsDataURL(file);
-  });
-}
+export type { SettingsFormState } from "@/components/settings/types";
 
 const defaultMcpCapabilities: DesktopMcpCapabilityToggles = {
   tools: true,
@@ -746,48 +629,6 @@ function dreamCollectorStateLabel(state: DesktopSnapshot["dreams"]["collector"][
     default:
       return i18n.t('settings.dreamIdle');
   }
-}
-
-function formatSettingsTime(unixMs?: number): string {
-  if (typeof unixMs !== "number") {
-    return "—";
-  }
-  return new Date(unixMs).toLocaleString("zh-CN", { hour12: false });
-}
-
-function SettingsRow({
-  label,
-  description,
-  htmlFor,
-  children,
-  className,
-}: {
-  label: string;
-  description?: string;
-  htmlFor?: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-3 border-b border-border/35 py-4 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6",
-        className,
-      )}
-    >
-      <div className="min-w-0 sm:max-w-[42%]">
-        <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
-          {label}
-        </Label>
-        {description ? (
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{description}</p>
-        ) : null}
-      </div>
-      <div className="min-w-0 w-full sm:w-auto sm:max-w-[min(24rem,52vw)] sm:flex-1 sm:flex sm:justify-end">
-        {children}
-      </div>
-    </div>
-  );
 }
 
 function DeveloperSettingsPanel({
