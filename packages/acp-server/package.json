@@ -1,6 +1,6 @@
 {
   "name": "@spirit-agent/acp-server",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "ACP (Agent Client Protocol) server adapter for Spirit Agent",
   "license": "MIT",
   "repository": {
@@ -23,7 +23,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run build && node ../../scripts/npm/assert-no-file-deps.mjs",
     "notice": "node scripts/gen-notice.mjs",
     "notice:production": "node scripts/gen-notice.mjs --production"
   },
@@ -34,9 +34,8 @@
     "@agentclientprotocol/sdk": "^0.25.1",
     "@inquirer/prompts": "^7.5.0",
     "@napi-rs/keyring": "^1.2.0",
-    "@spirit-agent/core": "0.2.1",
-    "@spirit-agent/host-internal": "0.2.1",
-    "spirit-agent-repo": "file:../.."
+    "@spirit-agent/core": "0.2.2",
+    "@spirit-agent/host-internal": "0.2.2"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",

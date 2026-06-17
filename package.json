@@ -1,7 +1,11 @@
 {
-  "name": "spirit-agent-repo",
+  "name": "@spirit-agent/dev-root",
   "private": true,
   "description": "Spirit Agent — root scripts for TS build + Rust CLI",
+  "workspaces": [
+    "packages/*",
+    "apps/desktop"
+  ],
   "scripts": {
     "build:agent-core": "npm --prefix packages/agent-core run build",
     "build:host-internal": "npm --prefix packages/host-internal run build",
