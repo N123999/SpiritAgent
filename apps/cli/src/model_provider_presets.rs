@@ -178,6 +178,79 @@ pub(crate) fn model_add_minimax_site_id_from_choice(selected: usize) -> &'static
     if selected == 0 { "cn" } else { "intl" }
 }
 
+/// 与 `model-provider-presets.json` 中 `providerSiteSelection.alibaba` 对齐。
+pub(crate) fn model_add_alibaba_site_ids() -> &'static [&'static str] {
+    &[
+        "cn-beijing",
+        "ap-southeast-1",
+        "us-virginia",
+        "eu-central-1",
+    ]
+}
+
+pub(crate) fn model_add_alibaba_site_id_from_choice(selected: usize) -> &'static str {
+    model_add_alibaba_site_ids()
+        .get(selected.min(model_add_alibaba_site_ids().len().saturating_sub(1)))
+        .copied()
+        .unwrap_or("cn-beijing")
+}
+
+pub(crate) fn model_add_alibaba_site_requires_workspace_id(site: &str) -> bool {
+    matches!(
+        site.trim(),
+        "ap-southeast-1" | "eu-central-1"
+    )
+}
+
+fn model_add_alibaba_compatible_site_api_base(site: &str, workspace_id: &str) -> Option<String> {
+    match site.trim() {
+        "cn-beijing" => Some("https://dashscope.aliyuncs.com/compatible-mode/v1".to_string()),
+        "us-virginia" => Some("https://dashscope-us.aliyuncs.com/compatible-mode/v1".to_string()),
+        "ap-southeast-1" => {
+            let workspace = workspace_id.trim();
+            if workspace.is_empty() {
+                return None;
+            }
+            Some(format!(
+                "https://{workspace}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+            ))
+        }
+        "eu-central-1" => {
+            let workspace = workspace_id.trim();
+            if workspace.is_empty() {
+                return None;
+            }
+            Some(format!(
+                "https://{workspace}.eu-central-1.maas.aliyuncs.com/compatible-mode/v1"
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn model_add_alibaba_anthropic_site_api_base(compatible_base: &str) -> Option<String> {
+    let trimmed = compatible_base.trim().trim_end_matches('/');
+    let origin = trimmed.strip_suffix("/compatible-mode/v1")?;
+    Some(format!("{origin}/apps/anthropic"))
+}
+
+pub(crate) fn model_add_alibaba_site_api_base(
+    site: &str,
+    workspace_id: &str,
+    transport_kind: ModelTransportKind,
+) -> Option<String> {
+    let compatible_base = model_add_alibaba_compatible_site_api_base(site, workspace_id)?;
+    match transport_kind {
+        ModelTransportKind::Anthropic => {
+            model_add_alibaba_anthropic_site_api_base(&compatible_base)
+        }
+        ModelTransportKind::OpenAiCompatible | ModelTransportKind::OpenResponses => {
+            Some(compatible_base)
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn model_add_provider_id_at_choice_index(selected: usize) -> Option<&'static str> {
     presets().picker_order.get(selected).map(String::as_str)
 }
@@ -323,6 +396,45 @@ mod tests {
         assert_eq!(
             super::model_add_minimax_site_api_base("intl", ModelTransportKind::Anthropic).as_deref(),
             Some("https://api.minimax.io/anthropic/v1")
+        );
+    }
+
+    #[test]
+    fn alibaba_site_api_base_resolves_regions_and_transports() {
+        assert_eq!(
+            super::model_add_alibaba_site_api_base(
+                "cn-beijing",
+                "",
+                ModelTransportKind::OpenAiCompatible,
+            )
+            .as_deref(),
+            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+        );
+        assert_eq!(
+            super::model_add_alibaba_site_api_base(
+                "cn-beijing",
+                "",
+                ModelTransportKind::Anthropic,
+            )
+            .as_deref(),
+            Some("https://dashscope.aliyuncs.com/apps/anthropic")
+        );
+        assert_eq!(
+            super::model_add_alibaba_site_api_base(
+                "ap-southeast-1",
+                "ws-123",
+                ModelTransportKind::Anthropic,
+            )
+            .as_deref(),
+            Some("https://ws-123.ap-southeast-1.maas.aliyuncs.com/apps/anthropic")
+        );
+        assert!(
+            super::model_add_alibaba_site_api_base(
+                "ap-southeast-1",
+                "",
+                ModelTransportKind::OpenAiCompatible,
+            )
+            .is_none()
         );
     }
 

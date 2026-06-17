@@ -374,6 +374,7 @@ impl TuiShell {
                     parsed.context_length,
                     parsed.azure_resource_name.as_deref(),
                     parsed.provider_site.as_deref(),
+                    parsed.alibaba_workspace_id.as_deref(),
                 ) {
                     Ok(()) => {
                         self.messages.push(ChatMessage {
@@ -542,6 +543,9 @@ impl TuiShell {
             }
             if let Some(site) = parsed.provider_site.as_deref() {
                 extra.insert("providerSite".to_string(), serde_json::json!(site));
+            }
+            if let Some(workspace_id) = parsed.alibaba_workspace_id.as_deref() {
+                extra.insert("alibabaWorkspaceId".to_string(), serde_json::json!(workspace_id));
             }
             config.add_model(ModelProfile {
                 name: id.clone(),

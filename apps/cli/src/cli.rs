@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path, workspace_mcp_config_path,
     },
-    model_provider_presets::{azure_api_base_from_resource_name, model_add_default_custom_api_base, model_add_minimax_site_api_base, model_add_moonshot_site_api_base, model_add_preset_api_base_by_provider, model_add_siliconflow_site_api_base, validate_azure_resource_name},
+    model_provider_presets::{azure_api_base_from_resource_name, model_add_alibaba_site_api_base, model_add_alibaba_site_requires_workspace_id, model_add_default_custom_api_base, model_add_minimax_site_api_base, model_add_moonshot_site_api_base, model_add_preset_api_base_by_provider, model_add_siliconflow_site_api_base, validate_azure_resource_name},
     model_registry::{
         AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, ModelTransportKind,
     },
@@ -31,6 +31,7 @@ pub enum ModelCommand {
         key: Option<String>,
         azure_resource_name: Option<String>,
         provider_site: Option<String>,
+        alibaba_workspace_id: Option<String>,
     },
     Remove {
         name: String,
@@ -160,6 +161,7 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
             key,
             azure_resource_name,
             provider_site,
+            alibaba_workspace_id,
         } => {
             if cfg.has_model(&name) {
                 println!("模型已存在: {}", name);
@@ -197,6 +199,17 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                 {
                     return Err(anyhow!("端点不能为空"));
                 }
+                if provider == Some(ModelProvider::Alibaba) {
+                    if let Some(site) = provider_site.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+                        if model_add_alibaba_site_requires_workspace_id(site)
+                            && alibaba_workspace_id.as_deref().map(str::trim).is_none_or(str::is_empty)
+                        {
+                            return Err(anyhow!(
+                                "provider=alibaba 且 provider-site 为 ap-southeast-1 / eu-central-1 时必须指定 --alibaba-workspace-id"
+                            ));
+                        }
+                    }
+                }
                 let api_base = api_base.unwrap_or_else(|| {
                     if provider == Some(ModelProvider::Azure) {
                         return azure_api_base_from_resource_name(
@@ -232,6 +245,21 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                             .filter(|value| !value.is_empty())
                         {
                             if let Some(base) = model_add_minimax_site_api_base(site, transport_kind) {
+                                return base;
+                            }
+                        }
+                    }
+                    if provider == Some(ModelProvider::Alibaba) {
+                        if let Some(site) = provider_site
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                        {
+                            if let Some(base) = model_add_alibaba_site_api_base(
+                                site,
+                                alibaba_workspace_id.as_deref().unwrap_or(""),
+                                transport_kind,
+                            ) {
                                 return base;
                             }
                         }
@@ -298,6 +326,13 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                     .filter(|value| !value.is_empty())
                 {
                     extra.insert("providerSite".to_string(), serde_json::json!(site));
+                }
+                if let Some(workspace_id) = alibaba_workspace_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    extra.insert("alibabaWorkspaceId".to_string(), serde_json::json!(workspace_id));
                 }
 
                 cfg.add_model(ModelProfile {

@@ -90,6 +90,33 @@
           "apiBase": "https://api.minimax.io/v1"
         }
       }
+    },
+    "alibaba": {
+      "defaultSite": "cn-beijing",
+      "sites": {
+        "cn-beijing": {
+          "labelKey": "cn-beijing",
+          "fallbackLabel": "cn-beijing",
+          "apiBase": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        },
+        "ap-southeast-1": {
+          "labelKey": "ap-southeast-1",
+          "fallbackLabel": "ap-southeast-1",
+          "apiBase": "https://{workspaceId}.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+          "requiresWorkspaceId": true
+        },
+        "us-virginia": {
+          "labelKey": "us-virginia",
+          "fallbackLabel": "us-virginia",
+          "apiBase": "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
+        },
+        "eu-central-1": {
+          "labelKey": "eu-central-1",
+          "fallbackLabel": "eu-central-1",
+          "apiBase": "https://{workspaceId}.eu-central-1.maas.aliyuncs.com/compatible-mode/v1",
+          "requiresWorkspaceId": true
+        }
+      }
     }
   },
   "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "z-ai", "zhipu-ai", "alibaba", "minimax", "xiaomi", "siliconflow", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],

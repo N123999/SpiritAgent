@@ -90,12 +90,14 @@ export interface ProviderConnectSiteDefinition {
   labelKey: string;
   fallbackLabel: string;
   apiBase: string;
+  requiresWorkspaceId?: boolean;
 }
 
 export interface ProviderConnectSiteOption {
   id: ProviderConnectSiteId;
   labelKey: string;
   fallbackLabel: string;
+  requiresWorkspaceId?: boolean;
 }
 
 export interface ProviderSiteSelectionConfig {
@@ -109,6 +111,7 @@ type ProviderSiteSelectionByProvider = Partial<
 
 export interface ResolveProviderConnectApiBaseOptions {
   site?: ProviderConnectSiteId;
+  workspaceId?: string;
   customApiBaseTrimmed?: string;
 }
 
@@ -246,6 +249,7 @@ export function parseProviderSiteSelection(data: unknown): ProviderSiteSelection
         labelKey: requireStringField(siteRaw, 'labelKey'),
         fallbackLabel: requireStringField(siteRaw, 'fallbackLabel'),
         apiBase: requireStringField(siteRaw, 'apiBase'),
+        ...(siteRaw.requiresWorkspaceId === true ? { requiresWorkspaceId: true } : {}),
       };
     }
 
@@ -468,12 +472,39 @@ export function listProviderConnectSiteOptions(
     id,
     labelKey: site.labelKey,
     fallbackLabel: site.fallbackLabel,
+    ...(site.requiresWorkspaceId ? { requiresWorkspaceId: true } : {}),
   }));
+}
+
+const PROVIDER_SITE_WORKSPACE_ID_PLACEHOLDER = '{workspaceId}';
+
+function siteDefinitionRequiresWorkspaceId(site: ProviderConnectSiteDefinition): boolean {
+  return (
+    site.requiresWorkspaceId === true
+    || site.apiBase.includes(PROVIDER_SITE_WORKSPACE_ID_PLACEHOLDER)
+  );
+}
+
+export function providerConnectSiteRequiresWorkspaceId(
+  provider: ModelProviderId,
+  site: ProviderConnectSiteId,
+): boolean {
+  if (provider === 'custom') {
+    return false;
+  }
+  const selection = raw.providerSiteSelection[provider];
+  const siteDef = selection?.sites[site];
+  return siteDef !== undefined && siteDefinitionRequiresWorkspaceId(siteDef);
+}
+
+function applyWorkspaceIdToProviderSiteApiBase(apiBase: string, workspaceId: string): string {
+  return apiBase.replaceAll(PROVIDER_SITE_WORKSPACE_ID_PLACEHOLDER, workspaceId.trim());
 }
 
 export function resolveProviderConnectSiteApiBase(
   provider: ModelProviderId,
   site: ProviderConnectSiteId,
+  workspaceId?: string,
 ): string | undefined {
   if (provider === 'custom') {
     return undefined;
@@ -482,7 +513,18 @@ export function resolveProviderConnectSiteApiBase(
   if (!selection) {
     return undefined;
   }
-  return selection.sites[site]?.apiBase;
+  const siteDef = selection.sites[site];
+  if (!siteDef) {
+    return undefined;
+  }
+  if (siteDefinitionRequiresWorkspaceId(siteDef)) {
+    const trimmedWorkspaceId = workspaceId?.trim();
+    if (!trimmedWorkspaceId) {
+      throw new Error(`Provider site "${site}" requires a workspace ID.`);
+    }
+    return applyWorkspaceIdToProviderSiteApiBase(siteDef.apiBase, trimmedWorkspaceId);
+  }
+  return siteDef.apiBase;
 }
 
 export function isProviderConnectSiteId(
@@ -585,13 +627,13 @@ export function resolveProviderConnectApiBase(
   transportKind: ProviderModelTransportKind,
   options?: ResolveProviderConnectApiBaseOptions | string,
 ): string {
-  const { site, customApiBaseTrimmed = '' } = normalizeResolveProviderConnectApiBaseOptions(options);
+  const { site, workspaceId, customApiBaseTrimmed = '' } = normalizeResolveProviderConnectApiBaseOptions(options);
 
   if (provider === 'custom') {
     return customApiBaseTrimmed.trim();
   }
 
-  const siteBase = site ? resolveProviderConnectSiteApiBase(provider, site) : undefined;
+  const siteBase = site ? resolveProviderConnectSiteApiBase(provider, site, workspaceId) : undefined;
   if (siteBase) {
     const transportAdjusted = resolveTransportApiBaseForProviderSite(
       provider as PresetModelProviderId,

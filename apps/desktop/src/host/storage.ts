@@ -833,6 +833,10 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             typeof model.providerSite === 'string' && model.providerSite.trim().length > 0
               ? model.providerSite.trim()
               : undefined;
+          const alibabaWorkspaceId =
+            typeof model.alibabaWorkspaceId === 'string' && model.alibabaWorkspaceId.trim().length > 0
+              ? model.alibabaWorkspaceId.trim()
+              : undefined;
           const vertexProject =
             typeof model.vertexProject === 'string' && model.vertexProject.trim().length > 0
               ? model.vertexProject.trim()
@@ -862,6 +866,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(provider ? { provider } : {}),
             ...(transportKind ? { transportKind } : {}),
             ...(providerSite ? { providerSite } : {}),
+            ...(alibabaWorkspaceId ? { alibabaWorkspaceId } : {}),
             ...(awsRegion ? { awsRegion } : {}),
             ...(vertexProject ? { vertexProject } : {}),
             ...(vertexLocation ? { vertexLocation } : {}),
