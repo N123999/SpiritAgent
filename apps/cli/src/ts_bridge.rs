@@ -3494,6 +3494,7 @@ fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::Xai => "xai",
         ModelProvider::Moonshot => "moonshot-ai",
         ModelProvider::ZAi => "z-ai",
+        ModelProvider::ZhipuAi => "zhipu-ai",
         ModelProvider::Minimax => "minimax",
         ModelProvider::Xiaomi => "xiaomi",
         ModelProvider::Alibaba => "alibaba",

@@ -10,6 +10,7 @@ const MODELS_DEV_LOGO_ID_ALIASES: Partial<Record<DesktopModelProvider, string>> 
   'vercel-ai-gateway': 'vercel',
   'moonshot-ai': 'moonshotai',
   'z-ai': 'zai',
+  'zhipu-ai': 'zhipuai',
   'google-vertex-ai': 'google-vertex',
 };
 

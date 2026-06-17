@@ -59,14 +59,14 @@ fn model_add_volcengine_provider_index() -> usize {
     model_add_picker_order_ids()
         .iter()
         .position(|id| id == "volcengine")
-        .unwrap_or(10)
+        .unwrap_or(13)
 }
 
 fn model_add_vertex_provider_index() -> usize {
     model_add_picker_order_ids()
         .iter()
         .position(|id| id == "google-vertex-ai")
-        .unwrap_or(13)
+        .unwrap_or(16)
 }
 
 const MCP_DEFAULT_TIMEOUT_MS: u64 = 20_000;
@@ -241,6 +241,7 @@ fn model_add_provider_label(id: &str) -> String {
         "openrouter" => t!("form.model.provider.openrouter"),
         "moonshot-ai" => t!("form.model.provider.moonshot-ai"),
         "z-ai" => t!("form.model.provider.z-ai"),
+        "zhipu-ai" => t!("form.model.provider.zhipu-ai"),
         "alibaba" => t!("form.model.provider.alibaba"),
         "minimax" => t!("form.model.provider.minimax"),
         "volcengine" => t!("form.model.provider.volcengine"),
@@ -2134,7 +2135,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 13;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 17;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -2142,7 +2143,7 @@ mod tests {
         assert!(matches!(form.kind, crate::view::BottomFormKind::ModelAdd));
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 4;
+                *selected = 5;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2260,6 +2261,8 @@ mod tests {
         sync_model_add_form_fields(&mut form);
         form.selected_field = 3;
         insert_text(&mut form, "claude-custom");
+        form.selected_field = 4;
+        insert_text(&mut form, "https://api.anthropic.com/v1");
         form.selected_field = 6;
         insert_text(&mut form, "sk-anthropic");
         let parsed = parse_model_add_connection(&form).expect("parse");
@@ -2274,7 +2277,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 8;
+                *selected = 10;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2295,7 +2298,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 3;
+                *selected = 1;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2316,7 +2319,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 10;
+                *selected = 13;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2347,7 +2350,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 11;
+                *selected = 14;
             }
         }
         sync_model_add_form_fields(&mut form);

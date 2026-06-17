@@ -7,6 +7,7 @@ export type ModelReasoningProvider =
   | 'xai'
   | 'moonshot-ai'
   | 'z-ai'
+  | 'zhipu-ai'
   | 'minimax'
   | 'xiaomi'
   | 'alibaba'

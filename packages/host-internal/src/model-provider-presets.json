@@ -5,6 +5,7 @@
     "xai": "https://api.x.ai/v1",
     "moonshot-ai": "https://api.moonshot.cn/v1",
     "z-ai": "https://api.z.ai/api/paas/v4",
+    "zhipu-ai": "https://open.bigmodel.cn/api/paas/v4",
     "minimax": "https://api.minimaxi.com/v1",
     "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "anthropic": "https://api.anthropic.com/v1",
@@ -43,7 +44,7 @@
       "open-responses": "https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1"
     }
   },
-  "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "z-ai", "alibaba", "minimax", "xiaomi", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
+  "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "z-ai", "zhipu-ai", "alibaba", "minimax", "xiaomi", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
   "pickerLabels": {
     "deepseek": {
       "labelKey": "providers.deepseek",
@@ -60,6 +61,10 @@
     "z-ai": {
       "labelKey": "providers.zAi",
       "fallbackLabel": "Z.ai"
+    },
+    "zhipu-ai": {
+      "labelKey": "providers.zhipuAi",
+      "fallbackLabel": "Zhipu AI"
     },
     "minimax": {
       "labelKey": "providers.minimax",

@@ -23,6 +23,8 @@ pub enum ModelProvider {
     Moonshot,
     #[serde(rename = "z-ai")]
     ZAi,
+    #[serde(rename = "zhipu-ai")]
+    ZhipuAi,
     Minimax,
     Xiaomi,
     Alibaba,
@@ -48,6 +50,7 @@ impl ModelProvider {
             Self::Xai => "xai",
             Self::Moonshot => "moonshot-ai",
             Self::ZAi => "z-ai",
+            Self::ZhipuAi => "zhipu-ai",
             Self::Minimax => "minimax",
             Self::Xiaomi => "xiaomi",
             Self::Alibaba => "alibaba",
@@ -74,6 +77,7 @@ impl FromStr for ModelProvider {
             "xai" => Ok(Self::Xai),
             "moonshot-ai" => Ok(Self::Moonshot),
             "z-ai" => Ok(Self::ZAi),
+            "zhipu-ai" => Ok(Self::ZhipuAi),
             "minimax" => Ok(Self::Minimax),
             "xiaomi" => Ok(Self::Xiaomi),
             "alibaba" => Ok(Self::Alibaba),
@@ -177,6 +181,7 @@ impl ModelProfile {
             Some(ModelProvider::Xiaomi) => false,
             Some(ModelProvider::Xai)
             | Some(ModelProvider::ZAi)
+            | Some(ModelProvider::ZhipuAi)
             | Some(ModelProvider::Minimax)
             | Some(ModelProvider::Alibaba)
             | Some(ModelProvider::Anthropic)
