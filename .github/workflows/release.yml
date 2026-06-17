@@ -173,13 +173,21 @@ jobs:
             package-lock.json
             apps/desktop/package-lock.json
 
-      - name: Install dependencies
+      - name: Normalize root lockfile
+        run: node scripts/release/prune-root-lockfile-desktop.mjs
+
+      - name: Install shared package dependencies
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: apps/desktop
         run: |
-          npm ci
-          npm ci --prefix apps/desktop
+          rm -rf node_modules
+          npm --no-workspaces ci
 
       - name: Build Desktop
-        run: npm --prefix apps/desktop run build
+        working-directory: apps/desktop
+        run: npm --no-workspaces run build
 
       - name: Verify packager icons
         working-directory: apps/desktop
