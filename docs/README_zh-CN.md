@@ -112,7 +112,8 @@ npm run dev:cli    # 构建 TS 包，然后 cargo run -p spirit-agent
 
 [`packages/acp-server`](../packages/acp-server) 是一个薄适配层，通过 stdio / ndJSON 将 Spirit Agent 以 [Agent Client Protocol](https://agentclientprotocol.com)（ACP）服务器的形式对外暴露。任何兼容 ACP 的编辑器 — 如 **Zed** 或 **JetBrains Junie** — 都可以直接接入 Spirit Agent 作为其 AI 编码引擎，无需定制集成。
 
-- **协议表面** — `initialize`、`session/new`、`session/prompt`、`session/cancel`、`session/close`、`session/set_mode`。
+- **Terminal Auth** — `initialize` 声明 `type: "terminal"` 认证方式；客户端可 spawn `spirit-agent-acp --setup` 进行交互式 provider 配置，随后 `authenticate`，再 `session/new`。
+- **协议表面** — `initialize`、`authenticate`、`logout`、`session/new`、`session/prompt`、`session/cancel`、`session/close`、`session/set_mode`。
 - **流式与思考** — 实时 `agent_message_chunk` 流式输出，以及 `agent_thought_chunk` 用于模型推理过程展示。
 - **权限桥接** — 通过 ACP `request_permission` 进行工具审批，支持 allow-once / always-allow / reject 选项。
 - **Slash 命令** — 工作区与用户级 Skills 通过 `available_commands_update` 注册为命令；输入 `/skill-name` 即可激活 Skill 并将其指令注入系统提示词。
@@ -120,31 +121,31 @@ npm run dev:cli    # 构建 TS 包，然后 cargo run -p spirit-agent
 
 ### 快速开始（Zed）
 
-1. 将 `SPIRIT_ACP_API_KEY` 设为**用户或系统环境变量**（Zed 启动 agent 子进程时会继承）。**不要**在 `settings.json` 里写 `${SPIRIT_ACP_API_KEY}` — Zed 不会展开该语法，会把字面量当作 API Key。
-2. 构建 server：`npm run build:acp-server`
-3. 在 Zed 的 `settings.json` 中添加：
+1. 构建 server：`npm run build:acp-server`
+2. 在 Zed 的 `settings.json` 中添加（`env` 中无需 API Key）：
 
 ```json
 "agent_servers": {
   "Spirit Agent": {
     "command": "node",
-    "args": ["path/to/packages/acp-server/dist/src/stdio-entry.js"],
-    "env": {
-      "SPIRIT_ACP_MODEL": "gpt-4.1-mini",
-      "SPIRIT_ACP_BASE_URL": "https://api.openai.com/v1"
-    }
+    "args": ["path/to/packages/acp-server/dist/src/stdio-entry.js"]
   }
 }
 ```
 
-`env` 中省略 `SPIRIT_ACP_API_KEY`，让进程继承用户/系统环境变量；或在 `env` 里直接写密钥字面量（不适合提交到共享配置）。
+3. 客户端提示认证时选择 **Run in terminal**，会 spawn `--setup`：选择 provider、填写凭据、选定模型。
+4. Setup 写入 Spirit 共享数据目录（`config.json` + 系统 keyring，与 Desktop/CLI 共用）。完成后客户端调用 `authenticate`，再 `session/new`。
+
+也可在编辑器外手动 setup：
+
+```bash
+node path/to/packages/acp-server/dist/src/stdio-entry.js --setup
+```
 
 | 环境变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SPIRIT_ACP_API_KEY` | 是 | LLM 提供商 API 密钥 — 建议设为用户/系统环境变量，或在 `env` 中写明文 |
-| `SPIRIT_ACP_MODEL` | 否 | 模型名称（默认：`gpt-4.1-mini`） |
-| `SPIRIT_ACP_BASE_URL` | 否 | 自定义 LLM 端点 URL |
-| `SPIRIT_ACP_WORKSPACE` | 否 | 工作区根路径（默认：客户端传入的 `cwd`） |
+| `SPIRIT_ACP_WORKSPACE` | 否 | 工作区根路径（默认：客户端 `cwd`） |
+| `SPIRIT_ACP_DATA_DIR` | 否 | Spirit 数据目录（默认：`%APPDATA%/SpiritAgent` 或 `~/.spirit-agent`） |
 
 ## 开发
 
