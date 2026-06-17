@@ -132,6 +132,7 @@ let planMetadata: LlmPlanMetadata | undefined;
 let activePlanPath: string | undefined;
 let extensionSystemPrompts: LlmExtensionSystemPrompt[] = [];
 let currentTodoSessionKey: string | undefined;
+let currentTodosContextText: string | undefined;
 
 interface CliHostInternalModule {
   NodeHostToolService: new (
@@ -763,6 +764,10 @@ async function buildTodosContextTextForSession(
   return text && text.length > 0 ? text : undefined;
 }
 
+async function refreshCurrentTodosContextText(): Promise<void> {
+  currentTodosContextText = await buildTodosContextTextForSession(currentTodoSessionKey);
+}
+
 async function updateCliTodoScope(sessionKey: string | undefined): Promise<void> {
   const normalized = sessionKey?.trim() || undefined;
   if (currentTodoSessionKey === normalized) {
@@ -770,15 +775,17 @@ async function updateCliTodoScope(sessionKey: string | undefined): Promise<void>
   }
   currentTodoSessionKey = normalized;
   toolExecutor.setTodoToolDefinitions(normalized ? buildTodoHostToolDefinitions() : []);
-  const workspaceRoot = cliHostInternal?.workspaceRoot ?? currentWorkspaceRoot();
   if (cliHostInternal) {
     if (normalized) {
       cliHostInternal.todoSessionKey = normalized;
     } else {
       delete cliHostInternal.todoSessionKey;
     }
-    await rebuildCliHostToolService(workspaceRoot);
+    cliHostInternal.service.setTodoScope?.(
+      normalized ? { sessionKey: normalized } : undefined,
+    );
   }
+  await refreshCurrentTodosContextText();
 }
 
 async function rebuildCliHostToolService(workspaceRoot: string): Promise<void> {
@@ -1663,7 +1670,7 @@ async function createRuntime(
   const workspaceRoot = config.workspaceRoot ?? process.cwd();
   const hostInternal = await ensureCliHostInternal(workspaceRoot);
   const basicInfo = buildRuntimeBasicInfo(workspaceRoot, hostInternal?.service);
-  const todosContextText = await buildTodosContextTextForSession(currentTodoSessionKey);
+  await refreshCurrentTodosContextText();
   toolExecutor.setImageGenerationAvailable('imageGeneration' in config && config.imageGeneration !== undefined);
   toolExecutor.setVideoGenerationAvailable('videoGeneration' in config && config.videoGeneration !== undefined);
   toolExecutor.setTransportConfigForToolDefinitions(config);
@@ -1691,7 +1698,7 @@ async function createRuntime(
       planMetadata,
       extensionSystemPrompts,
       undefined,
-      todosContextText,
+      currentTodosContextText,
       basicInfo,
       applyPatchPromptSection,
       providerWebSearchPromptSection,
@@ -1716,7 +1723,7 @@ async function createRuntime(
         planMetadata,
         extensionSystemPrompts,
         undefined,
-        todosContextText,
+        currentTodosContextText,
         basicInfo,
         applyPatchPromptSection,
         providerWebSearchPromptSection,
@@ -1742,7 +1749,7 @@ async function createRuntime(
         planMetadata,
         extensionSystemPrompts,
         undefined,
-        todosContextText,
+        currentTodosContextText,
         basicInfo,
         applyPatchPromptSection,
         providerWebSearchPromptSection,
@@ -1874,18 +1881,7 @@ peer.on('hostInternal.setTodoSessionKey', async (rawParams) => {
     typeof params.sessionKey === 'string' && params.sessionKey.trim()
       ? params.sessionKey.trim()
       : undefined;
-  const previousKey = currentTodoSessionKey;
   await updateCliTodoScope(nextKey);
-  if (
-    runtime
-    && transportConfig
-    && (previousKey?.trim() || '') !== (nextKey ?? '')
-  ) {
-    const target = requireRuntime();
-    bridgeLoopEnabled = target.loopEnabled();
-    runtime = await createRuntime(transportConfig, [...target.history()]);
-    runtime.setLoopEnabled(bridgeLoopEnabled);
-  }
   return { ok: true };
 });
 

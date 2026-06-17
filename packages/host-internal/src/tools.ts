@@ -521,7 +521,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private readonly extensions: HostExtensionRuntimeBinding<unknown> | undefined;
   private readonly dreamStore: HostDreamStore | undefined;
   private readonly dreamSourceSession: HostDreamSourceSessionRef | undefined;
-  private readonly todoStore: HostTodoStore | undefined;
+  private todoStore: HostTodoStore | undefined;
   private permissionsPromise: Promise<ToolPermissionStore> | undefined;
   private readonly requestMetadata = new WeakMap<object, HostToolRequestMetadata>();
   private readonly activeShellKills = new Map<string, () => void>();
@@ -563,6 +563,12 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   bindAvailableToolDefinitions(provider: () => JsonValue): void {
     this.availableToolDefinitions = provider;
+  }
+
+  setTodoScope(todoScope: HostTodoScope | undefined): void {
+    this.todoStore = todoScope
+      ? createHostTodoStore({ spiritDataDir: this.spiritDataDir, scope: todoScope })
+      : undefined;
   }
 
   toolDefinitionEnvironment(): HostBuiltinToolDefinitionEnvironment {

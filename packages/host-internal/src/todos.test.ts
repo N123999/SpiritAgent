@@ -83,6 +83,47 @@ test('todo store replaceAll restores rewind snapshot', async () => {
   }
 });
 
+test('setTodoScope swaps todo store without rebuilding service', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-todos-swap-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const sessionKeyA = join(workspaceRoot, 'a.json');
+  const sessionKeyB = join(workspaceRoot, 'b.json');
+
+  try {
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      { todoScope: { sessionKey: sessionKeyA } },
+    );
+
+    await service.execute({
+      name: 'todo_create',
+      items: [{ title: 'Only A' }],
+    });
+
+    service.setTodoScope({ sessionKey: sessionKeyB });
+    await service.execute({
+      name: 'todo_create',
+      items: [{ title: 'Only B' }],
+    });
+
+    service.setTodoScope({ sessionKey: sessionKeyA });
+    const listA = JSON.parse(
+      await service.execute({ name: 'todo_list', include_completed: true }) as string,
+    ) as { todos: Array<{ title: string }> };
+    assert.equal(listA.todos.length, 1);
+    assert.equal(listA.todos[0]?.title, 'Only A');
+
+    service.setTodoScope({ sessionKey: sessionKeyB });
+    const listB = JSON.parse(
+      await service.execute({ name: 'todo_list', include_completed: true }) as string,
+    ) as { todos: Array<{ title: string }> };
+    assert.equal(listB.todos.length, 1);
+    assert.equal(listB.todos[0]?.title, 'Only B');
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('todo scopes are isolated per sessionKey', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-todos-scope-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');

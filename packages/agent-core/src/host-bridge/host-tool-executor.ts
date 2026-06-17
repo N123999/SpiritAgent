@@ -60,6 +60,7 @@ export interface LocalHostToolService {
   saveGeneratedVideo?(request: import('../ports.js').GeneratedVideoSaveRequest): Promise<import('../ports.js').GeneratedVideoFile>;
   attachRequestMetadata?(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue;
   abortRunningShellCommands?(): void;
+  setTodoScope?(scope: { sessionKey: string } | undefined): void;
 }
 
 export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue> {
