@@ -18,6 +18,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('custom'), 'custom');
   assert.equal(parseModelProviderId('moonshot-ai'), 'moonshot-ai');
   assert.equal(parseModelProviderId('z-ai'), 'z-ai');
+  assert.equal(parseModelProviderId('zhipu-ai'), 'zhipu-ai');
   assert.equal(parseModelProviderId('xiaomi'), 'xiaomi');
   assert.equal(parseModelProviderId('azure'), 'azure');
   assert.equal(parseModelProviderId('kimi'), undefined);
@@ -115,6 +116,13 @@ test('resolveProviderConnectApiBase returns Z.ai preset base', () => {
   assert.equal(
     resolveProviderConnectApiBase('z-ai', 'openai-compatible'),
     'https://api.z.ai/api/paas/v4',
+  );
+});
+
+test('resolveProviderConnectApiBase returns Zhipu AI preset base', () => {
+  assert.equal(
+    resolveProviderConnectApiBase('zhipu-ai', 'openai-compatible'),
+    'https://open.bigmodel.cn/api/paas/v4',
   );
 });
 
