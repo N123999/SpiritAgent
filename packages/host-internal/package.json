@@ -1,8 +1,16 @@
 {
   "name": "@spirit-agent/host-internal",
-  "version": "0.2.0",
-  "private": true,
+  "version": "0.2.1",
   "description": "Internal TypeScript host implementation boundaries for Spirit Agent",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/N123999/SpiritAgent.git",
+    "directory": "packages/host-internal"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -125,11 +133,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1068.0",
-    "@spirit-agent/core": "file:../agent-core",
+    "@spirit-agent/core": "0.2.1",
     "fast-glob": "^3.3.3",
-    "google-auth-library": "^10.6.1",
     "fflate": "^0.8.2",
     "glob": "^13.0.6",
+    "google-auth-library": "^10.6.1",
     "ignore": "^5.3.2",
     "spirit-agent-repo": "file:../..",
     "tar": "^7.5.13",

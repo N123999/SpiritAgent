@@ -25,7 +25,7 @@ export type McpConfigScope = 'user' | 'workspace';
 
 export const DEFAULT_MCP_CLIENT_INFO: McpClientInfo = {
   name: '@spirit-agent/core',
-  version: '0.2.0',
+  version: '0.2.1',
 };
 
 export function mcpUserConfigPath(dataDir: string): string {

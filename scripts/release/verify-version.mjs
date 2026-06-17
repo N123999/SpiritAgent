@@ -51,6 +51,7 @@ const versions = [
   ['desktop', 'apps/desktop/package.json', await readJsonVersion('apps/desktop/package.json')],
   ['agent-core', 'packages/agent-core/package.json', await readJsonVersion('packages/agent-core/package.json')],
   ['host-internal', 'packages/host-internal/package.json', await readJsonVersion('packages/host-internal/package.json')],
+  ['acp-server', 'packages/acp-server/package.json', await readJsonVersion('packages/acp-server/package.json')],
   ['cli', 'apps/cli/Cargo.toml', await readCargoVersion('apps/cli/Cargo.toml')],
   ['mcp-client-info', 'packages/agent-core/src/mcp/config.ts', await readMcpClientVersion('packages/agent-core/src/mcp/config.ts')],
 ];

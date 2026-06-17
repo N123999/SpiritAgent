@@ -1,17 +1,29 @@
 {
   "name": "@spirit-agent/acp-server",
-  "version": "0.2.0",
-  "private": true,
+  "version": "0.2.1",
   "description": "ACP (Agent Client Protocol) server adapter for Spirit Agent",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/N123999/SpiritAgent.git",
+    "directory": "packages/acp-server"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "./dist/src/stdio-entry.js",
   "types": "./dist/src/types.d.ts",
   "bin": {
     "spirit-agent-acp": "./dist/src/stdio-entry.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/test/*.test.js",
+    "prepublishOnly": "npm run build",
     "notice": "node scripts/gen-notice.mjs",
     "notice:production": "node scripts/gen-notice.mjs --production"
   },
@@ -19,11 +31,12 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@spirit-agent/core": "file:../agent-core",
-    "@spirit-agent/host-internal": "file:../host-internal",
     "@agentclientprotocol/sdk": "^0.25.1",
     "@inquirer/prompts": "^7.5.0",
-    "@napi-rs/keyring": "^1.2.0"
+    "@napi-rs/keyring": "^1.2.0",
+    "@spirit-agent/core": "0.2.1",
+    "@spirit-agent/host-internal": "0.2.1",
+    "spirit-agent-repo": "file:../.."
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
