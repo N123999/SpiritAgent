@@ -4,10 +4,16 @@ export {
   MODEL_PROVIDER_PICKER_ORDER,
   PROVIDER_PRESET_API_BASE,
   PROVIDER_PICKER_ROWS,
+  defaultProviderConnectSite,
+  isProviderConnectSiteId,
+  listProviderConnectSiteOptions,
+  providerSupportsSiteSelection,
   resolveConnectApiBase,
   resolveProviderConnectApiBase,
 } from '@spirit-agent/host-internal/model-provider-presets';
 export type {
   ModelProviderId,
+  ProviderConnectSiteId,
   ProviderModelTransportKind,
+  ResolveProviderConnectApiBaseOptions,
 } from '@spirit-agent/host-internal/model-provider-presets';

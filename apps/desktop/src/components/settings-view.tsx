@@ -99,6 +99,9 @@ import type {
 } from "@/types";
 import {
   PROVIDER_PICKER_ROWS,
+  defaultProviderConnectSite,
+  listProviderConnectSiteOptions,
+  providerSupportsSiteSelection,
   resolveConnectApiBase,
   resolveProviderConnectApiBase,
 } from "@/host/provider-presets";
@@ -312,6 +315,7 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
     case "minimax":
     case "deepseek":
     case "xiaomi":
+    case "siliconflow":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.messagesApi];
     case "alibaba":
       return [
@@ -363,6 +367,7 @@ function providerSupportsConnectTransportPicker(
     provider === "minimax" ||
     provider === "deepseek" ||
     provider === "xiaomi" ||
+    provider === "siliconflow" ||
     provider === "alibaba" ||
     provider === "custom" ||
     provider === "openrouter" ||
@@ -2463,6 +2468,7 @@ function ModelsSettingsPanel({
   const [connectTransportKind, setConnectTransportKind] = useState<DesktopTransportKind>(
     "openai-compatible",
   );
+  const [connectProviderSite, setConnectProviderSite] = useState("");
   const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
     "single",
   );
@@ -2564,6 +2570,7 @@ function ModelsSettingsPanel({
     setConnectCapabilities(defaultCustomModelCapabilities);
     setConnectContextLength("");
     setConnectTransportKind("openai-compatible");
+    setConnectProviderSite("");
     setCustomConnectMode("single");
     setBedrockConnectMode("bearer");
     setVertexConnectMode("adc");
@@ -2572,6 +2579,7 @@ function ModelsSettingsPanel({
 
   const resetConnectTransportKindForProvider = (provider: DesktopModelProvider) => {
     setConnectTransportKind(defaultConnectTransportKind(provider));
+    setConnectProviderSite(defaultProviderConnectSite(provider) ?? "");
   };
 
   const openProviderPicker = () => {
@@ -2773,6 +2781,9 @@ function ModelsSettingsPanel({
           ? resolveProviderConnectApiBase(
               selectedProvider,
               connectTransportKindForRequest,
+              connectProviderSite.trim()
+                ? { site: connectProviderSite.trim() }
+                : undefined,
             )
           : resolveConnectApiBase(selectedProvider, "");
 
@@ -2790,6 +2801,8 @@ function ModelsSettingsPanel({
     ...(connectVertexClientEmail.trim() ? { vertexClientEmail: connectVertexClientEmail.trim() } : {}),
     ...(connectVertexPrivateKey.trim() ? { vertexPrivateKey: connectVertexPrivateKey.trim() } : {}),
   };
+
+  const connectProviderSiteForRequest = connectProviderSite.trim() || undefined;
 
   const syncCatalogFromUpstream = async (forceRefresh: boolean) => {
     if (selectedProvider === null) {
@@ -2834,6 +2847,7 @@ function ModelsSettingsPanel({
       ...(connectTransportKindForRequest !== undefined
         ? { transportKind: connectTransportKindForRequest }
         : {}),
+      ...(connectProviderSiteForRequest ? { providerSite: connectProviderSiteForRequest } : {}),
       forceRefresh,
     });
     if (res.modelIds.length === 0) {
@@ -2856,6 +2870,7 @@ function ModelsSettingsPanel({
       ...(connectTransportKindForRequest !== undefined
         ? { transportKind: connectTransportKindForRequest }
         : {}),
+      ...(connectProviderSiteForRequest ? { providerSite: connectProviderSiteForRequest } : {}),
     };
     await onAddProviderModels(bulk);
     setConnectDialogOpen(false);
@@ -3640,6 +3655,8 @@ function ModelsSettingsPanel({
                 ? t('settings.customConnectionDescription')
                 : selectedProvider === "volcengine"
                   ? t('settings.volcengineConnectionDescription')
+                  : selectedProvider === "siliconflow"
+                    ? t('settings.siliconflowConnectionDescription')
                   : providerShowsConnectTransportPicker(selectedProvider)
                       ? t('settings.providerConnectionDescription')
                       : t('settings.providerSimpleDescription')}
@@ -3647,6 +3664,31 @@ function ModelsSettingsPanel({
           </DialogHeader>
 
           <div className="grid gap-3 py-1">
+            {selectedProvider && providerSupportsSiteSelection(selectedProvider) ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-provider-site">{t('settings.site')}</Label>
+                <div className={DESKTOP_FORM_INPUT_SHELL}>
+                  <Select
+                    value={connectProviderSite}
+                    onValueChange={setConnectProviderSite}
+                  >
+                    <SelectTrigger
+                      id="connect-provider-site"
+                      className={DESKTOP_FORM_FIELD_TRIGGER_INNER}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {listProviderConnectSiteOptions(selectedProvider).map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {t(option.labelKey, { defaultValue: option.fallbackLabel })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
             {selectedProvider && providerShowsConnectTransportPicker(selectedProvider) ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-api-transport">{t('settings.apiType')}</Label>

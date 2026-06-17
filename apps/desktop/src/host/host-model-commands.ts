@@ -18,6 +18,7 @@ import type {
   DesktopModelCapability,
   DesktopModelProvider,
   DesktopModelReasoningEffort,
+  DesktopProviderConnectSiteId,
   DesktopSnapshot,
   DesktopTransportKind,
   PreviewModelsRequest,
@@ -310,6 +311,7 @@ function resolveManagedConnectApiBase(
   vertexProject?: string,
   vertexLocation?: string,
   azureResourceName?: string,
+  providerSite?: DesktopProviderConnectSiteId,
 ): string {
   if (provider === 'amazon-bedrock') {
     const region = awsRegion?.trim();
@@ -344,7 +346,7 @@ function resolveManagedConnectApiBase(
     const trimmed = requestApiBase.trim();
     return trimmed || defaultApiBaseForTransport('custom', transportKind);
   }
-  return defaultApiBaseForTransport(provider, transportKind);
+  return defaultApiBaseForTransport(provider, transportKind, providerSite);
 }
 
 function assertBedrockConnectCredentials(input: {
@@ -419,6 +421,7 @@ export async function previewModelsCommand(request: PreviewModelsRequest): Promi
     transportKind: request.transportKind,
   });
   const awsRegion = request.awsRegion?.trim();
+  const providerSite = request.providerSite?.trim() as DesktopProviderConnectSiteId | undefined;
   const vertexProject = request.vertexProject?.trim();
   const vertexLocation = request.vertexLocation?.trim();
   if (provider === 'amazon-bedrock' && !awsRegion) {
@@ -433,6 +436,7 @@ export async function previewModelsCommand(request: PreviewModelsRequest): Promi
     vertexProject,
     vertexLocation,
     undefined,
+    providerSite,
   );
   const apiKey = request.apiKey.trim();
   const accessKeyId = request.accessKeyId?.trim();
@@ -491,6 +495,7 @@ export async function addProviderModelsCommand(
       transportKind: request.transportKind,
     });
     const awsRegion = request.awsRegion?.trim();
+    const providerSite = request.providerSite?.trim() as DesktopProviderConnectSiteId | undefined;
     const vertexProject = request.vertexProject?.trim();
     const vertexLocation = request.vertexLocation?.trim();
     if (provider === 'amazon-bedrock' && !awsRegion) {
@@ -505,6 +510,7 @@ export async function addProviderModelsCommand(
       vertexProject,
       vertexLocation,
       undefined,
+      providerSite,
     );
     const apiKey = request.apiKey.trim();
     const accessKeyId = request.accessKeyId?.trim();
@@ -540,6 +546,7 @@ export async function addProviderModelsCommand(
       provider?: DesktopModelProvider;
       transportKind?: DesktopTransportKind;
       awsRegion?: string;
+      providerSite?: DesktopProviderConnectSiteId;
       vertexProject?: string;
       vertexLocation?: string;
     };
@@ -576,6 +583,9 @@ export async function addProviderModelsCommand(
         }
         if (provider === 'amazon-bedrock' && awsRegion) {
           profile.awsRegion = awsRegion;
+        }
+        if (providerSite) {
+          profile.providerSite = providerSite;
         }
         if (provider === 'google-vertex-ai') {
           if (vertexProject) {
@@ -673,6 +683,7 @@ export async function addModelCommand(
       transportKind: request.transportKind,
     });
     const awsRegion = request.awsRegion?.trim();
+    const providerSite = request.providerSite?.trim() as DesktopProviderConnectSiteId | undefined;
     const vertexProject = request.vertexProject?.trim();
     const vertexLocation = request.vertexLocation?.trim();
     const azureResourceName = request.azureResourceName?.trim();
@@ -694,6 +705,7 @@ export async function addModelCommand(
       vertexProject,
       vertexLocation,
       azureResourceName,
+      providerSite,
     );
     const apiKey = request.apiKey.trim();
 
@@ -734,6 +746,7 @@ export async function addModelCommand(
       capabilities?: DesktopModelCapability[];
       contextLength?: number;
       awsRegion?: string;
+      providerSite?: DesktopProviderConnectSiteId;
       vertexProject?: string;
       vertexLocation?: string;
       azureResourceName?: string;
@@ -760,6 +773,9 @@ export async function addModelCommand(
       }
       if (provider === 'amazon-bedrock' && awsRegion) {
         profile.awsRegion = awsRegion;
+      }
+      if (providerSite) {
+        profile.providerSite = providerSite;
       }
       if (provider === 'google-vertex-ai') {
         if (vertexProject) {
