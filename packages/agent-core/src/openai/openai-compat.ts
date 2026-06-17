@@ -156,6 +156,13 @@ export function resolveOpenAiModelCompatibilityProfile(
     };
   }
 
+  if (config.llmVendor === 'xiaomi') {
+    return {
+      hasExplicitCapabilities: true,
+      capabilities: {},
+    };
+  }
+
   return {
     hasExplicitCapabilities: false,
     capabilities: {},

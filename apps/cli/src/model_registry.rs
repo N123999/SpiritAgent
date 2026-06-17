@@ -174,10 +174,10 @@ impl ModelProfile {
         match self.provider {
             Some(ModelProvider::Deepseek) => false,
             Some(ModelProvider::Moonshot) => false,
+            Some(ModelProvider::Xiaomi) => false,
             Some(ModelProvider::Xai)
             | Some(ModelProvider::ZAi)
             | Some(ModelProvider::Minimax)
-            | Some(ModelProvider::Xiaomi)
             | Some(ModelProvider::Alibaba)
             | Some(ModelProvider::Anthropic)
             | Some(ModelProvider::VercelAiGateway)
@@ -746,6 +746,26 @@ mod tests {
         assert!(kimi_with_image.supports_image_input());
         assert!(!deepseek.supports_image_input());
         assert!(custom.supports_image_input());
+    }
+
+    #[test]
+    fn model_profile_supports_image_input_uses_explicit_capabilities_for_xiaomi() {
+        let mimo_without_capabilities = super::ModelProfile {
+            name: "mimo-v2-flash".to_string(),
+            api_base: "https://api.xiaomimimo.com/v1".to_string(),
+            provider: Some(super::ModelProvider::Xiaomi),
+            reasoning_effort: None,
+            context_length: None,
+            extra: serde_json::Map::new(),
+        };
+        let mut mimo_with_image = mimo_without_capabilities.clone();
+        mimo_with_image.extra.insert(
+            "capabilities".to_string(),
+            serde_json::json!(["chat", "image", "video"]),
+        );
+
+        assert!(!mimo_without_capabilities.supports_image_input());
+        assert!(mimo_with_image.supports_image_input());
     }
 
     #[test]

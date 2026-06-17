@@ -27,6 +27,9 @@ export function usesProviderListedModelCatalogMetadata(input: {
   if (input.provider === 'moonshot-ai') {
     return true;
   }
+  if (input.provider === 'xiaomi') {
+    return true;
+  }
   if (
     input.provider === 'vercel-ai-gateway'
     || input.provider === 'openrouter'

@@ -3,6 +3,7 @@
  */
 
 import type { ModelProviderId, ProviderModelTransportKind } from './model-provider-presets.js';
+import { resolveProviderConnectApiBase } from './model-provider-presets.js';
 import {
   assertGoogleGeminiApiBase,
   googleNativeModelsListUrl,
@@ -81,6 +82,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
     return parseVolcengineModelEntriesPayload(body);
   }
 
+  if (provider === 'xiaomi') {
+    return parseXiaomiModelEntriesPayload(body);
+  }
+
   if (provider === 'google') {
     return parseGoogleModelEntriesPayload(body);
   }
@@ -144,6 +149,39 @@ export function parseMoonshotModelEntriesPayload(body: unknown): ProviderListedM
       modelEntry.contextLength = contextLength;
     }
     entries.push(modelEntry);
+  }
+  return entries;
+}
+
+/** Xiaomi Mimo：上游 /models 不返回能力字段，多模态模型需维护 allowlist。 */
+const XIAOMI_MULTIMODAL_MODEL_IDS = new Set(['mimo-v2.5', 'mimo-v2-omni']);
+
+export function parseXiaomiModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('data' in body)) {
+    return [];
+  }
+  const raw = (body as { data?: unknown }).data;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry)) {
+      continue;
+    }
+    const id = (entry as { id?: unknown }).id;
+    if (typeof id !== 'string' || id.trim().length === 0) {
+      continue;
+    }
+
+    const modelId = id.trim();
+    const isMultimodal = XIAOMI_MULTIMODAL_MODEL_IDS.has(modelId);
+    entries.push({
+      id: modelId,
+      supportsImageInput: isMultimodal,
+      supportsVideoInput: isMultimodal,
+    });
   }
   return entries;
 }
@@ -671,6 +709,14 @@ export async function listAnthropicModels(
 export async function listProviderModels(
   options: ListProviderModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
+  if (options.provider === 'xiaomi' && options.transportKind === 'anthropic') {
+    return listXiaomiModels({
+      baseUrl: resolveProviderConnectApiBase('xiaomi', 'openai-compatible'),
+      apiKey: options.apiKey,
+      ...(options.signal !== undefined ? { signal: options.signal } : {}),
+    });
+  }
+
   if (
     options.transportKind === 'anthropic'
     || options.provider === 'anthropic'
@@ -680,6 +726,10 @@ export async function listProviderModels(
 
   if (options.provider === 'moonshot-ai') {
     return listMoonshotModels(options);
+  }
+
+  if (options.provider === 'xiaomi') {
+    return listXiaomiModels(options);
   }
 
   if (options.provider === 'xai') {
@@ -781,6 +831,12 @@ export async function listMoonshotModels(
   options: ListOpenAiCompatibleModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
   return listOpenAiCompatibleModelsForProvider(options, 'moonshot-ai');
+}
+
+export async function listXiaomiModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  return listOpenAiCompatibleModelsForProvider(options, 'xiaomi');
 }
 
 export async function listXaiModels(
