@@ -62,7 +62,7 @@ impl TuiShell {
             config: self.runtime.config().clone(),
             show_aux_details: self.show_aux_details,
             input_suggestion_kind: self.current_input_suggestion_kind(),
-            input_suggestion_loading: false,
+            input_suggestion_loading: self.file_reference_index_loading,
             slash_suggestions: self.slash.suggestions.clone(),
             selected_suggestion: self.slash.selected_suggestion,
             rewind_picker,

@@ -122,6 +122,7 @@ pub struct TuiShell {
     ui_runtime_state: UiRuntimeState,
     /// Mirrors Desktop `workspaceBinding`; CLI defaults to project.
     workspace_binding: String,
+    file_reference_index_loading: bool,
 }
 
 impl TuiShell {
@@ -216,7 +217,12 @@ impl TuiShell {
             cli_ui_hooks,
             ui_runtime_state: UiRuntimeState::from_terminal_query(),
             workspace_binding: "project".to_string(),
+            file_reference_index_loading: false,
         };
+
+        if let Err(err) = shell.runtime.prime_workspace_file_reference_index() {
+            logging::log_event(&format!("[file-reference] 启动预热索引失败: {err:#}"));
+        }
 
         shell.refresh_prompt_slash_commands(&initial_mcp_status);
         Ok(shell)
@@ -295,14 +301,21 @@ impl TuiShell {
         }
 
         if self.current_file_reference_query().is_some() {
-            self.slash.suggestions = match self
+            match self
                 .runtime
                 .list_workspace_file_reference_suggestions(&self.input.value, self.input.cursor)
             {
-                Ok(suggestions) => suggestions.into_iter().map(InputSuggestion::simple).collect(),
+                Ok((suggestions, index_ready)) => {
+                    self.file_reference_index_loading = !index_ready;
+                    self.slash.suggestions = suggestions
+                        .into_iter()
+                        .map(InputSuggestion::simple)
+                        .collect();
+                }
                 Err(err) => {
+                    self.file_reference_index_loading = false;
                     logging::log_event(&format!("[file-reference] 查询候选失败: {err:#}"));
-                    Vec::new()
+                    self.slash.suggestions.clear();
                 }
             };
 
@@ -311,6 +324,8 @@ impl TuiShell {
             }
             return;
         }
+
+        self.file_reference_index_loading = false;
 
         let Some(query) = self.current_slash_query().map(ToString::to_string) else {
             self.slash.suggestions.clear();
@@ -333,6 +348,9 @@ impl TuiShell {
         self.sync_welcome_mcp_status();
         self.refresh_active_subagent_view();
         self.refresh_plan_metadata_from_disk();
+        if self.file_reference_index_loading && self.current_file_reference_query().is_some() {
+            self.refresh_suggestions();
+        }
         if !self.can_interrupt_current_turn() {
             self.clear_interrupt_escape_arm();
         }

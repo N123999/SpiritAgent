@@ -80,6 +80,7 @@ export async function listWorkspaceFileReferenceSuggestions(
   return {
     query,
     suggestions: computeWorkspaceFileReferenceSuggestions(query.raw, files),
+    indexReady: true,
   };
 }
 
@@ -99,12 +100,14 @@ export async function listCachedWorkspaceFileReferenceSuggestions(
     return {
       query,
       suggestions: [],
+      indexReady: false,
     };
   }
 
   return {
     query,
     suggestions: computeWorkspaceFileReferenceSuggestions(query.raw, files),
+    indexReady: true,
   };
 }
 

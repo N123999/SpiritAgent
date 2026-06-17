@@ -145,6 +145,7 @@ test('cached workspace file suggestions do not block on cold index', async () =>
       Array.from('@README').length,
     );
     assert.deepEqual(cold?.suggestions, []);
+    assert.equal(cold?.indexReady, false);
 
     await collectWorkspaceFileReferenceIndex(workspaceRoot);
     const warm = await listCachedWorkspaceFileReferenceSuggestions(
@@ -153,6 +154,7 @@ test('cached workspace file suggestions do not block on cold index', async () =>
       Array.from('@README').length,
     );
     assert.deepEqual(warm?.suggestions, ['README.md']);
+    assert.equal(warm?.indexReady, true);
   } finally {
     await clearWorkspaceFileReferenceIndexCache(workspaceRoot);
     await rm(workspaceRoot, { recursive: true, force: true });

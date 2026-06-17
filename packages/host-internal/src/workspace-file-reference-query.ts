@@ -12,6 +12,7 @@ export interface ActiveWorkspaceFileReferenceQuery {
 export interface WorkspaceFileReferenceSuggestionsResult {
   query: ActiveWorkspaceFileReferenceQuery;
   suggestions: string[];
+  indexReady?: boolean;
 }
 
 export function currentWorkspaceFileReferenceQuery(

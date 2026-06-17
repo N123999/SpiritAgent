@@ -250,6 +250,8 @@ struct BridgeWorkspaceFileReferenceQuery {
 struct BridgeWorkspaceFileReferenceSuggestions {
     query: BridgeWorkspaceFileReferenceQuery,
     suggestions: Vec<String>,
+    #[serde(default)]
+    index_ready: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -861,7 +863,7 @@ impl TsBridgeRuntime {
         &mut self,
         input: &str,
         cursor_chars: usize,
-    ) -> Result<Vec<String>> {
+    ) -> Result<(Vec<String>, bool)> {
         let value = self.call_bridge(
             "hostInternal.listWorkspaceFileReferenceSuggestions",
             Some(json!({
@@ -871,11 +873,19 @@ impl TsBridgeRuntime {
         )?;
 
         if value.is_null() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), true));
         }
 
         let suggestions: BridgeWorkspaceFileReferenceSuggestions = serde_json::from_value(value)?;
-        Ok(suggestions.suggestions)
+        Ok((
+            suggestions.suggestions,
+            suggestions.index_ready.unwrap_or(true),
+        ))
+    }
+
+    pub fn prime_workspace_file_reference_index(&mut self) -> Result<()> {
+        self.call_bridge("hostInternal.primeWorkspaceFileReferenceIndex", None)?;
+        Ok(())
     }
 
     pub fn write_rule_state(

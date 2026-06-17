@@ -188,6 +188,7 @@ interface CliHostInternalModule {
     | {
         query: { start: number; end: number; raw: string };
         suggestions: string[];
+        indexReady?: boolean;
       }
     | undefined
   >;
@@ -199,9 +200,11 @@ interface CliHostInternalModule {
     | {
         query: { start: number; end: number; raw: string };
         suggestions: string[];
+        indexReady?: boolean;
       }
     | undefined
   >;
+  primeWorkspaceFileReferenceIndexCache?: (workspaceRoot: string) => Promise<void>;
   resolveWorkspaceFileReferenceAttachmentsFromInput?: (
     workspaceRoot: string,
     text: string,
@@ -2130,6 +2133,14 @@ peer.on('hostInternal.loadPlanMetadata', async (rawParams) => {
     normalizeSpiritAgentMode(params),
     planMetadataSnapshotOptions(params.activePlanPath ?? activePlanPath),
   );
+});
+
+peer.on('hostInternal.primeWorkspaceFileReferenceIndex', async () => {
+  const hostInternal = await requireCliHostInternal();
+  if (hostInternal.module.primeWorkspaceFileReferenceIndexCache) {
+    await hostInternal.module.primeWorkspaceFileReferenceIndexCache(hostInternal.workspaceRoot);
+  }
+  return null;
 });
 
 peer.on('hostInternal.listWorkspaceFileReferenceSuggestions', async (rawParams) => {

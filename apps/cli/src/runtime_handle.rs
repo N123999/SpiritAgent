@@ -96,9 +96,13 @@ impl RuntimeHandle {
         &mut self,
         input: &str,
         cursor_chars: usize,
-    ) -> Result<Vec<String>> {
+    ) -> Result<(Vec<String>, bool)> {
         self.runtime
             .list_workspace_file_reference_suggestions(input, cursor_chars)
+    }
+
+    pub fn prime_workspace_file_reference_index(&mut self) -> Result<()> {
+        self.runtime.prime_workspace_file_reference_index()
     }
 
     pub fn write_rule_state(
