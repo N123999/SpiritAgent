@@ -111,8 +111,15 @@ export function loadSpiritConfig(spiritDataDir: string): SpiritConfigFile | unde
   if (!existsSync(filePath)) {
     return undefined;
   }
-  const raw = JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
-  return normalizeConfig(raw);
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(filePath, 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null) {
+      return undefined;
+    }
+    return normalizeConfig(parsed as Record<string, unknown>);
+  } catch {
+    return undefined;
+  }
 }
 
 export async function saveSpiritConfig(

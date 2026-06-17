@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -10,6 +10,12 @@ import {
   setKeyringStoreForTests,
 } from '../src/credentials/index.js';
 import { providerKeyAccount } from '../src/credentials/provider-accounts.js';
+
+test('loadSpiritConfig returns undefined for invalid JSON', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-config-'));
+  writeFileSync(join(dir, 'config.json'), '{not json', 'utf8');
+  assert.equal(loadSpiritConfig(dir), undefined);
+});
 
 test('saveProviderSetup writes keyring before config', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-save-'));
