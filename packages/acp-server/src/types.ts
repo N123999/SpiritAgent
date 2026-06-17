@@ -3,39 +3,13 @@ import type { HostToolExecutorProxy } from '@spirit-agent/core/host-bridge';
 import type { JsonValue } from '@spirit-agent/core';
 
 /**
- * ACP Server configuration derived from environment variables or ACP parameters.
+ * ACP Server runtime paths. LLM transport is resolved from shared Spirit config + keyring.
  */
 export interface AcpServerConfig {
-  /** LLM model name (default: 'gpt-4.1-mini') */
-  model: string;
-  /** API key from SPIRIT_ACP_API_KEY when set at spawn time */
-  apiKey?: string;
-  /** Custom base URL for the LLM endpoint (optional) */
-  baseUrl?: string;
   /** Workspace root path (default: process.cwd()) */
   workspaceRoot: string;
   /** Spirit data directory (default: APPDATA/SpiritAgent or ~/.spirit-agent) */
   spiritDataDir: string;
-}
-
-/**
- * Converts AcpServerConfig to an LlmTransportConfig usable by agent-core.
- */
-export function toLlmTransportConfig(config: AcpServerConfig): LlmTransportConfig {
-  const apiKey = config.apiKey?.trim();
-  if (!apiKey) {
-    throw new Error('API key is required to build LLM transport configuration.');
-  }
-  const result: import('@spirit-agent/core').OpenAiTransportConfig = {
-    transportKind: 'openai-compatible',
-    apiKey,
-    model: config.model,
-    workspaceRoot: config.workspaceRoot,
-  };
-  if (config.baseUrl !== undefined) {
-    result.baseUrl = config.baseUrl;
-  }
-  return result;
 }
 
 /**

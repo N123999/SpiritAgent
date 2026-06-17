@@ -1,8 +1,8 @@
 /**
  * In-process ACP authentication state for a single agent connection.
  *
- * Env-provided API keys or existing shared keyring/config credentials pre-authenticate
- * the process; first-time setup still uses Terminal Auth when no credentials exist.
+ * Existing shared keyring/config credentials pre-authenticate the process;
+ * first-time setup uses Terminal Auth when no credentials exist.
  */
 export class AuthState {
   private authenticated: boolean;
@@ -24,7 +24,7 @@ export class AuthState {
   }
 }
 
-/** Env API key or existing shared keyring/config credentials pre-authenticate the process. */
+/** Shared keyring/config credentials pre-authenticate the process when present. */
 export function createAuthState(preAuthenticated = false): AuthState {
   return new AuthState(preAuthenticated);
 }

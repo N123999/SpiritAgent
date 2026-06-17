@@ -15,7 +15,6 @@ import {
   type ModelProviderId,
 } from '@spirit-agent/host-internal';
 
-import { resolveEnvApiKey } from '../config.js';
 import {
   loadActiveModelProfile,
   readBedrockCredentials,
@@ -24,7 +23,7 @@ import {
 } from '../credentials/index.js';
 import type { SpiritModelCapability, SpiritModelProfile } from '../credentials/types.js';
 import { resolveProfileApiBase, resolveSetupTransportKind } from '../setup/provider-wizard.js';
-import { toLlmTransportConfig, type AcpServerConfig } from '../types.js';
+import type { AcpServerConfig } from '../types.js';
 
 function modelCapabilitiesFromConfig(
   capabilities: readonly SpiritModelCapability[],
@@ -263,14 +262,9 @@ function buildTransportFromProfile(
 }
 
 /**
- * Resolves LLM transport: env override first, then shared Spirit config + keyring.
+ * Resolves LLM transport from shared Spirit config + keyring.
  */
 export function resolveTransportConfig(config: AcpServerConfig): LlmTransportConfig {
-  const envKey = resolveEnvApiKey();
-  if (envKey) {
-    return toLlmTransportConfig({ ...config, apiKey: envKey });
-  }
-
   const profile = loadActiveModelProfile(config.spiritDataDir);
   if (!profile) {
     throw new Error('No active model configured. Run spirit-agent-acp --setup first.');

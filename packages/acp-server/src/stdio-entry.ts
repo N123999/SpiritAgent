@@ -11,10 +11,8 @@
  *   node dist/stdio-entry.js --setup      — interactive provider setup (Terminal Auth)
  *
  * Environment variables:
- *   SPIRIT_ACP_API_KEY   — Optional. LLM provider API key (pre-authenticates when set).
- *   SPIRIT_ACP_MODEL     — Optional. Model name (default: gpt-4.1-mini).
- *   SPIRIT_ACP_BASE_URL  — Optional. Custom LLM endpoint URL.
  *   SPIRIT_ACP_WORKSPACE — Optional. Workspace root (default: cwd).
+ *   SPIRIT_ACP_DATA_DIR  — Optional. Spirit data directory (same as SPIRIT_AGENT_DATA_DIR).
  */
 
 import { Readable, Writable } from 'node:stream';

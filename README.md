@@ -125,8 +125,6 @@ npm run dev:cli    # build TS packages, then cargo run -p spirit-agent
 
 ### Quick start (Zed)
 
-**Option A — Terminal Auth (ACP registry compatible)**
-
 1. Build the server: `npm run build:acp-server`
 2. Add to your Zed `settings.json` (no API key in `env`):
 
@@ -148,34 +146,10 @@ Manual setup (outside the editor):
 node path/to/packages/acp-server/dist/src/stdio-entry.js --setup
 ```
 
-**Option B — Environment variable override (legacy)**
-
-Set `SPIRIT_ACP_API_KEY` as a **user or system environment variable** (Zed inherits it when spawning the agent). Do **not** use `${SPIRIT_ACP_API_KEY}` in `settings.json` — Zed does not expand that syntax.
-
-```json
-"agent_servers": {
-  "Spirit Agent": {
-    "command": "node",
-    "args": ["path/to/packages/acp-server/dist/src/stdio-entry.js"],
-    "env": {
-      "SPIRIT_ACP_MODEL": "gpt-4.1-mini",
-      "SPIRIT_ACP_BASE_URL": "https://api.openai.com/v1"
-    }
-  }
-}
-```
-
-When `SPIRIT_ACP_API_KEY` is present at spawn time, the process is pre-authenticated and env settings override the shared config.
-
 | Environment variable | Required | Description |
 | --- | --- | --- |
-| `SPIRIT_ACP_API_KEY` | No* | LLM API key — pre-authenticates when set; overrides shared config |
-| `SPIRIT_ACP_MODEL` | No | Model name when using env override (default: `gpt-4.1-mini`) |
-| `SPIRIT_ACP_BASE_URL` | No | Custom LLM endpoint URL when using env override |
 | `SPIRIT_ACP_WORKSPACE` | No | Workspace root (default: `cwd` from client) |
 | `SPIRIT_ACP_DATA_DIR` | No | Spirit data directory (default: `%APPDATA%/SpiritAgent` or `~/.spirit-agent`) |
-
-\*Required only for Option B, or omitted when using Terminal Auth + `--setup`.
 
 ## Development
 

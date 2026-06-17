@@ -10,8 +10,8 @@ import {
   TERMINAL_AUTH_ARGS,
   TERMINAL_AUTH_METHOD_ID,
 } from '../src/auth/constants.js';
-import { canCreateSession, createInitialAuthState, isEnvPreAuthenticated } from '../src/auth/session-auth.js';
-import { loadBaseConfig, resolveEnvApiKey } from '../src/config.js';
+import { canCreateSession, createInitialAuthState } from '../src/auth/session-auth.js';
+import { loadBaseConfig } from '../src/config.js';
 import { hasResolvableCredentials, setKeyringStoreForTests } from '../src/credentials/index.js';
 import { providerKeyAccount } from '../src/credentials/provider-accounts.js';
 import {
@@ -43,27 +43,7 @@ test('AuthState pre-authenticates when constructed with true', () => {
   assert.equal(state.isAuthenticated(), false);
 });
 
-test('canCreateSession allows env API key without authenticate', () => {
-  const previous = process.env['SPIRIT_ACP_API_KEY'];
-  process.env['SPIRIT_ACP_API_KEY'] = 'test-key';
-  try {
-    const config = loadBaseConfig();
-    const authState = new AuthState(false);
-    assert.equal(canCreateSession(config, authState), true);
-    assert.equal(isEnvPreAuthenticated(), true);
-  } finally {
-    if (previous === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previous;
-    }
-  }
-});
-
 test('buildAuthMethodsForStartup omits methods when shared credentials exist', () => {
-  const previous = process.env['SPIRIT_ACP_API_KEY'];
-  delete process.env['SPIRIT_ACP_API_KEY'];
-
   const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
   writeFileSync(
     join(dir, 'config.json'),
@@ -95,18 +75,10 @@ test('buildAuthMethodsForStartup omits methods when shared credentials exist', (
     assert.equal(buildAuthMethodsForStartup(mkdtempSync(join(tmpdir(), 'spirit-acp-empty-'))).length, 1);
   } finally {
     setKeyringStoreForTests(undefined);
-    if (previous === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previous;
-    }
   }
 });
 
 test('createInitialAuthState pre-authenticates when shared credentials exist', () => {
-  const previous = process.env['SPIRIT_ACP_API_KEY'];
-  delete process.env['SPIRIT_ACP_API_KEY'];
-
   const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
   writeFileSync(
     join(dir, 'config.json'),
@@ -141,18 +113,10 @@ test('createInitialAuthState pre-authenticates when shared credentials exist', (
     assert.equal(canCreateSession(config, authState), true);
   } finally {
     setKeyringStoreForTests(undefined);
-    if (previous === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previous;
-    }
   }
 });
 
 test('canCreateSession requires authenticate when using shared credentials without pre-auth', () => {
-  const previous = process.env['SPIRIT_ACP_API_KEY'];
-  delete process.env['SPIRIT_ACP_API_KEY'];
-
   const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
   writeFileSync(
     join(dir, 'config.json'),
@@ -190,67 +154,54 @@ test('canCreateSession requires authenticate when using shared credentials witho
     assert.equal(canCreateSession(config, unauthenticated), true);
   } finally {
     setKeyringStoreForTests(undefined);
-    if (previous === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previous;
-    }
   }
 });
 
-test('loadBaseConfig does not require SPIRIT_ACP_API_KEY', () => {
-  const previous = process.env['SPIRIT_ACP_API_KEY'];
-  delete process.env['SPIRIT_ACP_API_KEY'];
+test('loadBaseConfig only resolves runtime paths', () => {
+  const config = loadBaseConfig();
+  assert.ok(config.workspaceRoot);
+  assert.ok(config.spiritDataDir);
+  assert.equal(Object.keys(config).sort().join(','), 'spiritDataDir,workspaceRoot');
+});
+
+test('resolveTransportConfig reads shared config and keyring', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-transport-'));
+  writeFileSync(
+    join(dir, 'config.json'),
+    JSON.stringify({
+      models: [{
+        name: 'gpt-4o-mini',
+        apiBase: 'https://api.openai.com/v1',
+        provider: 'openai',
+      }],
+      activeModel: 'gpt-4o-mini',
+    }),
+    'utf8',
+  );
+
+  const passwords = new Map<string, string>();
+  setKeyringStoreForTests({
+    getPassword: (_service, account) => passwords.get(account),
+    setPassword: (_service, account, password) => {
+      passwords.set(account, password);
+    },
+    deletePassword: (_service, account) => {
+      passwords.delete(account);
+    },
+  });
+  passwords.set(providerKeyAccount('openai'), 'stored-key');
+
   try {
     const config = loadBaseConfig();
-    assert.equal(config.apiKey, undefined);
-  } finally {
-    if (previous === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previous;
-    }
-  }
-});
-
-test('resolveEnvApiKey rejects unexpanded placeholders', () => {
-  const previous = process.env['SPIRIT_ACP_API_KEY'];
-  process.env['SPIRIT_ACP_API_KEY'] = '${SPIRIT_ACP_API_KEY}';
-  try {
-    assert.throws(() => resolveEnvApiKey(), /unexpanded placeholder/);
-  } finally {
-    if (previous === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previous;
-    }
-  }
-});
-
-test('resolveTransportConfig prefers env override', () => {
-  const previousKey = process.env['SPIRIT_ACP_API_KEY'];
-  const previousModel = process.env['SPIRIT_ACP_MODEL'];
-  process.env['SPIRIT_ACP_API_KEY'] = 'env-key';
-  process.env['SPIRIT_ACP_MODEL'] = 'gpt-test';
-  try {
-    const config = loadBaseConfig();
+    config.spiritDataDir = dir;
     const transport = resolveTransportConfig(config);
     assert.equal(transport.transportKind, 'openai-compatible');
     if (transport.transportKind === 'openai-compatible') {
-      assert.equal(transport.apiKey, 'env-key');
-      assert.equal(transport.model, 'gpt-test');
+      assert.equal(transport.apiKey, 'stored-key');
+      assert.equal(transport.model, 'gpt-4o-mini');
     }
   } finally {
-    if (previousKey === undefined) {
-      delete process.env['SPIRIT_ACP_API_KEY'];
-    } else {
-      process.env['SPIRIT_ACP_API_KEY'] = previousKey;
-    }
-    if (previousModel === undefined) {
-      delete process.env['SPIRIT_ACP_MODEL'];
-    } else {
-      process.env['SPIRIT_ACP_MODEL'] = previousModel;
-    }
+    setKeyringStoreForTests(undefined);
   }
 });
 

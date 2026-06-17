@@ -121,8 +121,6 @@ npm run dev:cli    # 构建 TS 包，然后 cargo run -p spirit-agent
 
 ### 快速开始（Zed）
 
-**方式 A — Terminal Auth（符合 ACP 注册处要求）**
-
 1. 构建 server：`npm run build:acp-server`
 2. 在 Zed 的 `settings.json` 中添加（`env` 中无需 API Key）：
 
@@ -144,34 +142,10 @@ npm run dev:cli    # 构建 TS 包，然后 cargo run -p spirit-agent
 node path/to/packages/acp-server/dist/src/stdio-entry.js --setup
 ```
 
-**方式 B — 环境变量覆盖（旧版 Zed 配置）**
-
-将 `SPIRIT_ACP_API_KEY` 设为**用户或系统环境变量**。**不要**在 `settings.json` 里写 `${SPIRIT_ACP_API_KEY}`。
-
-```json
-"agent_servers": {
-  "Spirit Agent": {
-    "command": "node",
-    "args": ["path/to/packages/acp-server/dist/src/stdio-entry.js"],
-    "env": {
-      "SPIRIT_ACP_MODEL": "gpt-4.1-mini",
-      "SPIRIT_ACP_BASE_URL": "https://api.openai.com/v1"
-    }
-  }
-}
-```
-
-进程启动时若存在 `SPIRIT_ACP_API_KEY`，则视为已预认证，且 env 设置优先于共享 config。
-
 | 环境变量 | 必填 | 说明 |
 | --- | --- | --- |
-| `SPIRIT_ACP_API_KEY` | 否* | LLM API 密钥 — 设置则预认证并覆盖共享 config |
-| `SPIRIT_ACP_MODEL` | 否 | 使用 env 覆盖时的模型名（默认：`gpt-4.1-mini`） |
-| `SPIRIT_ACP_BASE_URL` | 否 | 使用 env 覆盖时的 LLM 端点 URL |
 | `SPIRIT_ACP_WORKSPACE` | 否 | 工作区根路径（默认：客户端 `cwd`） |
 | `SPIRIT_ACP_DATA_DIR` | 否 | Spirit 数据目录（默认：`%APPDATA%/SpiritAgent` 或 `~/.spirit-agent`） |
-
-\*方式 B 必填；使用 Terminal Auth + `--setup` 时可省略。
 
 ## 开发
 
