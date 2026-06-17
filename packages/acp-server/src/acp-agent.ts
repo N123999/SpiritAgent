@@ -12,6 +12,7 @@ import { handleApprovalRequest, handleQuestionsRequest } from './permission-brid
 import { buildAvailableCommands, parseSlashCommand, buildActiveSkillPayload, upsertActiveSkill } from './skill-bridge.js';
 import { extractPromptImages } from './prompt-images.js';
 import { SessionManager } from './session-manager.js';
+import { mapSessionSetupError } from './transport/map-setup-error.js';
 import { AVAILABLE_MODES } from './types.js';
 import type { AcpServerConfig } from './types.js';
 
@@ -77,10 +78,15 @@ export class SpiritAcpAgent implements acp.Agent {
 
     const workspaceRoot = params.cwd;
 
-    const result = await this.sessionManager.createSession(
-      workspaceRoot,
-      (sessionId, event) => this.handleRuntimeEvent(sessionId, event),
-    );
+    let result;
+    try {
+      result = await this.sessionManager.createSession(
+        workspaceRoot,
+        (sessionId, event) => this.handleRuntimeEvent(sessionId, event),
+      );
+    } catch (err) {
+      throw mapSessionSetupError(err);
+    }
 
     // Create fresh mapper state for this session
     this.mapperStates.set(result.sessionId, createEventMapperState());
