@@ -3,7 +3,7 @@ import type * as schema from '@agentclientprotocol/sdk';
 import { RequestError } from '@agentclientprotocol/sdk';
 import type { JsonValue, RuntimeEvent } from '@spirit-agent/core';
 import type { AuthState } from './auth/auth-state.js';
-import { buildAuthMethods } from './auth/build-auth-methods.js';
+import { buildAuthMethodsForStartup } from './auth/build-auth-methods.js';
 import { TERMINAL_AUTH_METHOD_ID } from './auth/constants.js';
 import { canCreateSession } from './auth/session-auth.js';
 import { hasResolvableCredentials } from './credentials/index.js';
@@ -40,6 +40,8 @@ export class SpiritAcpAgent implements acp.Agent {
   async initialize(
     _params: schema.InitializeRequest,
   ): Promise<schema.InitializeResponse> {
+    const authMethods = buildAuthMethodsForStartup(this.config.spiritDataDir);
+
     return {
       protocolVersion: 1, // PROTOCOL_VERSION
       agentCapabilities: {
@@ -59,7 +61,7 @@ export class SpiritAcpAgent implements acp.Agent {
         title: 'Spirit Agent',
         version: '0.2.0',
       },
-      authMethods: buildAuthMethods(),
+      authMethods,
     };
   }
 

@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { AuthState, createAuthState } from '../src/auth/auth-state.js';
-import { buildAuthMethods, buildTerminalAuthMethod } from '../src/auth/build-auth-methods.js';
+import { buildAuthMethods, buildAuthMethodsForStartup, buildTerminalAuthMethod } from '../src/auth/build-auth-methods.js';
 import {
   TERMINAL_AUTH_ARGS,
   TERMINAL_AUTH_METHOD_ID,
 } from '../src/auth/constants.js';
-import { canCreateSession, isEnvPreAuthenticated } from '../src/auth/session-auth.js';
+import { canCreateSession, createInitialAuthState, isEnvPreAuthenticated } from '../src/auth/session-auth.js';
 import { loadBaseConfig, resolveEnvApiKey } from '../src/config.js';
 import { hasResolvableCredentials, setKeyringStoreForTests } from '../src/credentials/index.js';
 import { providerKeyAccount } from '../src/credentials/provider-accounts.js';
@@ -60,7 +60,96 @@ test('canCreateSession allows env API key without authenticate', () => {
   }
 });
 
-test('canCreateSession requires authenticate when using shared credentials', () => {
+test('buildAuthMethodsForStartup omits methods when shared credentials exist', () => {
+  const previous = process.env['SPIRIT_ACP_API_KEY'];
+  delete process.env['SPIRIT_ACP_API_KEY'];
+
+  const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
+  writeFileSync(
+    join(dir, 'config.json'),
+    JSON.stringify({
+      models: [{
+        name: 'gpt-4o-mini',
+        apiBase: 'https://api.openai.com/v1',
+        provider: 'openai',
+      }],
+      activeModel: 'gpt-4o-mini',
+    }),
+    'utf8',
+  );
+
+  const passwords = new Map<string, string>();
+  setKeyringStoreForTests({
+    getPassword: (_service, account) => passwords.get(account),
+    setPassword: (_service, account, password) => {
+      passwords.set(account, password);
+    },
+    deletePassword: (_service, account) => {
+      passwords.delete(account);
+    },
+  });
+  passwords.set(providerKeyAccount('openai'), 'stored-key');
+
+  try {
+    assert.equal(buildAuthMethodsForStartup(dir).length, 0);
+    assert.equal(buildAuthMethodsForStartup(mkdtempSync(join(tmpdir(), 'spirit-acp-empty-'))).length, 1);
+  } finally {
+    setKeyringStoreForTests(undefined);
+    if (previous === undefined) {
+      delete process.env['SPIRIT_ACP_API_KEY'];
+    } else {
+      process.env['SPIRIT_ACP_API_KEY'] = previous;
+    }
+  }
+});
+
+test('createInitialAuthState pre-authenticates when shared credentials exist', () => {
+  const previous = process.env['SPIRIT_ACP_API_KEY'];
+  delete process.env['SPIRIT_ACP_API_KEY'];
+
+  const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
+  writeFileSync(
+    join(dir, 'config.json'),
+    JSON.stringify({
+      models: [{
+        name: 'gpt-4o-mini',
+        apiBase: 'https://api.openai.com/v1',
+        provider: 'openai',
+      }],
+      activeModel: 'gpt-4o-mini',
+    }),
+    'utf8',
+  );
+
+  const passwords = new Map<string, string>();
+  setKeyringStoreForTests({
+    getPassword: (_service, account) => passwords.get(account),
+    setPassword: (_service, account, password) => {
+      passwords.set(account, password);
+    },
+    deletePassword: (_service, account) => {
+      passwords.delete(account);
+    },
+  });
+  passwords.set(providerKeyAccount('openai'), 'stored-key');
+
+  try {
+    const config = loadBaseConfig();
+    config.spiritDataDir = dir;
+    const authState = createInitialAuthState(config);
+    assert.equal(authState.isAuthenticated(), true);
+    assert.equal(canCreateSession(config, authState), true);
+  } finally {
+    setKeyringStoreForTests(undefined);
+    if (previous === undefined) {
+      delete process.env['SPIRIT_ACP_API_KEY'];
+    } else {
+      process.env['SPIRIT_ACP_API_KEY'] = previous;
+    }
+  }
+});
+
+test('canCreateSession requires authenticate when using shared credentials without pre-auth', () => {
   const previous = process.env['SPIRIT_ACP_API_KEY'];
   delete process.env['SPIRIT_ACP_API_KEY'];
 

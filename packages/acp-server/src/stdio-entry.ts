@@ -19,9 +19,9 @@
 
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
-import { createAuthState } from './auth/auth-state.js';
+import { createInitialAuthState } from './auth/session-auth.js';
 import { SpiritAcpAgent } from './acp-agent.js';
-import { loadBaseConfig, resolveEnvApiKey } from './config.js';
+import { loadBaseConfig } from './config.js';
 
 // Redirect console.log → stderr to prevent polluting the ndJSON stdout stream.
 console.log = (...args: unknown[]) => {
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   }
 
   const config = loadBaseConfig();
-  const authState = createAuthState(resolveEnvApiKey() !== undefined);
+  const authState = createInitialAuthState(config);
 
   const output = Writable.toWeb(process.stdout);
   const input = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
