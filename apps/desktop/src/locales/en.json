@@ -298,7 +298,6 @@
     "customConnectionDescription": "First select API type, then fill in endpoint and key.",
     "providerConnectionDescription": "First select API type, then fill in API Key.",
     "volcengineConnectionDescription": "Select API type, then enter API Key.",
-    "transportVolcengineResponses": "Volcengine Ark Responses API (`/api/v3/responses`), including context caching.",
     "providerSimpleDescription": "Fill in API Key to connect.",
     "apiType": "API Type",
     "site": "Site",

@@ -298,7 +298,6 @@
     "customConnectionDescription": "先选择 API 类型，再填写端点与密钥。",
     "providerConnectionDescription": "先选择 API 类型，再填写 API Key。",
     "volcengineConnectionDescription": "先选择 API 类型，再填写 API Key。",
-    "transportVolcengineResponses": "火山方舟 Responses API（`/api/v3/responses`），支持上下文缓存等能力。",
     "providerSimpleDescription": "填写 API Key 即可连接。",
     "apiType": "API 类型",
     "site": "站点",

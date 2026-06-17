@@ -334,7 +334,7 @@ function connectTransportOptionsForProvider(provider: DesktopModelProvider): Con
     case "volcengine":
       return [
         connectTransportOptionCatalog.chatCompletions,
-        connectTransportOptionCatalog.responsesApi,
+        { ...connectTransportOptionCatalog.responsesApi, summaryKey: undefined },
       ];
     case "amazon-bedrock":
       return [connectTransportOptionCatalog.bedrockApi];
@@ -413,10 +413,6 @@ function connectTransportOptionSummary(
 
   if (option.value === "open-responses" && provider === "alibaba") {
     return i18n.t('settings.transportAlibabaResponses');
-  }
-
-  if (option.value === "open-responses" && provider === "volcengine") {
-    return i18n.t('settings.transportVolcengineResponses');
   }
 
   return option.summaryKey ? i18n.t(option.summaryKey) : undefined;
