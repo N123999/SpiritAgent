@@ -1,22 +1,12 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import type { AcpServerConfig } from './types.js';
+import { resolveSpiritDataDir } from './credentials/spirit-config.js';import type { AcpServerConfig } from './types.js';
 
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 
 /**
  * Resolves the Spirit Agent data directory (shared with Desktop / CLI).
+ * @deprecated Prefer {@link resolveSpiritDataDir} from credentials/spirit-config.
  */
-export function resolveSpiritDataDir(): string {
-  const override = process.env['SPIRIT_ACP_DATA_DIR']?.trim();
-  if (override) {
-    return override;
-  }
-  if (process.env['APPDATA']) {
-    return join(process.env['APPDATA'], 'SpiritAgent');
-  }
-  return join(homedir(), '.spirit-agent');
-}
+export { resolveSpiritDataDir };
 
 /**
  * Reads SPIRIT_ACP_API_KEY when set. Validates placeholder syntax.

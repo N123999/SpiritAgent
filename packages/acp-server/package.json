@@ -21,7 +21,8 @@
   "dependencies": {
     "@spirit-agent/core": "file:../agent-core",
     "@spirit-agent/host-internal": "file:../host-internal",
-    "@agentclientprotocol/sdk": "^0.25.1"
+    "@agentclientprotocol/sdk": "^0.25.1",
+    "@napi-rs/keyring": "^1.2.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
