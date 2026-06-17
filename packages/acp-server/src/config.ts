@@ -2,24 +2,29 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AcpServerConfig } from './types.js';
 
+const DEFAULT_MODEL = 'gpt-4.1-mini';
+
 /**
- * Reads ACP server configuration from environment variables.
- *
- * Required:
- *   SPIRIT_ACP_API_KEY — API key for the LLM provider
- *
- * Optional:
- *   SPIRIT_ACP_MODEL — model name (default: 'gpt-4.1-mini')
- *   SPIRIT_ACP_BASE_URL — custom LLM endpoint URL
- *   SPIRIT_ACP_WORKSPACE — workspace root path (default: process.cwd())
+ * Resolves the Spirit Agent data directory (shared with Desktop / CLI).
  */
-export function configFromEnv(): AcpServerConfig {
+export function resolveSpiritDataDir(): string {
+  const override = process.env['SPIRIT_ACP_DATA_DIR']?.trim();
+  if (override) {
+    return override;
+  }
+  if (process.env['APPDATA']) {
+    return join(process.env['APPDATA'], 'SpiritAgent');
+  }
+  return join(homedir(), '.spirit-agent');
+}
+
+/**
+ * Reads SPIRIT_ACP_API_KEY when set. Validates placeholder syntax.
+ */
+export function resolveEnvApiKey(): string | undefined {
   const apiKey = process.env['SPIRIT_ACP_API_KEY']?.trim();
   if (!apiKey) {
-    throw new Error(
-      'SPIRIT_ACP_API_KEY environment variable is required. '
-      + 'Set it to your LLM provider API key.',
-    );
+    return undefined;
   }
   if (apiKey.includes('${')) {
     throw new Error(
@@ -29,25 +34,44 @@ export function configFromEnv(): AcpServerConfig {
       + 'or remove SPIRIT_ACP_API_KEY from agent_servers.env and set it as a system/user environment variable.',
     );
   }
+  return apiKey;
+}
 
-  const model = process.env['SPIRIT_ACP_MODEL']?.trim() || 'gpt-4.1-mini';
+/**
+ * Loads ACP server settings from environment variables.
+ * API key is optional — Terminal Auth may supply credentials later.
+ */
+export function loadBaseConfig(): AcpServerConfig {
+  const model = process.env['SPIRIT_ACP_MODEL']?.trim() || DEFAULT_MODEL;
   const workspaceRoot = process.env['SPIRIT_ACP_WORKSPACE']?.trim() || process.cwd();
-
-  // Use APPDATA/SpiritAgent on Windows, ~/.spirit-agent elsewhere
-  const spiritDataDir = process.env['SPIRIT_ACP_DATA_DIR']?.trim()
-    || (process.env['APPDATA']
-      ? join(process.env['APPDATA'], 'SpiritAgent')
-      : join(homedir(), '.spirit-agent'));
+  const spiritDataDir = resolveSpiritDataDir();
+  const apiKey = resolveEnvApiKey();
 
   const config: AcpServerConfig = {
     model,
-    apiKey,
     workspaceRoot,
     spiritDataDir,
   };
+  if (apiKey !== undefined) {
+    config.apiKey = apiKey;
+  }
   const baseUrl = process.env['SPIRIT_ACP_BASE_URL']?.trim();
   if (baseUrl) {
     config.baseUrl = baseUrl;
+  }
+  return config;
+}
+
+/**
+ * @deprecated Prefer {@link loadBaseConfig}. Kept for callers that require an API key.
+ */
+export function configFromEnv(): AcpServerConfig {
+  const config = loadBaseConfig();
+  if (!config.apiKey) {
+    throw new Error(
+      'SPIRIT_ACP_API_KEY environment variable is required. '
+      + 'Set it to your LLM provider API key.',
+    );
   }
   return config;
 }

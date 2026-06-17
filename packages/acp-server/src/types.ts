@@ -8,8 +8,8 @@ import type { JsonValue } from '@spirit-agent/core';
 export interface AcpServerConfig {
   /** LLM model name (default: 'gpt-4.1-mini') */
   model: string;
-  /** API key for the LLM provider (required) */
-  apiKey: string;
+  /** API key from SPIRIT_ACP_API_KEY when set at spawn time */
+  apiKey?: string;
   /** Custom base URL for the LLM endpoint (optional) */
   baseUrl?: string;
   /** Workspace root path (default: process.cwd()) */
@@ -22,9 +22,13 @@ export interface AcpServerConfig {
  * Converts AcpServerConfig to an LlmTransportConfig usable by agent-core.
  */
 export function toLlmTransportConfig(config: AcpServerConfig): LlmTransportConfig {
+  const apiKey = config.apiKey?.trim();
+  if (!apiKey) {
+    throw new Error('API key is required to build LLM transport configuration.');
+  }
   const result: import('@spirit-agent/core').OpenAiTransportConfig = {
     transportKind: 'openai-compatible',
-    apiKey: config.apiKey,
+    apiKey,
     model: config.model,
     workspaceRoot: config.workspaceRoot,
   };

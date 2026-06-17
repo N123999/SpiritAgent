@@ -7,30 +7,21 @@
  * All logging is redirected to stderr to avoid polluting the ndJSON stream.
  *
  * Usage:
- *   node dist/stdio-entry.js
+ *   node dist/stdio-entry.js              — ACP ndJSON server
+ *   node dist/stdio-entry.js --setup      — interactive provider setup (Terminal Auth)
  *
  * Environment variables:
- *   SPIRIT_ACP_API_KEY   — Required. LLM provider API key.
+ *   SPIRIT_ACP_API_KEY   — Optional. LLM provider API key (pre-authenticates when set).
  *   SPIRIT_ACP_MODEL     — Optional. Model name (default: gpt-4.1-mini).
  *   SPIRIT_ACP_BASE_URL  — Optional. Custom LLM endpoint URL.
  *   SPIRIT_ACP_WORKSPACE — Optional. Workspace root (default: cwd).
- *
- * Editor configuration example (Zed settings.json):
- *   Set SPIRIT_ACP_API_KEY as a user/system environment variable first.
- *   Do not use "${SPIRIT_ACP_API_KEY}" — Zed does not expand that syntax.
- *   "agent_servers": {
- *     "Spirit Agent": {
- *       "command": "node",
- *       "args": ["path/to/packages/acp-server/dist/stdio-entry.js"],
- *       "env": { "SPIRIT_ACP_MODEL": "gpt-4.1-mini" }
- *     }
- *   }
  */
 
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
+import { createAuthState } from './auth/auth-state.js';
 import { SpiritAcpAgent } from './acp-agent.js';
-import { configFromEnv } from './config.js';
+import { loadBaseConfig, resolveEnvApiKey } from './config.js';
 
 // Redirect console.log → stderr to prevent polluting the ndJSON stdout stream.
 console.log = (...args: unknown[]) => {
@@ -45,16 +36,27 @@ process.on('unhandledRejection', (reason) => {
   console.error('[acp-server] Unhandled rejection:', reason);
 });
 
-// Parse configuration from environment variables
-const config = configFromEnv();
+async function main(): Promise<void> {
+  if (process.argv.includes('--setup')) {
+    const { runSetup } = await import('./setup/run-setup.js');
+    await runSetup();
+    return;
+  }
 
-// Set up ndJSON stream over stdin/stdout
-const output = Writable.toWeb(process.stdout);
-const input = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
-const stream = acp.ndJsonStream(output, input);
+  const config = loadBaseConfig();
+  const authState = createAuthState(resolveEnvApiKey() !== undefined);
 
-// Create the ACP agent connection
-new acp.AgentSideConnection(
-  (conn) => new SpiritAcpAgent(conn, config),
-  stream,
-);
+  const output = Writable.toWeb(process.stdout);
+  const input = Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>;
+  const stream = acp.ndJsonStream(output, input);
+
+  new acp.AgentSideConnection(
+    (conn) => new SpiritAcpAgent(conn, config, authState),
+    stream,
+  );
+}
+
+main().catch((err) => {
+  console.error('[acp-server] Fatal error:', err);
+  process.exitCode = 1;
+});

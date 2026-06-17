@@ -21,7 +21,7 @@
   "dependencies": {
     "@spirit-agent/core": "file:../agent-core",
     "@spirit-agent/host-internal": "file:../host-internal",
-    "@agentclientprotocol/sdk": "^0.25.0"
+    "@agentclientprotocol/sdk": "^0.25.1"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",

@@ -8,6 +8,7 @@ import { mapRuntimeEventToUpdate, createEventMapperState, type EventMapperState 
 import { handleApprovalRequest, handleQuestionsRequest } from './permission-bridge.js';
 import { buildAvailableCommands, parseSlashCommand, buildActiveSkillPayload, upsertActiveSkill } from './skill-bridge.js';
 import { extractPromptImages } from './prompt-images.js';
+import type { AuthState } from './auth/auth-state.js';
 
 /**
  * Spirit Agent implementation of the ACP Agent interface.
@@ -18,14 +19,16 @@ export class SpiritAcpAgent implements acp.Agent {
   private readonly connection: acp.AgentSideConnection;
   private readonly config: AcpServerConfig;
   private readonly sessionManager: SessionManager;
+  private readonly authState: AuthState;
   /** Per-session event mapper state for tracking streaming deltas */
   private readonly mapperStates = new Map<string, EventMapperState>();
   /** Per-session prompt generation counter to prevent stale turn results */
   private readonly promptGenerations = new Map<string, number>();
 
-  constructor(connection: acp.AgentSideConnection, config: AcpServerConfig) {
+  constructor(connection: acp.AgentSideConnection, config: AcpServerConfig, authState: AuthState) {
     this.connection = connection;
     this.config = config;
+    this.authState = authState;
     this.sessionManager = new SessionManager(config);
   }
 
