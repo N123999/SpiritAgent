@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { parseOpenAiModelsPayload } from '../openai-models.js';
+import { parseOpenAiModelsPayload, parseXiaomiModelEntriesPayload } from '../openai-models.js';
 
 function run(): void {
   assert.deepEqual(parseOpenAiModelsPayload(undefined), []);
@@ -20,6 +20,17 @@ function run(): void {
       ],
     }),
     ['gpt-4o', 'gpt-4o-mini'],
+  );
+
+  assert.deepEqual(
+    parseXiaomiModelEntriesPayload({
+      object: 'list',
+      data: [{ id: 'mimo-v2.5' }, { id: 'mimo-v2-flash' }],
+    }),
+    [
+      { id: 'mimo-v2.5', supportsImageInput: true, supportsVideoInput: true },
+      { id: 'mimo-v2-flash', supportsImageInput: false, supportsVideoInput: false },
+    ],
   );
 
   console.log('openai-models parse smoke: ok');
