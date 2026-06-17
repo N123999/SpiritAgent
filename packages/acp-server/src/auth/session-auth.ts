@@ -10,10 +10,6 @@ export function createInitialAuthState(config: AcpServerConfig): AuthState {
   return new AuthState(shouldPreAuthenticateFromSharedConfig(config.spiritDataDir));
 }
 
-export function shouldAdvertiseAuthMethods(spiritDataDir: string): boolean {
-  return !shouldPreAuthenticateFromSharedConfig(spiritDataDir);
-}
-
 export function canCreateSession(config: AcpServerConfig, authState: AuthState): boolean {
   if (!authState.isAuthenticated()) {
     return false;

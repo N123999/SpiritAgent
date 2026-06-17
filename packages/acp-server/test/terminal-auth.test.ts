@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import { AuthState, createAuthState } from '../src/auth/auth-state.js';
-import { buildAuthMethods, buildAuthMethodsForStartup, buildTerminalAuthMethod } from '../src/auth/build-auth-methods.js';
+import { buildAuthMethods, buildTerminalAuthMethod } from '../src/auth/build-auth-methods.js';
 import {
   TERMINAL_AUTH_ARGS,
   TERMINAL_AUTH_METHOD_ID,
@@ -43,7 +43,7 @@ test('AuthState pre-authenticates when constructed with true', () => {
   assert.equal(state.isAuthenticated(), false);
 });
 
-test('buildAuthMethodsForStartup omits methods when shared credentials exist', () => {
+test('buildAuthMethods returns terminal auth even when shared credentials exist', () => {
   const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
   writeFileSync(
     join(dir, 'config.json'),
@@ -71,8 +71,50 @@ test('buildAuthMethodsForStartup omits methods when shared credentials exist', (
   passwords.set(providerKeyAccount('openai'), 'stored-key');
 
   try {
-    assert.equal(buildAuthMethodsForStartup(dir).length, 0);
-    assert.equal(buildAuthMethodsForStartup(mkdtempSync(join(tmpdir(), 'spirit-acp-empty-'))).length, 1);
+    assert.equal(buildAuthMethods().length, 1);
+  } finally {
+    setKeyringStoreForTests(undefined);
+  }
+});
+
+test('logout allows authenticate to restore session creation', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'spirit-acp-auth-'));
+  writeFileSync(
+    join(dir, 'config.json'),
+    JSON.stringify({
+      models: [{
+        name: 'gpt-4o-mini',
+        apiBase: 'https://api.openai.com/v1',
+        provider: 'openai',
+      }],
+      activeModel: 'gpt-4o-mini',
+    }),
+    'utf8',
+  );
+
+  const passwords = new Map<string, string>();
+  setKeyringStoreForTests({
+    getPassword: (_service, account) => passwords.get(account),
+    setPassword: (_service, account, password) => {
+      passwords.set(account, password);
+    },
+    deletePassword: (_service, account) => {
+      passwords.delete(account);
+    },
+  });
+  passwords.set(providerKeyAccount('openai'), 'stored-key');
+
+  try {
+    const config = loadBaseConfig();
+    config.spiritDataDir = dir;
+    const authState = createInitialAuthState(config);
+    assert.equal(canCreateSession(config, authState), true);
+
+    authState.logout();
+    assert.equal(canCreateSession(config, authState), false);
+
+    authState.markAuthenticated();
+    assert.equal(canCreateSession(config, authState), true);
   } finally {
     setKeyringStoreForTests(undefined);
   }
