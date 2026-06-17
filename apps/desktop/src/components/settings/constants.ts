@@ -1,12 +1,6 @@
 import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import type { ThemePreference } from "@/lib/theme";
 
-export const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = [
-  { value: "system", labelKey: "settings.themeSystem" },
-  { value: "light", labelKey: "settings.themeLight" },
-  { value: "dark", labelKey: "settings.themeDark" },
-];
-
 export const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   models: "settings.models",
   agents: "settings.agents",
@@ -21,3 +15,14 @@ export const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
   integrations: "settings.integrations",
   developer: "settings.developer",
 };
+
+export const themeSelectOptions: Array<{ value: ThemePreference; labelKey: string }> = [
+  { value: "system", labelKey: "settings.themeSystem" },
+  { value: "light", labelKey: "settings.themeLight" },
+  { value: "dark", labelKey: "settings.themeDark" },
+];
+
+export const llmHttpVersionSelectOptions = [
+  { value: "http1.1" as const, labelKey: "settings.llmHttpVersionHttp11" },
+  { value: "http2" as const, labelKey: "settings.llmHttpVersionHttp2" },
+];
