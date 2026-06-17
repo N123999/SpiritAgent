@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { LoaderCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { SettingsRow } from "@/components/settings/settings-row";
 import type { SettingsFormState } from "@/components/settings/types";
 import {
   Dialog,
@@ -18,6 +17,31 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type { DesktopLspProviderSnapshot, DesktopSnapshot } from "@/types";
 import { isDesktopInstallableProvider } from "@/lib/lsp-provider-install";
+
+/** Agents 面板专用行布局（grid）；与 appearance 等面板的 flex SettingsRow 不同。 */
+export function AgentsSettingsRow({
+  label,
+  description,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  description?: string;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6">
+      <div className="min-w-0 space-y-1">
+        <label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
+          {label}
+        </label>
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
 
 function providerStatusBadge(
   provider: DesktopLspProviderSnapshot,
@@ -55,7 +79,7 @@ export function AgentsSettingsPanel({
       <h1 className="text-xl font-semibold tracking-tight text-foreground">{t("settings.agents")}</h1>
 
       <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80 px-4 sm:px-5">
-        <SettingsRow
+        <AgentsSettingsRow
           label={t("settings.lspEnabled")}
           description={t("settings.lspEnabledDescription")}
           htmlFor="settings-lsp-enabled"
@@ -68,7 +92,7 @@ export function AgentsSettingsPanel({
               className="size-5"
             />
           </div>
-        </SettingsRow>
+        </AgentsSettingsRow>
 
         {(lsp?.providers ?? []).map((provider) => (
           <div
