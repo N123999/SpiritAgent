@@ -17,6 +17,7 @@ import { SkillsSettingsPanel } from "@/components/settings/panels/skills-setting
 import { ModelsSettingsPanel } from "@/components/settings/models/models-settings-panel";
 import { settingsPageTitleKey } from "@/components/settings/constants";
 import type { SettingsViewProps } from "@/components/settings/types";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
 import { cn } from "@/lib/utils";
@@ -103,8 +104,9 @@ export function SettingsView({
         <div className="flex min-h-full flex-col justify-center">
           <div className="mx-auto w-full max-w-2xl px-4 py-8 sm:px-6">
             {!extensionSettingsItem && tab !== "models" && tab !== "skills" && tab !== "rules" && tab !== "mcps" && tab !== "hooks" && tab !== "extensions" && tab !== "agents" && tab !== "integrations" ? (
-              <h1 className="mb-6 text-xl font-semibold tracking-tight text-foreground">
+              <h1 className="mb-6 flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground">
                 {t(settingsPageTitleKey[tab])}
+                {tab === "dreams" ? <Badge variant="outline">Beta</Badge> : null}
               </h1>
             ) : null}
 

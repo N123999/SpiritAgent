@@ -5,7 +5,6 @@ import { DreamGraphCard } from "@/components/dream-graph-card";
 import { formatSettingsTime } from "@/components/settings/formatters";
 import { SettingsRow } from "@/components/settings/settings-row";
 import type { SettingsViewProps } from "@/components/settings/types";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import i18n from "@/lib/i18n";
 import type { DesktopDreamOverviewItem, DesktopSnapshot } from "@/types";
@@ -92,8 +91,7 @@ export function DreamSettingsPanel({
           description={t("settings.dreamDescription")}
           htmlFor="settings-dream-enabled"
         >
-          <div className="flex items-center justify-end gap-3">
-            <Badge variant="outline">Beta</Badge>
+          <div className="flex justify-end">
             <Checkbox
               id="settings-dream-enabled"
               checked={settings.dreamEnabled}
