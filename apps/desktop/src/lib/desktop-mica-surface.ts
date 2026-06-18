@@ -10,6 +10,9 @@ export const DESKTOP_MICA_TERMINAL_TINT_CLASS = "bg-background/87";
 /** 工作区面板选中 tab：与面板底色衔接。 */
 export const DESKTOP_MICA_WORKSPACE_TAB_SELECTED_TINT_CLASS = "bg-background/60";
 
+/** 文件详情预览区（Blur 关）：轻 tint 与文件树区分。 */
+export const DESKTOP_FILES_DETAIL_PREVIEW_TINT_CLASS = "bg-background/30";
+
 const SOLID_BACKGROUND_CLASS = "bg-background";
 const TRANSPARENT_BACKGROUND_CLASS = "bg-transparent";
 
@@ -36,4 +39,9 @@ export function desktopMicaTerminalTintClass(useMicaBackdrop: boolean): string {
 /** 工作区面板选中 tab：Mica 下轻 tint 以衔接面板底色。 */
 export function desktopMicaWorkspaceTabSelectedClass(useMicaBackdrop: boolean): string {
   return useMicaBackdrop ? DESKTOP_MICA_WORKSPACE_TAB_SELECTED_TINT_CLASS : SOLID_BACKGROUND_CLASS;
+}
+
+/** 文件详情预览/编辑槽：Mica 下透明以避免与面板 tint 叠深，否则轻 tint。 */
+export function desktopMicaFileDetailSurfaceClass(useMicaBackdrop: boolean): string {
+  return useMicaBackdrop ? TRANSPARENT_BACKGROUND_CLASS : DESKTOP_FILES_DETAIL_PREVIEW_TINT_CLASS;
 }

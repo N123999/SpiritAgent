@@ -700,6 +700,7 @@ function WorkspaceToolsDockInner({
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                         onFileSnippetAddToSession={onFileSnippetAddToSession}
                         onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
+                        useMicaBackdrop={useMicaBackdrop}
                       />
                     </div>
                   ) : item.kind === "shell" ? (

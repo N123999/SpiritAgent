@@ -6,7 +6,9 @@ import {
   DESKTOP_MICA_CONTENT_TINT_CLASS,
   DESKTOP_MICA_TERMINAL_TINT_CLASS,
   DESKTOP_MICA_WORKSPACE_TAB_SELECTED_TINT_CLASS,
+  DESKTOP_FILES_DETAIL_PREVIEW_TINT_CLASS,
   desktopMicaBrowserTintClass,
+  desktopMicaFileDetailSurfaceClass,
   desktopMicaTerminalTintClass,
   desktopMicaTintClass,
   desktopMicaTintInnerClass,
@@ -42,4 +44,9 @@ test('desktopMicaTerminalTintClass keeps high opacity for readability', () => {
 test('desktopMicaWorkspaceTabSelectedClass uses light tint when Mica is on', () => {
   assert.equal(desktopMicaWorkspaceTabSelectedClass(false), 'bg-background');
   assert.equal(desktopMicaWorkspaceTabSelectedClass(true), DESKTOP_MICA_WORKSPACE_TAB_SELECTED_TINT_CLASS);
+});
+
+test('desktopMicaFileDetailSurfaceClass avoids stacking tint under Mica', () => {
+  assert.equal(desktopMicaFileDetailSurfaceClass(false), DESKTOP_FILES_DETAIL_PREVIEW_TINT_CLASS);
+  assert.equal(desktopMicaFileDetailSurfaceClass(true), 'bg-transparent');
 });

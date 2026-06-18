@@ -20,6 +20,7 @@ import {
 } from "@/components/workspace-monaco-editor";
 import { cn } from "@/lib/utils";
 import { DESKTOP_CHROME_TOGGLE_ICON_BTN, DESKTOP_SHELL_LAYOUT_TRANSITION } from "@/lib/desktop-chrome";
+import { desktopMicaFileDetailSurfaceClass } from "@/lib/desktop-mica-surface";
 import {
   WORKSPACE_FILES_TREE_MIN_WIDTH_PX,
   computeWorkspaceFilesTreeMaxWidthPx,
@@ -236,6 +237,7 @@ export type WorkspaceFilesTabProps = {
   onFileSnippetAddToSession?: (attachment: FileSnippetAttachment) => void;
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
   gitRevision?: number;
+  useMicaBackdrop?: boolean;
 };
 
 export function WorkspaceFilesTab({
@@ -262,6 +264,7 @@ export function WorkspaceFilesTab({
   onFileSnippetAddToSession,
   onWorkspaceFileAddToSession,
   gitRevision,
+  useMicaBackdrop = false,
 }: WorkspaceFilesTabProps) {
   const { t } = useTranslation();
   type MonacoEditor = Monaco.editor.IStandaloneCodeEditor;
@@ -745,7 +748,13 @@ export function WorkspaceFilesTab({
             ) : doc?.status === "ready" ? (
               isPreviewVisible ? (
                 <>
-                  <ScrollArea ref={previewScrollRef} className="h-full min-h-0 w-full bg-background/30">
+                  <ScrollArea
+                    ref={previewScrollRef}
+                    className={cn(
+                      "h-full min-h-0 w-full",
+                      desktopMicaFileDetailSurfaceClass(useMicaBackdrop),
+                    )}
+                  >
                     <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-4 sm:px-6">
                       {draftText.trim() ? (
                         <MarkdownMessage
@@ -755,7 +764,12 @@ export function WorkspaceFilesTab({
                           readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
                         />
                       ) : (
-                        <div className="flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-border/50 bg-background/35 px-4 text-center text-xs text-muted-foreground">
+                        <div
+                          className={cn(
+                            "flex min-h-[8rem] items-center justify-center rounded-md border border-dashed border-border/50 px-4 text-center text-xs text-muted-foreground",
+                            desktopMicaFileDetailSurfaceClass(useMicaBackdrop),
+                          )}
+                        >
                           {t('workspace.emptyMarkdownDoc')}
                         </div>
                       )}

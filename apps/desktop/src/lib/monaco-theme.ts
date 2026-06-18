@@ -5,6 +5,7 @@ export const SPIRIT_MONACO_DARK = 'spirit-desktop-dark';
 const FALLBACK_DARK_BG = '#000000';
 const FALLBACK_DARK_FG = '#fafafa';
 const FALLBACK_MUTED_FG = '#a0a0a0';
+const TRANSPARENT_MONACO_COLOR = '#00000000';
 
 function clampByte(n: number): number {
   return Math.max(0, Math.min(255, Math.round(n)));
@@ -74,9 +75,15 @@ function resolveCssColor(expression: string, fallback: string): string {
   return normalizeColorForMonaco(resolved, fallback);
 }
 
-/** 深色下 Workspace 编辑区与 Void Theme 主背景一致（--background）。 */
+function isNativeMicaBackdropActive(): boolean {
+  return document.documentElement.classList.contains('spirit-desktop-mica');
+}
+
+/** 深色下 Workspace 编辑区与 Void Theme 主背景一致（--background）；Mica 下透明以免叠深。 */
 export function registerSpiritDesktopDarkMonacoTheme(): void {
-  const editorSurface = resolveCssBackground('var(--background)', FALLBACK_DARK_BG);
+  const editorSurface = isNativeMicaBackdropActive()
+    ? TRANSPARENT_MONACO_COLOR
+    : resolveCssBackground('var(--background)', FALLBACK_DARK_BG);
   const fg = resolveCssColor('var(--foreground)', FALLBACK_DARK_FG);
   const mutedFg = resolveCssColor('var(--muted-foreground)', FALLBACK_MUTED_FG);
   const lineHighlight = resolveCssBackground(
@@ -103,6 +110,8 @@ export function registerSpiritDesktopDarkMonacoTheme(): void {
         'editor.background': editorSurface,
         'editor.foreground': fg,
         'editorGutter.background': editorSurface,
+        'focusBorder': TRANSPARENT_MONACO_COLOR,
+        'contrastBorder': TRANSPARENT_MONACO_COLOR,
         'editorLineNumber.foreground': mutedFg,
         'editorLineNumber.activeForeground': fg,
         'editor.lineHighlightBackground': lineHighlight,
@@ -135,10 +144,51 @@ export function registerSpiritDesktopDarkMonacoTheme(): void {
   }
 }
 
+export const SPIRIT_MONACO_LIGHT = 'spirit-desktop-light';
+
+/** 浅色 + Mica：编辑区透明，由外层面板 tint 着色。 */
+export function registerSpiritDesktopLightMonacoTheme(): void {
+  const editorSurface = isNativeMicaBackdropActive()
+    ? TRANSPARENT_MONACO_COLOR
+    : resolveCssBackground('var(--background)', '#ffffff');
+  const fg = resolveCssColor('var(--foreground)', '#0a0a0a');
+  const mutedFg = resolveCssColor('var(--muted-foreground)', '#737373');
+
+  try {
+    monaco.editor.defineTheme(SPIRIT_MONACO_LIGHT, {
+      base: 'vs',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': editorSurface,
+        'editor.foreground': fg,
+        'editorGutter.background': editorSurface,
+        'focusBorder': TRANSPARENT_MONACO_COLOR,
+        'contrastBorder': TRANSPARENT_MONACO_COLOR,
+        'editorLineNumber.foreground': mutedFg,
+        'editorLineNumber.activeForeground': fg,
+      },
+    });
+  } catch {
+    monaco.editor.defineTheme(SPIRIT_MONACO_LIGHT, {
+      base: 'vs',
+      inherit: true,
+      rules: [],
+      colors: {},
+    });
+  }
+}
+
 export function syncMonacoThemeFromDocument(): void {
   const isDark = document.documentElement.classList.contains('dark');
+  const mica = isNativeMicaBackdropActive();
   if (!isDark) {
-    monaco.editor.setTheme('vs');
+    if (mica) {
+      registerSpiritDesktopLightMonacoTheme();
+      monaco.editor.setTheme(SPIRIT_MONACO_LIGHT);
+    } else {
+      monaco.editor.setTheme('vs');
+    }
     return;
   }
   registerSpiritDesktopDarkMonacoTheme();

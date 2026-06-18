@@ -8,6 +8,7 @@ import {
 
 import * as monaco from "monaco-editor";
 import "monaco-editor/min/vs/editor/editor.main.css";
+import "@/styles/monaco-editor-overrides.css";
 
 import { ensureMonacoWorkers } from "@/lib/monaco-environment";
 import { monacoLanguageId } from "@/lib/monaco-language";
