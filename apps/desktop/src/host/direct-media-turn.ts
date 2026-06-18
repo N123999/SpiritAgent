@@ -23,6 +23,7 @@ import {
   type DirectMediaTool as HostDirectMediaTool,
 } from './model-config.js';
 import type { SessionBundle } from './session-bundle.js';
+import { isWorktreeBootstrapInFlight } from './worktree-bootstrap-card.js';
 import { syncRuntimeHistoryFromBundleArchive } from './conversation-continuation.js';
 import type { SessionTurnOrchestratorContext } from './session-turn-orchestrator.js';
 import type { DesktopConfigFile } from './storage.js';
@@ -117,6 +118,9 @@ export function isSessionBundleBusy(bundle: SessionBundle | undefined): boolean 
     return false;
   }
   if (bundle.directMediaTurnInFlight === true) {
+    return true;
+  }
+  if (isWorktreeBootstrapInFlight(bundle.pendingWorktreeBootstrap)) {
     return true;
   }
   return bundle.runtime?.isBusy() === true;

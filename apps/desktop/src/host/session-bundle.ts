@@ -17,6 +17,7 @@ import type {
   FileRewindWarning,
 } from '../types.js';
 import type { QueuedUserTurn } from './message-queue.js';
+import type { PendingWorktreeBootstrap } from './worktree-bootstrap-card.js';
 import type { DesktopTimelineSegmentKind, DesktopMessageTimeline } from './message-timeline.js';
 import { createDesktopRewindMetadata, type StoredDesktopRewindMetadata } from './rewind.js';
 import { createTodoSessionScopeKey } from './todos.js';
@@ -70,6 +71,8 @@ export interface SessionBundle {
   contextUsage?: ConversationContextUsageSnapshot;
   /** Composer 直连生图/生视频后台执行中；与 runtime.isBusy 一并驱动 snapshot.isBusy。 */
   directMediaTurnInFlight?: boolean;
+  /** 首条 Worktree 消息：后台 bootstrap 完成前 gate LLM turn。不持久化。 */
+  pendingWorktreeBootstrap?: PendingWorktreeBootstrap;
   /** Per-session user message queue (projected in snapshot until sent). */
   queuedUserTurns: QueuedUserTurn[];
   /** SubAgent 子会话 desktop 投影（与主 timeline 同构，含 Thought/Compaction/工具卡）。 */
