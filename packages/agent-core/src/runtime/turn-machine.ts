@@ -32,6 +32,7 @@ import {
 } from '../hooks/tool-hooks.js';
 import { toolInputFromArgumentsJson } from '../hooks/integration.js';
 import { appendToolResultMessages, isJsonObject } from '../tool-agent.js';
+import { prepareStateForContextRetryAsync } from './compaction.js';
 import { buildEarlyExecutableArgumentsJson } from '../tool-streaming-preview-gate.js';
 import {
   applyDeferredUserGuidance,
@@ -42,6 +43,7 @@ import {
   renderError,
   toolArtifactsFromOutput,
 } from './helpers.js';
+import { prepareRuntimeToolResultContentForAppend } from './tool-output-append.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type {
   AgentRuntimeOptions,
@@ -447,9 +449,7 @@ export async function runTurnLoop<
         turn.autoCompactAttempts < (runtime.options.maxAutoCompactRetries ?? 1)
       ) {
         turn.autoCompactAttempts += 1;
-        const preparedRetry = runtime.options.truncateStateForContextRetry
-          ? runtime.options.truncateStateForContextRetry(currentState)
-          : { state: currentState, changed: false };
+        const preparedRetry = await prepareStateForContextRetryAsync(runtime.options, currentState);
 
         try {
           const compaction = await runtime.compactHistoryImmediate();
@@ -800,12 +800,17 @@ export async function executeAuthorizedToolCall<
     Date.now() - startedAt,
     execution.failed,
   );
-  const resumedState = appendToolResultForRound(
+  const preparedContent = await prepareRuntimeToolResultContentForAppend(
+    runtime.options,
+    toolCallId,
+    execution.output.summaryText,
+  );
+  const resumedState = await appendToolResultForRoundAsync(
     runtime,
     state,
     toolCallId,
     toolName,
-    execution.output.summaryText,
+    preparedContent,
     execution.failed,
   );
   if (remainingCalls.length > 0) {
@@ -815,7 +820,7 @@ export async function executeAuthorizedToolCall<
   return runTurnLoop(runtime, resumedState, pendingUserInput, turn);
 }
 
-function appendToolResultForRound<
+async function appendToolResultForRoundAsync<
   Config,
   State,
   ToolRequest,
@@ -827,7 +832,7 @@ function appendToolResultForRound<
   toolName: string,
   content: string,
   failed = false,
-): State {
+): Promise<State> {
   if (
     toolName === APPLY_PATCH_HOST_TOOL_NAME
     && isOpenResponsesTransportConfig(runtime.options.config as any)
@@ -975,9 +980,7 @@ export async function handlePendingToolAgentRoundCompletion<
       pending.turn.autoCompactAttempts < (runtime.options.maxAutoCompactRetries ?? 1)
     ) {
       pending.turn.autoCompactAttempts += 1;
-      const preparedRetry = runtime.options.truncateStateForContextRetry
-        ? runtime.options.truncateStateForContextRetry(pending.state)
-        : { state: pending.state, changed: false };
+      const preparedRetry = await prepareStateForContextRetryAsync(runtime.options, pending.state);
       runtime.startHistoryCompactionAsync(
         preparedRetry.state,
         pending.pendingUserInput,
@@ -1123,10 +1126,18 @@ export async function processToolCallsAsync<
         });
         return;
       }
-      currentState = runtime.options.appendToolResultMessage(
-        currentState,
+      const preparedOutput = await prepareRuntimeToolResultContentForAppend(
+        runtime.options,
         call.id,
         earlyOutcome.output.summaryText,
+      );
+      currentState = await appendToolResultForRoundAsync(
+        runtime,
+        currentState,
+        call.id,
+        call.name,
+        preparedOutput,
+        earlyOutcome.execution.failed,
       );
       if (queueRemainingToolCallsAsync(
         runtime,
@@ -1421,10 +1432,18 @@ export async function processToolCallsAsync<
       Date.now() - startedAt,
       execution.failed,
     );
-    currentState = runtime.options.appendToolResultMessage(
-      currentState,
+    const preparedOutput = await prepareRuntimeToolResultContentForAppend(
+      runtime.options,
       call.id,
       execution.output.summaryText,
+    );
+    currentState = await appendToolResultForRoundAsync(
+      runtime,
+      currentState,
+      call.id,
+      call.name,
+      preparedOutput,
+      execution.failed,
     );
     if (queueRemainingToolCallsAsync(
       runtime,

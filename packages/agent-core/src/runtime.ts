@@ -107,6 +107,7 @@ import {
   persistToolExecutionResult as persistToolExecutionResultInternal,
 } from './runtime/tool-execution.js';
 import { buildRuntimeToolExecution } from './runtime/turn-machine.js';
+import { prepareRuntimeToolResultContentForAppend } from './runtime/tool-output-append.js';
 import type {
   AgentRuntimeOptions,
   AssistantAuxKind,
@@ -288,6 +289,19 @@ export class AgentRuntime<
     this.loopEnabledStore = false;
     this.runtimeDepthStore = runtimeDepth;
     this.childSessionCounterStore = 0;
+  }
+
+  private async appendToolResultMessageWithOutputTruncation(
+    state: State,
+    toolCallId: string,
+    content: string,
+  ): Promise<State> {
+    const preparedContent = await prepareRuntimeToolResultContentForAppend(
+      this.options,
+      toolCallId,
+      content,
+    );
+    return this.options.appendToolResultMessage(state, toolCallId, preparedContent);
   }
 
   history(): readonly LlmMessage[] {
@@ -1068,7 +1082,7 @@ export class AgentRuntime<
       this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
       enqueueDeferredToolOutputGuidance(pending.turn, pending.toolName, execution.output);
 
-      const resumedState = this.options.appendToolResultMessage(
+      const resumedState = await this.appendToolResultMessageWithOutputTruncation(
         pending.state,
         pending.toolCallId,
         execution.output.summaryText,
@@ -1247,7 +1261,7 @@ export class AgentRuntime<
     this.completedTurnResultStore = undefined;
 
     const resumeAfterToolOutput = async (output: string): Promise<void> => {
-      const resumedState = this.options.appendToolResultMessage(
+      const resumedState = await this.appendToolResultMessageWithOutputTruncation(
         pending.state,
         pending.toolCallId,
         output,
@@ -1377,7 +1391,7 @@ export class AgentRuntime<
       this.emitEvent({ kind: 'tool-execution-finished', execution: finished });
       enqueueDeferredToolOutputGuidance(pending.turn, pending.toolName, execution.output);
 
-      const resumedStateWithToolOutput = this.options.appendToolResultMessage(
+      const resumedStateWithToolOutput = await this.appendToolResultMessageWithOutputTruncation(
         resumedState,
         pending.toolCallId,
         execution.output.summaryText,
@@ -1658,7 +1672,7 @@ export class AgentRuntime<
       failed: outcome.failed,
     });
 
-    const resumedState = this.options.appendToolResultMessage(
+    const resumedState = await this.appendToolResultMessageWithOutputTruncation(
       state,
       toolCallId,
       parentToolResultText,
@@ -1842,7 +1856,7 @@ export class AgentRuntime<
       failed: outcome.failed,
     });
 
-    const resumedState = this.options.appendToolResultMessage(
+    const resumedState = await this.appendToolResultMessageWithOutputTruncation(
       state,
       toolCallId,
       parentToolResultText,
@@ -2577,7 +2591,7 @@ export class AgentRuntime<
       }
 
       const output = await this.options.generateImage(imageRequest);
-      const resumedState = this.options.appendToolResultMessage(
+      const resumedState = await this.appendToolResultMessageWithOutputTruncation(
         state,
         toolCallId,
         output.summaryText,
@@ -2653,7 +2667,7 @@ export class AgentRuntime<
       }
 
       const output = await this.options.generateVideo(videoRequest);
-      const resumedState = this.options.appendToolResultMessage(
+      const resumedState = await this.appendToolResultMessageWithOutputTruncation(
         state,
         toolCallId,
         output.summaryText,
@@ -3100,7 +3114,7 @@ export class AgentRuntime<
 
     const batch = this.pendingSubagentBatchContinuation;
     const baseState = batch?.parentState ?? pending.parentState;
-    const resumedState = this.options.appendToolResultMessage(
+    const resumedState = await this.appendToolResultMessageWithOutputTruncation(
       baseState,
       pending.parentToolCallId,
       parentToolResultText,
@@ -3467,7 +3481,7 @@ function buildParentSubagentToolResultText(
   }
 
   const label = failed ? 'error:' : 'final_output:';
-  return `${header}\ntitle=${normalizedTitle}\n${sessionLine}${label}\n${truncateTextForParentSubagentResult(normalizedOutput, 6000)}`;
+  return `${header}\ntitle=${normalizedTitle}\n${sessionLine}${label}\n${normalizedOutput}`;
 }
 
 function buildParentSubagentToolResultTextFromRequest<ToolRequest>(
@@ -3498,15 +3512,6 @@ function resolveSubagentResultText(
     || latestAssistantMessage(record.llmHistory)?.trim()
     || record.summary.latestMessage?.trim()
     || normalizedOutput;
-}
-
-function truncateTextForParentSubagentResult(text: string, maxChars: number): string {
-  const chars = Array.from(text);
-  if (chars.length <= maxChars) {
-    return text;
-  }
-
-  return `${chars.slice(0, maxChars).join('')}\n\n...<subagent result truncated>`;
 }
 
 function singleLineStatusText(text: string): string {

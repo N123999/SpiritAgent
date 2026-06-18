@@ -10,10 +10,12 @@ import {
   lineRangeForReadFile,
   parseReadFilePathFromToolSnapshot,
   parseReadFileRequestRecordFromArgsExcerpt,
-  readFileDisplayBase,
-  readFileVerbKey,
   storedReadFileHeadlineUsesSkillVerb,
 } from '@/lib/read-file-skill-display';
+import {
+  readFileToolHeadlineDetail,
+  readFileVerbKey,
+} from '@/lib/read-file-tool-display';
 import { phaseToVerbContext } from '@/lib/tool-verb-context';
 import type { ToolBlockSnapshot } from '@/types';
 
@@ -139,11 +141,14 @@ function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts
 
   if (rawPath) {
     const argsRecord = parseReadFileRequestRecordFromArgsExcerpt(tool.argsExcerpt);
-    const base = readFileDisplayBase(rawPath, i18n.t('tool.file'));
     const lineRange = argsRecord
       ? lineRangeForReadFile(argsRecord.start_line, argsRecord.end_line)
       : '';
-    const computedDetail = `${base}${lineRange}`.trim();
+    const computedDetail = readFileToolHeadlineDetail(rawPath, {
+      emptyFileLabel: i18n.t('tool.file'),
+      toolOutputLabel: i18n.t('tool.toolOutput'),
+      lineRange,
+    });
     return {
       headline: i18n.t(readFileVerbKey(rawPath), tOpts),
       ...((computedDetail || snapshotDetail) ? { detail: computedDetail || snapshotDetail } : {}),
@@ -154,9 +159,13 @@ function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts
     const legacy = LEGACY_READ_FILE_HEADLINE.exec(tool.headline.trim());
     if (legacy) {
       const legacyPath = legacy[1].trim();
+      const legacyDetail = readFileToolHeadlineDetail(legacyPath, {
+        emptyFileLabel: i18n.t('tool.file'),
+        toolOutputLabel: i18n.t('tool.toolOutput'),
+      });
       return {
         headline: i18n.t(readFileVerbKey(legacyPath), tOpts),
-        detail: legacyPath,
+        detail: legacyDetail,
       };
     }
   }

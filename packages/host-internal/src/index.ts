@@ -10,6 +10,8 @@ export * from './automation-trigger-message.js';
 export * from './automation-host-tool.js';
 export * from './built-in-skills.js';
 export * from './compaction-archive.js';
+export * from './tool-output-archive.js';
+export * from './spirit-filename-sanitize.js';
 export * from './todos.js';
 export * from './extensions.js';
 export * from './file-rewind.js';

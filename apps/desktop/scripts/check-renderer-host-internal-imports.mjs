@@ -19,6 +19,7 @@ const RENDERER_SAFE_HOST_INTERNAL_SUBPATHS = new Set([
   'bedrock-mantle',
   'google-vertex-endpoints',
   'skill-paths',
+  'tool-output-archive-path',
   'github-pull-request-url',
   'github-pull-request-checks-pages',
   'github-pull-request-conversation-pages',
