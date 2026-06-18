@@ -7,7 +7,7 @@ import {
   TOOL_OUTPUT_TRUNCATION_LABEL,
   buildContextRetryExcerpt,
 } from './tool-agent.js';
-import { prepareToolOutputTruncationForHistory } from './tool-output-truncation.js';
+import { prepareToolOutputForAppend, prepareToolOutputTruncationForHistory } from './tool-output-truncation.js';
 
 test('buildContextRetryExcerpt includes archive path guidance when provided', () => {
   const longText = 'line\n'.repeat(8_000);
@@ -47,6 +47,31 @@ test('prepareToolOutputTruncationForHistory persists full output and injects arc
   const toolText = llmMessageTextContent(toolMessage.content);
   assert.match(toolText, /Full output archived at: \/SpiritAgent\/tool-output-archives\/sess-1\/call_abc\.txt/u);
   assert.ok(toolText.length < longToolOutput.length);
+});
+
+test('prepareToolOutputForAppend persists and truncates large tool output on append', async () => {
+  const longToolOutput = 'y'.repeat(20_000);
+  let persistedContent = '';
+  const prepared = await prepareToolOutputForAppend({
+    content: longToolOutput,
+    toolCallId: 'call_append_1',
+    sessionId: 'session_1',
+    persistArchive: async ({ content }) => {
+      persistedContent = content;
+      return '/tmp/archive/call_append_1.txt';
+    },
+  });
+
+  assert.equal(persistedContent, longToolOutput);
+  assert.match(prepared, /Full output archived at: \/tmp\/archive\/call_append_1\.txt/u);
+  assert.match(prepared, new RegExp(TOOL_OUTPUT_TRUNCATION_LABEL.replace(/[[\]]/g, '\\$&')));
+  assert.ok(prepared.length < longToolOutput.length);
+});
+
+test('prepareToolOutputForAppend leaves short tool output unchanged', async () => {
+  const shortOutput = 'ok';
+  const prepared = await prepareToolOutputForAppend({ content: shortOutput });
+  assert.equal(prepared, shortOutput);
 });
 
 test('prepareToolOutputTruncationForHistory still truncates when archive persist fails', async () => {

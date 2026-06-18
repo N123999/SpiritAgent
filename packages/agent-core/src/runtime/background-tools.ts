@@ -3,6 +3,7 @@ import type { JsonObject } from '../ports.js';
 import { createToolExecutionTextOutput } from '../ports.js';
 
 import { renderError } from './helpers.js';
+import { prepareRuntimeToolResultContentForAppend } from './tool-output-append.js';
 import { toolInputFromArgumentsJson } from '../hooks/integration.js';
 import { runPostToolUseSideEffects } from '../hooks/tool-hooks.js';
 import { commitToolExecutionOutput, type TurnMachineRuntime } from './turn-machine.js';
@@ -266,10 +267,15 @@ export async function pollPendingBackgroundToolExecution<
     pending.failed,
   );
 
+  const preparedOutput = await prepareRuntimeToolResultContentForAppend(
+    runtime.options,
+    pending.toolCallId,
+    pending.output.summaryText,
+  );
   const resumedState = runtime.options.appendToolResultMessage(
     pending.state,
     pending.toolCallId,
-    pending.output.summaryText,
+    preparedOutput,
   );
   if (pending.remainingCalls.length > 0) {
     runtime.queuePendingToolCallContinuation(

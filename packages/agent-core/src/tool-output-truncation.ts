@@ -52,6 +52,20 @@ async function truncateToolMessageContent(
   return buildContextRetryExcerpt(content, archivePath);
 }
 
+export async function prepareToolOutputForAppend(input: {
+  content: string;
+  sessionId?: string;
+  toolCallId?: string;
+  persistArchive?: PersistToolOutputArchiveFn;
+}): Promise<string> {
+  const replacement = await truncateToolMessageContent(input.content, {
+    ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+    ...(input.toolCallId !== undefined ? { toolCallId: input.toolCallId } : {}),
+    ...(input.persistArchive !== undefined ? { persistArchive: input.persistArchive } : {}),
+  });
+  return replacement ?? input.content;
+}
+
 function readToolCallIdFromToolAgentMessage(message: Record<string, unknown>): string | undefined {
   if (typeof message.tool_call_id === 'string' && message.tool_call_id.length > 0) {
     return message.tool_call_id;
