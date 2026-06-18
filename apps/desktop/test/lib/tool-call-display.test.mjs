@@ -224,7 +224,7 @@ test('getToolCallSummaryParts: read_file tool-output-archives uses tool output d
   }
 });
 
-test('getToolCallSummaryParts: legacy Chinese "查看" headline still parsed', () => {
+test('getToolCallSummaryParts: legacy Chinese "查看" headline still parsed and re-translated', () => {
   assert.deepEqual(
     getToolCallSummaryParts({
       toolName: 'read_file',
@@ -232,7 +232,7 @@ test('getToolCallSummaryParts: legacy Chinese "查看" headline still parsed', (
       headline: '查看 src/App.tsx',
       detailLines: [],
     }),
-    { headline: '查看', detail: 'src/App.tsx' },
+    { headline: '读取', detail: 'src/App.tsx' },
   );
 });
 

@@ -194,7 +194,7 @@ test('toolCallSummaryForPhase: read_file splits headline and path detail', () =>
       start_line: 1,
       end_line: 50,
     }),
-    { headline: '查看', headlineDetail: 'App.tsx 1 - 50' },
+    { headline: '读取', headlineDetail: 'App.tsx 1 - 50' },
   );
 });
 
@@ -205,7 +205,7 @@ test('toolCallSummaryForPhase: read_file tool-output-archives uses tool output d
       start_line: 1,
       end_line: 5,
     }),
-    { headline: '查看', headlineDetail: '工具输出 1 - 5' },
+    { headline: '读取', headlineDetail: '工具输出 1 - 5' },
   );
 });
 
@@ -262,8 +262,8 @@ test('toolCallSummaryCopyForRequest: Chinese verbs unchanged across phases', () 
 
   const viewRunning = toolCallSummaryForPhase('running', 'read_file', { path: 'b.ts' });
   const viewDone = toolCallSummaryForPhase('succeeded', 'read_file', { path: 'b.ts' });
-  assert.equal(viewRunning.headline, '查看');
-  assert.equal(viewDone.headline, '查看');
+  assert.equal(viewRunning.headline, '读取');
+  assert.equal(viewDone.headline, '读取');
 });
 
 test('toolCallSummaryCopyForRequest: English verbs use progressive in running phase', async () => {

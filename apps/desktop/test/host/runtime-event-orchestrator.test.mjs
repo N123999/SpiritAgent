@@ -340,7 +340,7 @@ test('read_file streaming preview shows filename from partial arguments JSON', (
 
   const previewTool = harness.timeline.toMessages().find((message) => message.tool?.toolCallId === 'call-partial')?.tool;
   assert.equal(previewTool?.phase, 'preview');
-  assert.equal(previewTool?.headline, '查看');
+  assert.equal(previewTool?.headline, '读取');
   assert.equal(previewTool?.headlineDetail, 'Cargo.toml');
 
   harness.orchestrator.applyRuntimeHostEvents([
@@ -379,7 +379,7 @@ test('tool previews keep live and finalized thinking above the tool card without
 
   const previewTool = harness.timeline.toMessages().find((message) => message.tool?.toolCallId === 'call-1')?.tool;
   assert.equal(previewTool?.phase, 'preview');
-  assert.equal(previewTool?.headline, '查看');
+  assert.equal(previewTool?.headline, '读取');
   assert.equal(previewTool?.headlineDetail, 'README.md 10 - 50');
 
   harness.orchestrator.applyRuntimeHostEvents([
@@ -400,7 +400,7 @@ test('tool previews keep live and finalized thinking above the tool card without
 
   const runningTool = harness.timeline.toMessages().find((message) => message.tool?.toolCallId === 'call-1')?.tool;
   assert.equal(runningTool?.phase, 'running');
-  assert.equal(runningTool?.headline, '查看');
+  assert.equal(runningTool?.headline, '读取');
   assert.equal(runningTool?.headlineDetail, 'README.md 10 - 50');
 });
 
