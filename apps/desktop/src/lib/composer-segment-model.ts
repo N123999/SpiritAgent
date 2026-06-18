@@ -2,6 +2,12 @@ import type { BrowserElementAttachment } from "./browser-element-attachment";
 import { browserElementContextText } from "./browser-element-wire-text.js";
 import type { PrDiffAttachment } from "./pr-diff-attachment.js";
 import { parsePrDiffWireMeta, prDiffContextText, scanPrDiffWireBlocks } from "./pr-diff-wire-text.js";
+import type { GitCommitAttachment } from "./git-commit-attachment.js";
+import {
+  gitCommitContextText,
+  parseGitCommitWireMeta,
+  scanGitCommitWireBlocks,
+} from "./git-commit-wire-text.js";
 import type { FileSnippetAttachment } from "./file-snippet-attachment.js";
 import {
   parseFileSnippetLinePart,
@@ -18,12 +24,14 @@ import {
 export { browserElementContextText };
 export { fileSnippetContextText };
 export { prDiffContextText };
+export { gitCommitContextText };
 export { terminalSnippetContextText };
 
 export type RichSegment =
   | { kind: "text"; value: string }
   | { kind: "element"; attachment: BrowserElementAttachment }
   | { kind: "prDiff"; attachment: PrDiffAttachment }
+  | { kind: "gitCommit"; attachment: GitCommitAttachment }
   | { kind: "terminalSnippet"; attachment: TerminalSnippetAttachment }
   | { kind: "fileSnippet"; attachment: FileSnippetAttachment }
   | { kind: "workspaceFile"; path: string }
@@ -160,6 +168,14 @@ export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): s
     return "\n";
   }
 
+  if (prev.kind === "text" && next.kind === "gitCommit") {
+    const v = prev.value;
+    if (!v) return "\n";
+    if (v.endsWith("\n\n")) return "";
+    if (v.endsWith("\n")) return "\n";
+    return "\n";
+  }
+
   if (prev.kind === "element" && next.kind === "text") {
     const v = next.value;
     if (!v) return "";
@@ -192,13 +208,24 @@ export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): s
     return "\n";
   }
 
+  if (prev.kind === "gitCommit" && next.kind === "text") {
+    const v = next.value;
+    if (!v) return "";
+    if (v.startsWith("\n\n")) return "\n";
+    if (v.startsWith("\n")) return "\n";
+    return "\n";
+  }
+
   if (
-    (prev.kind === "terminalSnippet" && (next.kind === "element" || next.kind === "prDiff" || next.kind === "fileSnippet"))
-    || (next.kind === "terminalSnippet" && (prev.kind === "element" || prev.kind === "prDiff" || prev.kind === "fileSnippet"))
+    (prev.kind === "terminalSnippet" && (next.kind === "element" || next.kind === "prDiff" || next.kind === "fileSnippet" || next.kind === "gitCommit"))
+    || (next.kind === "terminalSnippet" && (prev.kind === "element" || prev.kind === "prDiff" || prev.kind === "fileSnippet" || prev.kind === "gitCommit"))
     || (prev.kind === "terminalSnippet" && next.kind === "terminalSnippet")
-    || (prev.kind === "fileSnippet" && (next.kind === "element" || next.kind === "prDiff" || next.kind === "terminalSnippet"))
-    || (next.kind === "fileSnippet" && (prev.kind === "element" || prev.kind === "prDiff" || prev.kind === "terminalSnippet"))
+    || (prev.kind === "fileSnippet" && (next.kind === "element" || next.kind === "prDiff" || next.kind === "terminalSnippet" || next.kind === "gitCommit"))
+    || (next.kind === "fileSnippet" && (prev.kind === "element" || prev.kind === "prDiff" || prev.kind === "terminalSnippet" || prev.kind === "gitCommit"))
     || (prev.kind === "fileSnippet" && next.kind === "fileSnippet")
+    || (prev.kind === "gitCommit" && (next.kind === "element" || next.kind === "prDiff" || next.kind === "terminalSnippet" || next.kind === "fileSnippet"))
+    || (next.kind === "gitCommit" && (prev.kind === "element" || prev.kind === "prDiff" || prev.kind === "terminalSnippet" || prev.kind === "fileSnippet"))
+    || (prev.kind === "gitCommit" && next.kind === "gitCommit")
   ) {
     return "\n";
   }
@@ -226,7 +253,9 @@ export function segmentsToMessageText(segs: RichSegment[]): string {
             ? seg.alias
             : seg.kind === "prDiff"
               ? prDiffContextText(seg.attachment)
-              : seg.kind === "terminalSnippet"
+              : seg.kind === "gitCommit"
+                ? gitCommitContextText(seg.attachment)
+                : seg.kind === "terminalSnippet"
                 ? terminalSnippetContextText(seg.attachment)
                 : seg.kind === "fileSnippet"
                   ? fileSnippetContextText(seg.attachment)
@@ -270,6 +299,9 @@ export function segmentsEqual(a: RichSegment[], b: RichSegment[]): boolean {
       return seg.attachment.id === other.attachment.id;
     }
     if (seg.kind === "prDiff" && other.kind === "prDiff") {
+      return seg.attachment.id === other.attachment.id;
+    }
+    if (seg.kind === "gitCommit" && other.kind === "gitCommit") {
       return seg.attachment.id === other.attachment.id;
     }
     if (seg.kind === "terminalSnippet" && other.kind === "terminalSnippet") {
@@ -316,10 +348,11 @@ export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string
   const inlineChips = segs.filter(
     (s): s is Extract<
       RichSegment,
-      { kind: "element" | "prDiff" | "terminalSnippet" | "fileSnippet" | "workspaceFile" | "skill" }
+      { kind: "element" | "prDiff" | "gitCommit" | "terminalSnippet" | "fileSnippet" | "workspaceFile" | "skill" }
     > =>
       s.kind === "element"
       || s.kind === "prDiff"
+      || s.kind === "gitCommit"
       || s.kind === "terminalSnippet"
       || s.kind === "fileSnippet"
       || s.kind === "workspaceFile"
@@ -338,6 +371,7 @@ export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string
       if (
         seg.kind === "element"
         || seg.kind === "prDiff"
+        || seg.kind === "gitCommit"
         || seg.kind === "terminalSnippet"
         || seg.kind === "fileSnippet"
         || seg.kind === "workspaceFile"
@@ -375,11 +409,12 @@ function isInlineChipSegment(
   seg: RichSegment | undefined,
 ): seg is Extract<
   RichSegment,
-  { kind: "element" | "prDiff" | "terminalSnippet" | "fileSnippet" | "workspaceFile" | "loop" | "skill" }
+  { kind: "element" | "prDiff" | "gitCommit" | "terminalSnippet" | "fileSnippet" | "workspaceFile" | "loop" | "skill" }
 > {
   return (
     seg?.kind === "element"
     || seg?.kind === "prDiff"
+    || seg?.kind === "gitCommit"
     || seg?.kind === "terminalSnippet"
     || seg?.kind === "fileSnippet"
     || seg?.kind === "workspaceFile"
@@ -461,6 +496,17 @@ export function insertSegmentAtCaret(
     );
     if (diffIndex >= 0) {
       afterIndex = diffIndex + 1;
+      const trailing = normalized[afterIndex];
+      if (trailing?.kind === "text" && trailing.value === " ") {
+        caretOffset = 1;
+      }
+    }
+  } else if (newSegment.kind === "gitCommit") {
+    const commitIndex = normalized.findIndex(
+      (s) => s.kind === "gitCommit" && s.attachment.oid === newSegment.attachment.oid,
+    );
+    if (commitIndex >= 0) {
+      afterIndex = commitIndex + 1;
       const trailing = normalized[afterIndex];
       if (trailing?.kind === "text" && trailing.value === " ") {
         caretOffset = 1;
@@ -683,7 +729,7 @@ export function caretAtEnd(segs: RichSegment[]): SegmentCaret {
 export type MessageContentPart =
   | { kind: "text"; value: string }
   | { kind: "element"; tagName: string; url: string; outerHtml: string }
-  | {
+    | {
       kind: "prDiff";
       prUrl: string;
       filename: string;
@@ -691,6 +737,14 @@ export type MessageContentPart =
       lineEnd: number;
       status: PrDiffAttachment["status"];
       diffText: string;
+    }
+  | {
+      kind: "gitCommit";
+      oid: string;
+      subject: string;
+      author: string;
+      authoredAt: string;
+      fullMessage: string;
     }
   | {
       kind: "terminalSnippet";
@@ -749,6 +803,25 @@ function findWireBlocks(content: string): ParsedWireBlock[] {
         lineEnd: parsed.lineEnd,
         status: parsed.status,
         diffText: block.diffText,
+      },
+    });
+  }
+
+  for (const block of scanGitCommitWireBlocks(content)) {
+    const parsed = parseGitCommitWireMeta(block.meta);
+    if (!parsed) {
+      continue;
+    }
+    blocks.push({
+      index: block.index,
+      length: block.length,
+      part: {
+        kind: "gitCommit",
+        oid: block.oid,
+        subject: parsed.subject,
+        author: parsed.author,
+        authoredAt: parsed.authoredAt,
+        fullMessage: block.fullMessage,
       },
     });
   }
@@ -866,6 +939,7 @@ export function messageContentToRichSegments(
   const segments: RichSegment[] = [];
   let elementIndex = 0;
   let prDiffIndex = 0;
+  let gitCommitIndex = 0;
   let terminalSnippetIndex = 0;
   let fileSnippetIndex = 0;
 
@@ -897,6 +971,19 @@ export function messageContentToRichSegments(
         status: part.status,
       };
       segments.push({ kind: "prDiff", attachment });
+      continue;
+    }
+
+    if (part.kind === "gitCommit") {
+      const attachment: GitCommitAttachment = {
+        id: `${idPrefix}-git-${gitCommitIndex++}`,
+        oid: part.oid,
+        subject: part.subject,
+        author: part.author,
+        authoredAt: part.authoredAt,
+        fullMessage: part.fullMessage,
+      };
+      segments.push({ kind: "gitCommit", attachment });
       continue;
     }
 
@@ -933,12 +1020,14 @@ export function messageContentToRichSegments(
       afterElement:
         prev?.kind === "element"
         || prev?.kind === "prDiff"
+        || prev?.kind === "gitCommit"
         || prev?.kind === "terminalSnippet"
         || prev?.kind === "fileSnippet"
         || prev?.kind === "workspaceFile",
       beforeElement:
         next?.kind === "element"
         || next?.kind === "prDiff"
+        || next?.kind === "gitCommit"
         || next?.kind === "terminalSnippet"
         || next?.kind === "fileSnippet"
         || next?.kind === "workspaceFile",

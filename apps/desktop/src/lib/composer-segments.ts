@@ -1,4 +1,5 @@
 import { makeChipNode } from "@/lib/browser-element-chip-styles";
+import { makeGitCommitChipNode } from "@/lib/git-commit-chip-styles";
 import { makePrDiffChipNode } from "@/lib/github-pr-diff-chip-styles";
 import { makeFileSnippetChipNode } from "@/lib/file-snippet-chip-styles";
 import { makeTerminalChipNode } from "@/lib/terminal-chip-styles";
@@ -177,6 +178,28 @@ function appendSegmentFromNode(node: Node, segs: RichSegment[]): void {
     }
     return;
   }
+  if (el.dataset.gitCommitChip === "true" || el.getAttribute("data-git-commit-chip") === "true") {
+    const id = el.dataset.gitCommitId;
+    const oid = el.dataset.gitCommitOid;
+    const subject = el.dataset.gitCommitSubject;
+    const author = el.dataset.gitCommitAuthor;
+    const authoredAt = el.dataset.gitCommitAuthoredAt;
+    const fullMessage = el.dataset.gitCommitFullMessage ?? "";
+    if (id && oid && subject !== undefined && author !== undefined && authoredAt !== undefined) {
+      segs.push({
+        kind: "gitCommit",
+        attachment: {
+          id,
+          oid,
+          subject,
+          author,
+          authoredAt,
+          fullMessage,
+        },
+      });
+    }
+    return;
+  }
   if (el.dataset.terminalChip === "true" || el.getAttribute("data-terminal-chip") === "true") {
     const id = el.dataset.terminalId;
     const terminalName = el.dataset.terminalName ?? "";
@@ -263,6 +286,8 @@ export function segmentsToDom(
       frag.appendChild(makeFileChipNode(seg.path, doc));
     } else if (seg.kind === "prDiff") {
       frag.appendChild(makePrDiffChipNode(seg.attachment, doc));
+    } else if (seg.kind === "gitCommit") {
+      frag.appendChild(makeGitCommitChipNode(seg.attachment, doc));
     } else if (seg.kind === "terminalSnippet") {
       frag.appendChild(makeTerminalChipNode(seg.attachment, doc));
     } else if (seg.kind === "fileSnippet") {
