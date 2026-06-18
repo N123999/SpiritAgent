@@ -303,7 +303,7 @@ export interface AssistantAuxArchiveEntry {
   finishTaskNotice?: string;
 }
 
-export type SubagentSessionStatus = 'running' | 'completed' | 'failed' | 'blocked';
+export type SubagentSessionStatus = 'bootstrapping' | 'running' | 'completed' | 'failed' | 'blocked';
 
 export interface SubagentSessionSummary {
   sessionId: string;

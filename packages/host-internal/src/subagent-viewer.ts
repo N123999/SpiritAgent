@@ -1,7 +1,7 @@
 import type { LlmMessageContent, LlmToolCall, StoredLlmMessageArchiveEntry } from '@spirit-agent/core';
 import { llmMessageTextContent } from '@spirit-agent/core';
 
-export type SubagentViewerSessionStatus = 'running' | 'completed' | 'failed' | 'blocked';
+export type SubagentViewerSessionStatus = 'bootstrapping' | 'running' | 'completed' | 'failed' | 'blocked';
 
 export type SubagentViewerToolPhase =
   | 'preview'
@@ -79,7 +79,7 @@ function inferToolPhase(
   if (sessionStatus === 'blocked' && isLastUnresolvedTool) {
     return 'pending-approval';
   }
-  if (sessionStatus === 'running' || sessionStatus === 'blocked') {
+  if (sessionStatus === 'running' || sessionStatus === 'blocked' || sessionStatus === 'bootstrapping') {
     return 'running';
   }
   return 'succeeded';

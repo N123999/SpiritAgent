@@ -735,7 +735,7 @@ export interface DesktopSnapshot {
   automationsList: DesktopAutomationListItem[];
 }
 
-export type SubagentViewerSessionStatus = 'running' | 'completed' | 'failed' | 'blocked';
+export type SubagentViewerSessionStatus = 'bootstrapping' | 'running' | 'completed' | 'failed' | 'blocked';
 
 export interface SubagentViewerSnapshot {
   parentToolCallId: string;

@@ -23,6 +23,7 @@ import type { DesktopTimelineTurnSnapshot, DesktopMessageTimeline } from './mess
 import { restoreMessagesFromArchive } from './message-ordering.js';
 import { currentApiBase, sameWorkspaceRoot } from './service-utils.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
+import { cancelPendingWorktreeBootstrapOnBundle } from './worktree-bootstrap-orchestrator.js';
 
 interface ActivationState {
   workspaceRoot: string;
@@ -123,6 +124,7 @@ export async function openSessionCommand(
       && leaving.activeSession.kind !== 'ephemeral'
       && leavingMessageCount > 0
     ) {
+      cancelPendingWorktreeBootstrapOnBundle(leaving);
       await ctx.runSessionEndForBundle?.(leaving, 'switch');
       await ctx.persistSessionBundle(leaving, {
         fromRuntime:

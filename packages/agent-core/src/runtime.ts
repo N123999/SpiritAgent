@@ -190,6 +190,20 @@ interface PendingSubagentExecution<Config, State, ToolRequest, TrustTarget> {
   streamingEmitBeginResponse: boolean;
 }
 
+interface PendingSubagentWorktreeBootstrap<State, ToolRequest, TrustTarget> {
+  parentRequest: ToolRequest;
+  parentToolCallId: string;
+  parentPendingUserInput: string;
+  parentState: State;
+  parentRemainingCalls: ToolCallRequest[];
+  parentTurn: RuntimeTurnContext<ToolRequest>;
+  childRecord: RuntimeSubagentSessionArchiveEntry;
+  request: RunSubagentRequest;
+  parentWorkspaceRoot: string;
+  resumeAsStreaming: boolean;
+  streamingEmitBeginResponse: boolean;
+}
+
 interface PendingSubagentBatchContinuation<State, ToolRequest> {
   parentState: State;
   parentPendingUserInput: string;
@@ -247,6 +261,10 @@ export class AgentRuntime<
   private pendingSubagentExecutions = new Map<
     string,
     PendingSubagentExecution<Config, State, ToolRequest, TrustTarget>
+  >();
+  private pendingSubagentWorktreeBootstraps = new Map<
+    string,
+    PendingSubagentWorktreeBootstrap<State, ToolRequest, TrustTarget>
   >();
   private pendingSubagentBatchContinuation:
     | PendingSubagentBatchContinuation<State, ToolRequest>
@@ -625,6 +643,7 @@ export class AgentRuntime<
       pending.childRuntime.abort();
     }
     this.pendingSubagentExecutions.clear();
+    this.pendingSubagentWorktreeBootstraps.clear();
     this.pendingSubagentBatchContinuation = undefined;
   }
 
@@ -662,6 +681,7 @@ export class AgentRuntime<
       this.pendingBackgroundToolExecution !== undefined ||
       this.pendingHistoryCompaction !== undefined ||
       this.pendingSubagentExecutions.size > 0 ||
+      this.pendingSubagentWorktreeBootstraps.size > 0 ||
       this.pendingQuestions !== undefined ||
       this.hasPendingApproval()
     );
@@ -990,6 +1010,7 @@ export class AgentRuntime<
     await this.pollPendingToolAgentRound();
     await this.pollPendingHistoryCompaction();
     await this.pollPendingBackgroundToolExecution();
+    await this.pollPendingSubagentWorktreeBootstrap();
     await this.pollPendingSubagentExecution();
   }
 
@@ -2808,6 +2829,32 @@ export class AgentRuntime<
           failed: true,
         };
       }
+
+      if (resumeAsStreaming) {
+        record.summary.status = 'bootstrapping';
+        const childUserTurn = buildRunSubagentUserTurn(request);
+        record.llmHistory = [{
+          role: 'user',
+          content: createLlmMessageContentFromText(childUserTurn),
+        }];
+        record.summary.latestMessage = truncateTextForSubagentSummary(request.task.trim(), 180);
+        this.childSessionsStore.push(record);
+        this.pendingSubagentWorktreeBootstraps.set(parentToolCallId, {
+          parentRequest,
+          parentToolCallId,
+          parentPendingUserInput,
+          parentState,
+          parentRemainingCalls,
+          parentTurn,
+          childRecord: record,
+          request,
+          parentWorkspaceRoot,
+          resumeAsStreaming,
+          streamingEmitBeginResponse,
+        });
+        return { kind: 'started' };
+      }
+
       const boot = await bootstrap({
         subagentSessionId: sessionId,
         task: request.task,
@@ -3007,6 +3054,181 @@ export class AgentRuntime<
     }
 
     await this.pollPendingSubagentExecution();
+  }
+
+  private async pollPendingSubagentWorktreeBootstrap(): Promise<void> {
+    if (this.pendingSubagentWorktreeBootstraps.size === 0) {
+      return;
+    }
+
+    for (const [parentToolCallId, pending] of [...this.pendingSubagentWorktreeBootstraps.entries()]) {
+      this.pendingSubagentWorktreeBootstraps.delete(parentToolCallId);
+      try {
+        await this.completePendingSubagentWorktreeBootstrap(pending);
+      } catch (error) {
+        await this.finishFailedSubagentWorktreeBootstrap(pending, renderError(error));
+      }
+    }
+  }
+
+  private async completePendingSubagentWorktreeBootstrap(
+    pending: PendingSubagentWorktreeBootstrap<State, ToolRequest, TrustTarget>,
+  ): Promise<void> {
+    const bootstrap = this.options.bootstrapSubagentWorkspace;
+    if (!bootstrap) {
+      await this.finishFailedSubagentWorktreeBootstrap(
+        pending,
+        'worktree subagents are not supported on this host.',
+      );
+      return;
+    }
+
+    const boot = await bootstrap({
+      subagentSessionId: pending.childRecord.summary.sessionId,
+      task: pending.request.task,
+      worktree: true,
+      parentWorkspaceRoot: pending.parentWorkspaceRoot,
+    });
+    if ('error' in boot) {
+      await this.finishFailedSubagentWorktreeBootstrap(pending, boot.error);
+      return;
+    }
+
+    if (boot.worktreePath) {
+      pending.childRecord.summary.worktreePath = boot.worktreePath;
+    }
+    if (boot.branchName) {
+      pending.childRecord.summary.worktreeBranch = boot.branchName;
+    }
+
+    const childRuntime = this.createChildRuntime(
+      pending.childRecord.summary.sessionId,
+      pending.childRecord.summary.title,
+      boot.toolExecutor ?? this.options.toolExecutor,
+      boot.workspaceRoot,
+    );
+
+    const subagentStartDenied = await this.runSubagentStartHook(
+      pending.childRecord.summary.sessionId,
+      pending.request,
+      boot.workspaceRoot,
+    );
+    if (subagentStartDenied) {
+      pending.childRecord.summary.status = 'failed';
+      pending.childRecord.summary.updatedAtUnixMs = Date.now();
+      pending.childRecord.summary.completedAtUnixMs = pending.childRecord.summary.updatedAtUnixMs;
+      pending.childRecord.summary.latestMessage = truncateTextForSubagentSummary(subagentStartDenied, 180);
+      pending.childRecord.summary.error = subagentStartDenied;
+      await this.finishFailedSubagentWorktreeBootstrap(pending, subagentStartDenied);
+      return;
+    }
+
+    const childUserTurn = buildRunSubagentUserTurn(pending.request);
+    try {
+      await childRuntime.startUserTurnStreaming(childUserTurn);
+      this.cachePendingSubagentExecution(this.buildPendingSubagentExecution(
+        pending.parentRequest,
+        pending.parentToolCallId,
+        pending.parentPendingUserInput,
+        pending.parentState,
+        pending.parentRemainingCalls,
+        pending.parentTurn,
+        childRuntime,
+        pending.childRecord,
+        pending.resumeAsStreaming,
+        pending.streamingEmitBeginResponse,
+      ));
+      this.refreshChildSessionRecord(pending.childRecord, childRuntime);
+      pending.childRecord.summary.status = childRuntime.currentPendingApproval() ? 'blocked' : 'running';
+    } catch (error) {
+      await this.finishFailedSubagentWorktreeBootstrap(pending, renderError(error));
+    }
+  }
+
+  private async finishFailedSubagentWorktreeBootstrap(
+    pending: PendingSubagentWorktreeBootstrap<State, ToolRequest, TrustTarget>,
+    errorText: string,
+  ): Promise<void> {
+    const failed = `[subagent failed] ${errorText}`;
+    pending.childRecord.summary.status = 'failed';
+    pending.childRecord.summary.updatedAtUnixMs = Date.now();
+    pending.childRecord.summary.completedAtUnixMs = pending.childRecord.summary.updatedAtUnixMs;
+    pending.childRecord.summary.latestMessage = truncateTextForSubagentSummary(failed, 180);
+    delete pending.childRecord.summary.finalOutput;
+    pending.childRecord.summary.error = failed;
+
+    const parentToolResultText = prependSubagentWorktreeMeta(
+      buildParentSubagentToolResultText(
+        pending.childRecord.summary.title,
+        failed,
+        true,
+        pending.childRecord.summary.sessionId,
+      ),
+      pending.childRecord.summary.worktreePath,
+      pending.childRecord.summary.worktreeBranch,
+    );
+
+    const finishedExecution = {
+      toolCallId: pending.parentToolCallId,
+      toolName: 'run_subagent',
+      request: pending.parentRequest,
+      output: failed,
+      failed: true,
+    };
+    pending.parentTurn.toolExecutions.push(finishedExecution);
+    this.emitEvent({ kind: 'tool-execution-finished', execution: finishedExecution });
+
+    const batch = this.pendingSubagentBatchContinuation;
+    const baseState = batch?.parentState ?? pending.parentState;
+    const resumedState = await this.appendToolResultMessageWithOutputTruncation(
+      baseState,
+      pending.parentToolCallId,
+      parentToolResultText,
+    );
+    if (batch) {
+      batch.parentState = resumedState;
+    }
+
+    if (this.pendingSubagentExecutions.size > 0) {
+      return;
+    }
+
+    const finalState = batch?.parentState ?? resumedState;
+    const continuation = batch ?? {
+      parentPendingUserInput: pending.parentPendingUserInput,
+      parentTurn: pending.parentTurn,
+      resumeAsStreaming: pending.resumeAsStreaming,
+      streamingEmitBeginResponse: pending.streamingEmitBeginResponse,
+    };
+    this.pendingSubagentBatchContinuation = undefined;
+
+    if (pending.parentRemainingCalls.length > 0) {
+      await this.processToolCallsAsync(
+        finalState,
+        continuation.parentPendingUserInput,
+        pending.parentRemainingCalls,
+        continuation.parentTurn,
+        continuation.resumeAsStreaming,
+        continuation.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    if (continuation.resumeAsStreaming) {
+      await this.startStreamingRound(
+        finalState,
+        continuation.parentPendingUserInput,
+        continuation.parentTurn,
+        continuation.streamingEmitBeginResponse,
+      );
+      return;
+    }
+
+    this.startToolAgentRoundAsync(
+      finalState,
+      continuation.parentPendingUserInput,
+      continuation.parentTurn,
+    );
   }
 
   private async pollPendingSubagentExecution(): Promise<void> {

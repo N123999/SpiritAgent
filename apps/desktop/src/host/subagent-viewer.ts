@@ -23,6 +23,83 @@ import {
 } from './subagent-conversation-projection.js';
 import { isRunSubagentToolCallPending } from './subagent-stream-sync.js';
 
+import { WORKTREE_BOOTSTRAP_TOOL_NAME } from './worktree-bootstrap-card.js';
+
+function summarizeViewerProcessMetadata(messages: readonly ConversationMessageSnapshot[]) {
+  let worktreeCards = 0;
+  let thinkingRows = 0;
+  let toolRows = 0;
+  for (const message of messages) {
+    if (message.tool?.toolName === WORKTREE_BOOTSTRAP_TOOL_NAME) {
+      worktreeCards += 1;
+    }
+    if (message.tool) {
+      toolRows += 1;
+    }
+    if (message.aux?.thinking?.trim()) {
+      thinkingRows += 1;
+    }
+  }
+  return { worktreeCards, thinkingRows, toolRows };
+}
+
+function projectedHasRicherProcessMetadata(
+  projected: readonly ConversationMessageSnapshot[],
+  history: readonly ConversationMessageSnapshot[],
+): boolean {
+  const projectedMeta = summarizeViewerProcessMetadata(projected);
+  const historyMeta = summarizeViewerProcessMetadata(history);
+  return (
+    projectedMeta.worktreeCards > historyMeta.worktreeCards
+    || projectedMeta.thinkingRows > historyMeta.thinkingRows
+    || projectedMeta.toolRows > historyMeta.toolRows
+  );
+}
+
+function lastAssistantBodyMessage(
+  messages: readonly ConversationMessageSnapshot[],
+): ConversationMessageSnapshot | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === 'assistant' && !message.tool && message.content.trim()) {
+      return message;
+    }
+  }
+  return undefined;
+}
+
+function hasAssistantBodyText(messages: readonly ConversationMessageSnapshot[]): boolean {
+  return lastAssistantBodyMessage(messages) !== undefined;
+}
+
+function appendAssistantBodyFromHistory(
+  messages: ConversationMessageSnapshot[],
+  history: readonly ConversationMessageSnapshot[],
+  finalOutput: string | undefined,
+): ConversationMessageSnapshot[] {
+  if (hasAssistantBodyText(messages)) {
+    return patchCompletedAssistantOutput(messages, finalOutput);
+  }
+
+  const text = finalOutput?.trim() || lastAssistantBodyMessage(history)?.content.trim();
+  if (!text) {
+    return messages;
+  }
+
+  const bodyTemplate = lastAssistantBodyMessage(history);
+  const next = messages.map((entry) => ({ ...entry }));
+  next.push({
+    ...(bodyTemplate ?? {
+      id: next.length + 1,
+      role: 'assistant' as const,
+      pending: false,
+    }),
+    content: text,
+    pending: false,
+  });
+  return next;
+}
+
 function enrichSubagentToolBlock(input: {
   toolName: string;
   phase: ToolBlockSnapshot['phase'];
@@ -148,7 +225,7 @@ function patchCompletedAssistantOutput(
   return messages;
 }
 
-function resolveSubagentViewerMessages(input: {
+export function resolveSubagentViewerMessages(input: {
   projected?: ConversationMessageSnapshot[];
   historyMessages: ConversationMessageSnapshot[];
   isLiveSession: boolean;
@@ -180,6 +257,12 @@ function resolveSubagentViewerMessages(input: {
     const projectedLast = lastAssistantTextContent(projected);
     const historyLast = lastAssistantTextContent(history);
     if (historyLast.length > projectedLast.length) {
+      if (projectedHasRicherProcessMetadata(projected, history)) {
+        return {
+          messages: appendAssistantBodyFromHistory(projected, history, input.finalOutput),
+          source: 'projected-enriched-with-history-body',
+        };
+      }
       return {
         messages: patchCompletedAssistantOutput(history, input.finalOutput),
         source: 'history-longer-completed',
@@ -268,7 +351,9 @@ export function buildSubagentViewerSnapshot(
 
   const projected = bundle.subagentDesktopMessagesBySessionId.get(session.summary.sessionId);
   const isLiveSession =
-    session.summary.status === 'running' || session.summary.status === 'blocked';
+    session.summary.status === 'bootstrapping'
+    || session.summary.status === 'running'
+    || session.summary.status === 'blocked';
 
   const resolved = resolveSubagentViewerMessages({
     projected,

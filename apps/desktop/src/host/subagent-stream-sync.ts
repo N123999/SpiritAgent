@@ -5,7 +5,7 @@ import type { ConversationMessageSnapshot, ToolBlockSnapshot } from '../types.js
 export interface SubagentSessionArchiveSnapshot {
   summary: {
     parentToolCallId?: string;
-    status: 'running' | 'completed' | 'failed' | 'blocked';
+    status: 'bootstrapping' | 'running' | 'completed' | 'failed' | 'blocked';
     latestMessage?: string;
     finalOutput?: string;
   };

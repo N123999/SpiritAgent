@@ -227,6 +227,10 @@ import {
   type SessionTurnOrchestratorContext,
   type SubmitUserTurnAfterInitializedOptions,
 } from './session-turn-orchestrator.js';
+import {
+  startWorktreeBootstrapTurnCommand,
+  type WorktreeBootstrapHostContext,
+} from './worktree-bootstrap-orchestrator.js';
 import { isSessionBundleBusy } from './direct-media-turn.js';
 import {
   appendQueuedUserTurnSnapshots,
@@ -731,7 +735,36 @@ class DesktopHostService {
         this.insertUserApprovalReplyMessage(content, pendingToolCallId),
       normalizeApprovalDecision,
       runSessionEndForActive: (reason) => this.runSessionEndForBundle(this.activeBundle(), reason),
+      worktreeBootstrapHost: this.worktreeBootstrapHost(),
     };
+  }
+
+  private worktreeBootstrapHost(): WorktreeBootstrapHostContext {
+    return {
+      validateWorktreeBootstrapPreconditions: () => this.validateWorktreeBootstrapPreconditions(),
+      executeWorktreeBootstrap: (userPrompt) => this.executeWorktreeBootstrapForActiveBundle(userPrompt),
+      resolveWorktreeBootstrapSessionKey: () => this.activeBundle().id,
+      setLastRuntimeError: (error) => {
+        this.lastRuntimeError = error;
+      },
+    };
+  }
+
+  private validateWorktreeBootstrapPreconditions(): void {
+    const state = this.requireState();
+    const bundle = this.activeBundle();
+
+    if (!state.git.isRepository) {
+      throw new Error(i18n.t('error.notGitRepoForWorktree'));
+    }
+
+    const baseBranch = bundle.pendingGitBranch ?? state.git.branch;
+    if (!baseBranch) {
+      throw new Error(i18n.t('error.cannotDetermineBaseBranch'));
+    }
+    if (!state.git.branches.includes(baseBranch)) {
+      throw new Error(i18n.t('error.baseBranchNotFound', { branch: baseBranch }));
+    }
   }
 
   private getHookRunner(workspaceRoot: string): HookRunner {
@@ -1391,7 +1424,12 @@ class DesktopHostService {
 
       const isFirstTurn = bundle.messages.length === 0;
       if (isFirstTurn && bundle.workLocation === 'worktree') {
-        await this.bootstrapWorktreeForFirstTurn(trimmed);
+        return startWorktreeBootstrapTurnCommand(
+          this.sessionTurnContext(),
+          this.worktreeBootstrapHost(),
+          request.text,
+          { explicitWorkspaceFiles },
+        );
       }
 
       return this.submitUserTurnAfterInitialized(request.text, {
@@ -2254,8 +2292,9 @@ class DesktopHostService {
         const bundle = this.activeBundle();
         return bundle.pendingGitBranch ?? state.git.branch;
       },
-      generateWorktreeNames: (task, baseBranch, repoRoot) =>
-        this.generateWorktreeNamesFromModel(task, baseBranch, repoRoot),
+      generateWorktreeNames: async () => {
+        throw new Error('subagent worktree naming is deterministic');
+      },
       buildScopedToolExecutor: (workspaceRoot) =>
         this.buildScopedSubagentToolExecutor(workspaceRoot, transportConfig, parentExecutor),
     });
@@ -2808,13 +2847,9 @@ class DesktopHostService {
     state.ephemeralSessions = rememberEphemeralWorktreeSessionRecord(state.ephemeralSessions, record);
   }
 
-  private async bootstrapWorktreeForFirstTurn(userPrompt: string): Promise<void> {
+  private async executeWorktreeBootstrapForActiveBundle(userPrompt: string): Promise<void> {
     const state = this.requireState();
     const bundle = this.activeBundle();
-
-    if (!state.git.isRepository) {
-      throw new Error(i18n.t('error.notGitRepoForWorktree'));
-    }
 
     const repoRoot = await readPrimaryRepoRoot(state.workspaceRoot);
     const worktreeContext = await readWorkspaceGitSnapshot(state.workspaceRoot);
@@ -2825,9 +2860,6 @@ class DesktopHostService {
     const baseBranch = bundle.pendingGitBranch ?? state.git.branch;
     if (!baseBranch) {
       throw new Error(i18n.t('error.cannotDetermineBaseBranch'));
-    }
-    if (!state.git.branches.includes(baseBranch)) {
-      throw new Error(i18n.t('error.baseBranchNotFound', { branch: baseBranch }));
     }
 
     const names = await this.generateWorktreeNamesFromModel(userPrompt, baseBranch, repoRoot);

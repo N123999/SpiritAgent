@@ -1,4 +1,4 @@
-import type { RuntimeEvent, SubagentSessionArchiveEntry } from '@spirit-agent/core';
+import type { RuntimeEvent, SubagentSessionArchiveEntry, SubagentSessionStatus } from '@spirit-agent/core';
 import { llmMessageTextContent } from '@spirit-agent/core';
 
 import type { ConversationMessageSnapshot } from '../types.js';
@@ -9,6 +9,10 @@ import {
   DesktopMessageTimeline,
   type DesktopTimelineSegmentKind,
 } from './message-timeline.js';
+import {
+  resolveWorktreeBootstrapCardPhaseFromSubagentStatus,
+  upsertWorktreeBootstrapCardInTimeline,
+} from './worktree-bootstrap-card.js';
 import {
   DesktopRuntimeEventOrchestrator,
   runtimeEventsIncludeAppliedResponsesBuiltInToolPreview,
@@ -107,7 +111,9 @@ export class SubagentConversationProjection {
     const messages = existingMessages?.length
       ? existingMessages.map((message) => ({ ...message }))
       : seedMessagesFromSubagentSession(session);
-    return new SubagentConversationProjection(session.summary.sessionId, messages);
+    const projection = new SubagentConversationProjection(session.summary.sessionId, messages);
+    syncWorktreeBootstrapCardOnProjection(projection, session.summary.status, session.summary.sessionId);
+    return projection;
   }
 
   applyDrainedEvents(drained: RuntimeEvent<DesktopToolRequest>[]): void {
@@ -182,6 +188,8 @@ export function syncSubagentConversationProjections(
     return;
   }
 
+  syncSubagentWorktreeBootstrapCards(bundle, runtime);
+
   const childDrains = runtime.drainActiveChildSessionEvents();
   if (childDrains.length === 0) {
     return;
@@ -199,6 +207,43 @@ export function syncSubagentConversationProjections(
     bundle.subagentDesktopMessagesBySessionId.set(
       childDrain.sessionId,
       syncedMessages,
+    );
+  }
+}
+
+function syncWorktreeBootstrapCardOnProjection(
+  projection: SubagentConversationProjection,
+  status: SubagentSessionStatus,
+  sessionId: string,
+): void {
+  const phase = resolveWorktreeBootstrapCardPhaseFromSubagentStatus(status);
+  if (!phase) {
+    return;
+  }
+  upsertWorktreeBootstrapCardInTimeline(projection.messageTimeline, sessionId, phase);
+}
+
+function syncSubagentWorktreeBootstrapCards(
+  bundle: SessionBundle,
+  runtime: DesktopRuntime,
+): void {
+  for (const session of runtime.childSessionArchives()) {
+    const isWorktreeSubagent =
+      session.summary.status === 'bootstrapping'
+      || Boolean(session.summary.worktreePath);
+    if (!isWorktreeSubagent) {
+      continue;
+    }
+
+    const projection = ensureSubagentConversationProjection(bundle, session);
+    syncWorktreeBootstrapCardOnProjection(
+      projection,
+      session.summary.status,
+      session.summary.sessionId,
+    );
+    bundle.subagentDesktopMessagesBySessionId.set(
+      session.summary.sessionId,
+      projection.toMessages(),
     );
   }
 }

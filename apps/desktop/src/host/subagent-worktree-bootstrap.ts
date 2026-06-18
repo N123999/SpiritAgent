@@ -49,7 +49,7 @@ export function createDesktopSubagentWorkspaceBootstrap(
         return { error: 'cannot determine base branch for subagent worktree' };
       }
 
-      const names = await deps.generateWorktreeNames(input.task, baseBranch, repoRoot);
+      const names = buildDeterministicSubagentWorktreeNames(input.subagentSessionId);
       const created = await createWorkspaceGitWorktree(repoRoot, names, baseBranch);
       createdWorktreePath = created.worktreePath;
       const scopedExecutor = await deps.buildScopedToolExecutor(created.worktreePath);
