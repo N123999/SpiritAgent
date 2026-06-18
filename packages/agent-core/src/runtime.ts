@@ -3467,7 +3467,7 @@ function buildParentSubagentToolResultText(
   }
 
   const label = failed ? 'error:' : 'final_output:';
-  return `${header}\ntitle=${normalizedTitle}\n${sessionLine}${label}\n${truncateTextForParentSubagentResult(normalizedOutput, 6000)}`;
+  return `${header}\ntitle=${normalizedTitle}\n${sessionLine}${label}\n${normalizedOutput}`;
 }
 
 function buildParentSubagentToolResultTextFromRequest<ToolRequest>(
@@ -3498,15 +3498,6 @@ function resolveSubagentResultText(
     || latestAssistantMessage(record.llmHistory)?.trim()
     || record.summary.latestMessage?.trim()
     || normalizedOutput;
-}
-
-function truncateTextForParentSubagentResult(text: string, maxChars: number): string {
-  const chars = Array.from(text);
-  if (chars.length <= maxChars) {
-    return text;
-  }
-
-  return `${chars.slice(0, maxChars).join('')}\n\n...<subagent result truncated>`;
 }
 
 function singleLineStatusText(text: string): string {

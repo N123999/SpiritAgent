@@ -86,15 +86,10 @@ import {
 
 const PERMISSIONS_FILE = 'tool-permissions.json';
 const MAX_READ_LINES_DEFAULT = 200;
-const MAX_DIRECTORY_LIST_RESULTS = 4000;
-const MAX_WEB_FETCH_OUTPUT_CHARS = 24_000;
 const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
-const MAX_GLOB_RESULTS = 1000;
-const MAX_SEARCH_RESULTS = 80;
-const MAX_SEARCH_MATCHES_PER_FILE = 3;
 const MAX_SEARCH_FILE_BYTES = 1_000_000;
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
@@ -1465,14 +1460,13 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const directories: string[] = [];
     let skippedDirs = 0;
     let skippedSymlinks = 0;
-    let truncated = false;
 
     let entries;
     try {
       entries = await readdir(root, { withFileTypes: true });
     } catch {
       skippedDirs += 1;
-      return `[list]\npath: ${root}\nfiles: 0\ntruncated: false\nskipped_dirs: ${skippedDirs}\nskipped_symlinks: ${skippedSymlinks}\n\n（无法读取目录）`;
+      return `[list]\npath: ${root}\nfiles: 0\nskipped_dirs: ${skippedDirs}\nskipped_symlinks: ${skippedSymlinks}\n\n（无法读取目录）`;
     }
 
     for (const entry of entries) {
@@ -1489,17 +1483,13 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         directories.push(entryPath);
       } else if (fileType.isFile()) {
         files.push(entryPath);
-        if (files.length >= MAX_DIRECTORY_LIST_RESULTS) {
-          truncated = true;
-          break;
-        }
       }
     }
 
     directories.sort((left, right) => left.localeCompare(right));
     files.sort((left, right) => left.localeCompare(right));
 
-    let out = `[list]\npath: ${root}\ndirectories: ${directories.length}\nfiles: ${files.length}\ntruncated: ${truncated ? 'true' : 'false'}\nskipped_dirs: ${skippedDirs}\nskipped_symlinks: ${skippedSymlinks}\n\n`;
+    let out = `[list]\npath: ${root}\ndirectories: ${directories.length}\nfiles: ${files.length}\nskipped_dirs: ${skippedDirs}\nskipped_symlinks: ${skippedSymlinks}\n\n`;
 
     if (directories.length === 0 && files.length === 0) {
       out += '（目录为空）';
@@ -1517,10 +1507,6 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           out += `${file}\n`;
         }
       }
-    }
-
-    if (truncated) {
-      out += `\n...<结果已截断，最多列出 ${MAX_DIRECTORY_LIST_RESULTS} 个文件>`;
     }
 
     return out;
@@ -1620,21 +1606,14 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       .map((value) => value.replace(/\\/gu, '/'))
       .sort((left, right) => left.localeCompare(right));
 
-    const truncated = matches.length > MAX_GLOB_RESULTS;
-    const shown = truncated ? matches.slice(0, MAX_GLOB_RESULTS) : matches;
-
-    let out = `[glob]\npattern: ${pattern}\nmatches: ${matches.length}\ntruncated: ${truncated ? 'true' : 'false'}\n\n`;
-    if (shown.length === 0) {
+    let out = `[glob]\npattern: ${pattern}\nmatches: ${matches.length}\n\n`;
+    if (matches.length === 0) {
       out += '未搜索到文件';
       return out;
     }
 
-    for (const file of shown) {
+    for (const file of matches) {
       out += `${file}\n`;
-    }
-
-    if (truncated) {
-      out += `\n...<结果已截断，最多列出 ${MAX_GLOB_RESULTS} 个文件>`;
     }
     return out;
   }
@@ -1650,37 +1629,32 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     const files = new Set<string>();
     const hits: string[] = [];
 
-    const visitFile = async (filePath: string): Promise<boolean> => {
-      if (hits.length >= MAX_SEARCH_RESULTS) {
-        return false;
-      }
-
+    const visitFile = async (filePath: string): Promise<void> => {
       const ext = path.extname(filePath).toLowerCase();
       if (BINARY_EXTENSIONS.has(ext)) {
-        return true;
+        return;
       }
 
       let st;
       try {
         st = await lstat(filePath);
       } catch {
-        return true;
+        return;
       }
       if (!st.isFile() || st.size > MAX_SEARCH_FILE_BYTES) {
-        return true;
+        return;
       }
 
       let content: string;
       try {
         content = await readFile(filePath, 'utf8');
       } catch {
-        return true;
+        return;
       }
 
       const rel = path.relative(this.workspaceRoot, filePath).replace(/\\/gu, '/');
       const relDisplay = rel || '.';
       const lines = content.split(/\r?\n/u);
-      let fileMatchCount = 0;
 
       for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index] ?? '';
@@ -1689,22 +1663,10 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         }
 
         files.add(relDisplay);
-        if (hits.length < MAX_SEARCH_RESULTS && fileMatchCount < MAX_SEARCH_MATCHES_PER_FILE) {
-          hits.push(`${relDisplay}:${index + 1} | ${truncateChars(normalizeSearchLine(line), 180)}`);
-        }
-        fileMatchCount += 1;
-        if (hits.length >= MAX_SEARCH_RESULTS) {
-          return false;
-        }
+        hits.push(`${relDisplay}:${index + 1} | ${normalizeSearchLine(line)}`);
       }
-
-      return true;
     };
     const walk = async (dir: string): Promise<void> => {
-      if (hits.length >= MAX_SEARCH_RESULTS) {
-        return;
-      }
-
       let entries;
       try {
         entries = await readdir(dir, { withFileTypes: true });
@@ -1713,10 +1675,6 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       }
 
       for (const entry of entries) {
-        if (hits.length >= MAX_SEARCH_RESULTS) {
-          return;
-        }
-
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           if (SEARCH_IGNORE_DIR_NAMES.has(entry.name)) {
@@ -1724,10 +1682,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           }
           await walk(full);
         } else if (entry.isFile()) {
-          const ok = await visitFile(full);
-          if (!ok) {
-            return;
-          }
+          await visitFile(full);
         }
       }
     };
@@ -1930,11 +1885,9 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       const raw = await response.text();
       const extracted = extractWebText(raw, contentType);
       const normalized = normalizeWebText(extracted);
-      const preview = truncateChars(normalized, MAX_WEB_FETCH_OUTPUT_CHARS);
       const totalChars = [...normalized].length;
-      const truncated = totalChars > MAX_WEB_FETCH_OUTPUT_CHARS;
       return createHostToolTextOutput(
-        `[web]\nurl: ${parsedUrl}\nfinal_url: ${finalUrl}\nstatus: ${status}\ncontent_type: ${contentType}\nuser_agent: ${BROWSER_USER_AGENT}\ncontent_chars: ${totalChars}\ntruncated: ${truncated ? 'true' : 'false'}\n\ncontent\n${preview}${truncated ? '\n\n...<网页内容已截断>' : ''}`,
+        `[web]\nurl: ${parsedUrl}\nfinal_url: ${finalUrl}\nstatus: ${status}\ncontent_type: ${contentType}\nuser_agent: ${BROWSER_USER_AGENT}\ncontent_chars: ${totalChars}\n\ncontent\n${normalized}`,
       );
     } finally {
       clearTimeout(timeout);

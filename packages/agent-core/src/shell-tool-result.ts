@@ -7,8 +7,6 @@ export type RunShellCommandToolResult = {
   truncated?: boolean;
 };
 
-export const DEFAULT_SHELL_TOOL_OUTPUT_MAX_CHARS = 16_000;
-
 export function combineShellToolOutput(stdout: string, stderr: string): string {
   const hasStdout = stdout.length > 0;
   const hasStderr = stderr.length > 0;
@@ -42,24 +40,13 @@ export function buildRunShellCommandToolResult(input: {
   };
 }
 
-export function serializeRunShellCommandToolResult(
-  result: RunShellCommandToolResult,
-  maxOutputChars: number = DEFAULT_SHELL_TOOL_OUTPUT_MAX_CHARS,
-): string {
-  let output = result.output;
-  let truncated = result.truncated === true;
-  if ([...output].length > maxOutputChars) {
-    output = truncateChars(output, maxOutputChars);
-    truncated = true;
-  }
-
+export function serializeRunShellCommandToolResult(result: RunShellCommandToolResult): string {
   const payload: RunShellCommandToolResult = {
     terminal: result.terminal,
     workspace: result.workspace,
     command: result.command,
     exitCode: result.exitCode,
-    output,
-    ...(truncated ? { truncated: true } : {}),
+    output: result.output,
   };
   return JSON.stringify(payload);
 }
@@ -94,12 +81,4 @@ function isRunShellCommandToolResult(value: unknown): value is RunShellCommandTo
     typeof record.output === 'string' &&
     (record.truncated === undefined || typeof record.truncated === 'boolean')
   );
-}
-
-function truncateChars(value: string, maxChars: number): string {
-  const chars = [...value];
-  if (chars.length <= maxChars) {
-    return value;
-  }
-  return chars.slice(0, maxChars).join('');
 }

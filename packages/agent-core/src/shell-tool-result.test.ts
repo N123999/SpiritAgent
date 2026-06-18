@@ -37,25 +37,25 @@ test('serializeRunShellCommandToolResult returns compact JSON for LLM context', 
   });
 });
 
-test('serializeRunShellCommandToolResult marks truncated output and stays valid JSON', () => {
+test('serializeRunShellCommandToolResult preserves full output without truncation', () => {
+  const longOutput = 'x'.repeat(20);
   const json = serializeRunShellCommandToolResult(
     buildRunShellCommandToolResult({
       terminal: 'bash',
       workspace: '/tmp',
       command: 'cat',
       exitCode: 0,
-      stdout: 'x'.repeat(20),
+      stdout: longOutput,
       stderr: '',
     }),
-    10,
   );
 
   const parsed = JSON.parse(json) as {
     output: string;
     truncated?: boolean;
   };
-  assert.equal(parsed.output, 'x'.repeat(10));
-  assert.equal(parsed.truncated, true);
+  assert.equal(parsed.output, longOutput);
+  assert.equal(parsed.truncated, undefined);
 });
 
 test('parseRunShellCommandToolResult rejects legacy human transcript', () => {

@@ -809,7 +809,7 @@ mod tests {
 
     #[test]
     fn glob_tool_block_shows_pattern_detail_and_output_excerpt() {
-        let output = "[glob]\npattern: src/**/*.ts\nmatches: 2\ntruncated: false\n\nsrc/app.ts\nsrc/lib/util.ts\n";
+        let output = "[glob]\npattern: src/**/*.ts\nmatches: 2\n\nsrc/app.ts\nsrc/lib/util.ts\n";
         let block = build_tool_result_block(
             &ToolUiRequest::new("glob", json!({ "pattern": "src/**/*.ts" })),
             "glob",
