@@ -40,6 +40,7 @@ import {
   ensureBuiltinAuthoringSkills,
   loadHostInstructionMetadata,
   persistPreCompactionHistoryArchive,
+  persistToolOutputArchive,
   removePreCompactionHistoryArchive,
 } from '@spirit-agent/host-internal';
 
@@ -224,6 +225,8 @@ export async function createAcpRuntime(
       }),
     removePreCompactionHistoryArchive: async (archivePath) =>
       removePreCompactionHistoryArchive(archivePath),
+    persistToolOutputArchive: async (input) =>
+      persistToolOutputArchive(spiritDataDir, input),
     onEvent,
   });
 

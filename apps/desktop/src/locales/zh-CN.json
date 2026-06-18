@@ -1092,6 +1092,7 @@
     "read": "查看",
     "use": "使用",
     "file": "文件",
+    "toolOutput": "工具输出",
     "directory": "目录",
     "generateImage": "生成图片",
     "generateVideo": "生成视频",

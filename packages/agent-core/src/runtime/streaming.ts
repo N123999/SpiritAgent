@@ -28,6 +28,7 @@ import type {
 } from './types.js';
 import type { ToolExecutionResult } from './tool-execution.js';
 import type { EarlyInternalToolCallResult, TurnMachineRuntime } from './turn-machine.js';
+import { prepareStateForContextRetryAsync } from './compaction.js';
 import { isResponsesBuiltInToolName } from '../open-responses/responses-built-in-tools.js';
 import { startEarlyToolExecution } from './turn-machine.js';
 
@@ -581,14 +582,11 @@ export async function handlePendingStreamEvent<
     pending.turn.autoCompactAttempts < (runtime.options.maxAutoCompactRetries ?? 1)
   ) {
     pending.turn.autoCompactAttempts += 1;
-    const preparedRetry = runtime.options.truncateStateForContextRetry
-      ? runtime.options.truncateStateForContextRetry(
-          runtime.options.createToolAgentState(runtime.historyStore, pending.pendingUserInput),
-        )
-      : {
-          state: runtime.options.createToolAgentState(runtime.historyStore, pending.pendingUserInput),
-          changed: false,
-        };
+    const retryState = runtime.options.createToolAgentState(
+      runtime.historyStore,
+      pending.pendingUserInput,
+    );
+    const preparedRetry = await prepareStateForContextRetryAsync(runtime.options, retryState);
 
     if (runtime.pendingAssistantTextStore.trim()) {
       runtime.emitEvent({ kind: 'replace-pending-assistant', text: '' });
@@ -651,14 +649,11 @@ export async function handlePendingStreamingCompletion<
       pending.turn.autoCompactAttempts < (runtime.options.maxAutoCompactRetries ?? 1)
     ) {
       pending.turn.autoCompactAttempts += 1;
-      const preparedRetry = runtime.options.truncateStateForContextRetry
-        ? runtime.options.truncateStateForContextRetry(
-            runtime.options.createToolAgentState(runtime.historyStore, pending.pendingUserInput),
-          )
-        : {
-            state: runtime.options.createToolAgentState(runtime.historyStore, pending.pendingUserInput),
-            changed: false,
-          };
+      const retryState = runtime.options.createToolAgentState(
+        runtime.historyStore,
+        pending.pendingUserInput,
+      );
+      const preparedRetry = await prepareStateForContextRetryAsync(runtime.options, retryState);
 
       if (runtime.pendingAssistantTextStore.trim()) {
         runtime.emitEvent({ kind: 'replace-pending-assistant', text: '' });

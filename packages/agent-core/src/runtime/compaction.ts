@@ -3,6 +3,10 @@ import { setImmediate as waitForImmediate } from 'node:timers/promises';
 import { buildPreCompactionHistoryArchive } from '../compaction-archive.js';
 import type { CompactHistoryManualContext, LlmMessage } from '../ports.js';
 import { resolveHookSessionContext } from '../hooks/integration.js';
+import {
+  prepareToolOutputTruncationForHistory,
+  prepareToolOutputTruncationForToolAgentState,
+} from '../tool-output-truncation.js';
 
 import { cloneHistory, renderError } from './helpers.js';
 import type {
@@ -118,7 +122,48 @@ function buildCompactionRecord(
   };
 }
 
-function prepareHistoryForCompaction<
+function shouldPrepareToolOutputTruncation<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(runtime: CompactionRuntime<Config, State, ToolRequest, TrustTarget>): boolean {
+  return (
+    runtime.options.truncateHistoryForCompaction !== undefined ||
+    runtime.options.persistToolOutputArchive !== undefined
+  );
+}
+
+export async function prepareStateForContextRetryAsync<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  options: AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>,
+  state: State,
+): Promise<{ state: State; changed: boolean }> {
+  if (
+    !options.truncateStateForContextRetry &&
+    !options.persistToolOutputArchive
+  ) {
+    return { state, changed: false };
+  }
+
+  const sessionId = resolveHookSessionContext(options).sessionId;
+  const prepareOptions = {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(options.persistToolOutputArchive !== undefined
+      ? { persistArchive: options.persistToolOutputArchive }
+      : {}),
+  };
+  return prepareToolOutputTruncationForToolAgentState(state as never, prepareOptions) as Promise<{
+    state: State;
+    changed: boolean;
+  }>;
+}
+
+async function prepareHistoryForCompaction<
   Config,
   State,
   ToolRequest,
@@ -126,12 +171,19 @@ function prepareHistoryForCompaction<
 >(
   runtime: CompactionRuntime<Config, State, ToolRequest, TrustTarget>,
   archiveSourceHistory: LlmMessage[],
-): LlmMessage[] {
-  if (!runtime.options.truncateHistoryForCompaction) {
+): Promise<LlmMessage[]> {
+  if (!shouldPrepareToolOutputTruncation(runtime)) {
     return cloneHistory(archiveSourceHistory);
   }
 
-  const prepared = runtime.options.truncateHistoryForCompaction(archiveSourceHistory);
+  const sessionId = resolveHookSessionContext(runtime.options).sessionId;
+  const prepareOptions = {
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(runtime.options.persistToolOutputArchive !== undefined
+      ? { persistArchive: runtime.options.persistToolOutputArchive }
+      : {}),
+  };
+  const prepared = await prepareToolOutputTruncationForHistory(archiveSourceHistory, prepareOptions);
   return cloneHistory(prepared.history);
 }
 
@@ -148,7 +200,7 @@ export async function compactHistoryImmediate<
     runtime,
     archiveSourceHistory,
   );
-  const historyForCompaction = prepareHistoryForCompaction(runtime, archiveSourceHistory);
+  const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
   runtime.historyStore = cloneHistory(historyForCompaction);
 
   const compactionContext: CompactHistoryManualContext | undefined =
@@ -186,10 +238,6 @@ export function startHistoryCompactionAsync<
   resumeAsStreaming = false,
   streamingEmitBeginResponse = true,
 ): void {
-  const archiveSourceHistory = cloneHistory(runtime.historyStore);
-  const historyForCompaction = prepareHistoryForCompaction(runtime, archiveSourceHistory);
-  runtime.historyStore = cloneHistory(historyForCompaction);
-
   runtime.compactionTextStore = '';
   const pending: PendingAutoHistoryCompaction<State, ToolRequest> = {
     kind: 'auto-retry',
@@ -204,7 +252,21 @@ export function startHistoryCompactionAsync<
     result: undefined,
     failure: undefined,
   };
-  launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+  runtime.pendingHistoryCompaction = pending;
+
+  void (async () => {
+    try {
+      const archiveSourceHistory = cloneHistory(runtime.historyStore);
+      const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
+      runtime.historyStore = cloneHistory(historyForCompaction);
+      launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+    } catch (error: unknown) {
+      if (runtime.pendingHistoryCompaction !== pending) {
+        return;
+      }
+      pending.failure = renderError(error);
+    }
+  })();
 }
 
 export function startManualHistoryCompactionAsync<
@@ -215,10 +277,6 @@ export function startManualHistoryCompactionAsync<
 >(
   runtime: CompactionRuntime<Config, State, ToolRequest, TrustTarget>,
 ): void {
-  const archiveSourceHistory = cloneHistory(runtime.historyStore);
-  const historyForCompaction = prepareHistoryForCompaction(runtime, archiveSourceHistory);
-  runtime.historyStore = cloneHistory(historyForCompaction);
-
   runtime.compactionTextStore = '';
   const pending: PendingManualHistoryCompaction = {
     kind: 'manual',
@@ -226,7 +284,21 @@ export function startManualHistoryCompactionAsync<
     result: undefined,
     failure: undefined,
   };
-  launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+  runtime.pendingHistoryCompaction = pending;
+
+  void (async () => {
+    try {
+      const archiveSourceHistory = cloneHistory(runtime.historyStore);
+      const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
+      runtime.historyStore = cloneHistory(historyForCompaction);
+      launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+    } catch (error: unknown) {
+      if (runtime.pendingHistoryCompaction !== pending) {
+        return;
+      }
+      pending.failure = renderError(error);
+    }
+  })();
 }
 
 export function launchHistoryCompaction<

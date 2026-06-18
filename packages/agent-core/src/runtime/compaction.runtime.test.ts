@@ -250,6 +250,80 @@ test('compactHistoryImmediate archives pre-truncation history and compacts post-
   assert.ok(compactionToolText.length < longToolOutput.length);
 });
 
+test('compactHistoryImmediate persists tool output archive path in truncated excerpt', async () => {
+  const longToolOutput = 'y'.repeat(20_000);
+  const archivePath = '/SpiritAgent/tool-output-archives/smoke-sess/call-1.txt';
+  const history: LlmMessage[] = [
+    { role: 'user', content: createLlmMessageContentFromText('investigate') },
+    {
+      role: 'tool',
+      toolCallId: 'call-1',
+      content: createLlmMessageContentFromText(longToolOutput),
+    },
+  ];
+
+  let persistedContent = '';
+  let compactionToolText = '';
+
+  const llmTransport: LlmTransport<undefined, TestState> = {
+    startToolAgentRound: async () => {
+      throw new Error('not used');
+    },
+    async compactHistoryManual(_config, targetHistory) {
+      const toolMessage = targetHistory.find((entry) => entry.role === 'tool');
+      compactionToolText = llmMessageTextContent(toolMessage?.content ?? []);
+      targetHistory.splice(0, targetHistory.length, {
+        role: 'system',
+        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\nsummary`),
+      });
+      return { droppedMessages: 1, beforeLength: 2, afterLength: 1 };
+    },
+    compactSummaryText: () => 'summary',
+    isContextOverflowError: () => false,
+    llmHistoryAsApiMessages: () => [],
+    llmSystemPromptsForExport: () => ({}),
+  };
+
+  const options: AgentRuntimeOptions<undefined, TestState, never> = {
+    config: undefined,
+    llmTransport,
+    truncateHistoryForCompaction: truncateLlmHistoryForCompaction,
+    toolExecutor: {
+      execute: async () => {
+        throw new Error('not used');
+      },
+    } as unknown as AgentRuntimeOptions<undefined, TestState, never>['toolExecutor'],
+    createToolAgentState: () => ({ messages: [] }),
+    appendToolResultMessage: (state) => state,
+    extractAssistantText: () => undefined,
+    persistToolOutputArchive: async ({ content }) => {
+      persistedContent = content;
+      return archivePath;
+    },
+  };
+
+  const runtime: CompactionRuntime<undefined, TestState, never> = {
+    options,
+    historyStore: history,
+    compactionTextStore: '',
+    pendingHistoryCompaction: undefined,
+    completedManualHistoryCompactionResultStore: undefined,
+    emitEvent: () => {},
+    completeTurn: () => {},
+    startToolAgentRoundAsync: () => {},
+    startStreamingRound: async () => {},
+    takeCompletedManualHistoryCompactionResult: () => undefined,
+    isBusy: () => false,
+    poll: async () => {},
+  };
+
+  await compactHistoryImmediate(runtime);
+
+  assert.equal(persistedContent, longToolOutput);
+  assert.match(compactionToolText, /Full output archived at: \/SpiritAgent\/tool-output-archives\/smoke-sess\/call-1\.txt/u);
+  assert.match(compactionToolText, /Use read_file on that path only when you need omitted details\./u);
+});
+
 test('compactHistoryImmediate removes orphan archive when compaction fails after persist', async () => {
   const archivePath = '/tmp/spirit/compaction-archives/pre-compact-orphan.json';
   const history: LlmMessage[] = [

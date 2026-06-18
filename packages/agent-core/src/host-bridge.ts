@@ -166,6 +166,15 @@ interface CliHostInternalModule {
     options?: { sessionId?: string },
   ) => Promise<string>;
   removePreCompactionHistoryArchive?: (archivePath: string) => Promise<void>;
+  persistToolOutputArchive?: (
+    spiritDataDir: string,
+    input: {
+      content: string;
+      sessionId?: string;
+      toolCallId?: string;
+      messageIndex?: number;
+    },
+  ) => Promise<string>;
   loadHostInstructionMetadata: (
     context: { workspaceRoot: string; spiritDataDir: string },
     options?: { planMode?: boolean; agentMode?: SpiritAgentMode; activePlanPath?: string },
@@ -1815,6 +1824,19 @@ async function createRuntime(
         await remove(archivePath);
       } catch {
         // Best-effort orphan cleanup.
+      }
+    },
+    persistToolOutputArchive: async (input) => {
+      const hostInternal = await ensureCliHostInternal(workspaceRoot);
+      const persist = hostInternal?.module.persistToolOutputArchive;
+      if (!hostInternal || typeof persist !== 'function') {
+        return undefined;
+      }
+
+      try {
+        return await persist(hostInternal.spiritDataDir, input);
+      } catch {
+        return undefined;
       }
     },
   }, history) as HostRuntime;

@@ -198,6 +198,17 @@ test('toolCallSummaryForPhase: read_file splits headline and path detail', () =>
   );
 });
 
+test('toolCallSummaryForPhase: read_file tool-output-archives uses tool output detail', () => {
+  assert.deepEqual(
+    toolCallSummaryForPhase('succeeded', 'read_file', {
+      path: 'C:/Users/pc/AppData/Roaming/SpiritAgent/tool-output-archives/sess/call_1.txt',
+      start_line: 1,
+      end_line: 5,
+    }),
+    { headline: '查看', headlineDetail: '工具输出 1 - 5' },
+  );
+});
+
 test('toolCallSummaryCopyForRequest: shell reason and command', () => {
   assert.deepEqual(
     toolCallSummaryCopyForRequest('run_shell_command', {

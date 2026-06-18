@@ -18,6 +18,7 @@ import {
   type ScriptedState,
   type ScriptedToolRequest,
 } from './harness.js';
+import { truncateLlmHistoryForCompaction } from '../../../../llm-tool-agent.js';
 
 export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
   const pollingCompactEvents: RuntimeEvent<ScriptedToolRequest>[] = [];
@@ -189,9 +190,52 @@ export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
     throw new Error(`pre-compaction archive smoke 归档消息数异常: ${persistedMessageCount}`);
   }
 
+  const toolOutputArchivePath = '/tmp/spirit-smoke/tool-output-archives/smoke-tool-archive/call-archive-tool.txt';
+  let persistedToolOutput = '';
+  const toolOutputArchiveRuntime = new AgentRuntime({
+    config: undefined,
+    llmTransport: new CompactTransport(),
+    toolExecutor: new CompactExecutor(),
+    createToolAgentState: createScriptedState,
+    appendToolResultMessage: appendScriptedToolResult,
+    appendUserMessage: appendScriptedUserMessage,
+    extractAssistantText: extractScriptedAssistantText,
+    truncateHistoryForCompaction: truncateLlmHistoryForCompaction,
+    rebuildRetryStateAfterCompaction: rebuildScriptedStateAfterCompaction,
+    hookSessionContext: {
+      sessionId: 'smoke-tool-archive',
+      conversationPath: null,
+      workspaceRoot: '/tmp',
+      model: 'test-model',
+    },
+    persistToolOutputArchive: async ({ content }) => {
+      persistedToolOutput = content;
+      return toolOutputArchivePath;
+    },
+  }, [
+    {
+      role: 'user',
+      content: createLlmMessageContentFromText('inspect large tool output'),
+    },
+    {
+      role: 'tool',
+      toolCallId: 'call-archive-tool',
+      content: createLlmMessageContentFromText('z'.repeat(20_000)),
+    },
+  ]);
+
+  const toolOutputArchiveRecord = await toolOutputArchiveRuntime.compactHistory();
+  if (!persistedToolOutput || persistedToolOutput.length !== 20_000) {
+    throw new Error('tool output archive smoke 未持久化完整 tool 输出。');
+  }
+  if (toolOutputArchiveRecord.beforeLength < 2) {
+    throw new Error('tool output archive smoke 压缩前后长度异常。');
+  }
+
   return {
     compactResult,
     pollingCompactResult,
     archiveCompactionResult: archiveRecord,
+    toolOutputArchiveCompactionResult: toolOutputArchiveRecord,
   };
 }

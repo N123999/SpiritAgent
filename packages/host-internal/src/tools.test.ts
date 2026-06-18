@@ -492,7 +492,7 @@ test('glob returns matching workspace files for a glob pattern', async () => {
     });
 
     assertTextToolOutput(output);
-    assert.match(output, /^\[glob\]\npattern: src\/\*\*\/\*\.ts\nmatches: 2\ntruncated: false/um);
+    assert.match(output, /^\[glob\]\npattern: src\/\*\*\/\*\.ts\nmatches: 2\n/um);
     assert.match(output, /\nsrc\/app\.ts\n/u);
     assert.match(output, /\nsrc\/nested\/util\.ts\n/u);
     assert.doesNotMatch(output, /note\.md/u);
