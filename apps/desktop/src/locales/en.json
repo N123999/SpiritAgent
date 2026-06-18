@@ -1094,6 +1094,7 @@
     "read": "Read",
     "use": "Use",
     "file": "File",
+    "toolOutput": "tool output",
     "directory": "Directory",
     "generateImage": "Generate image",
     "generateVideo": "Generate video",

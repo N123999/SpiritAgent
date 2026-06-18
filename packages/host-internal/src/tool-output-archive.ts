@@ -5,8 +5,9 @@ import {
   sanitizeSessionIdForFilename,
   sanitizeToolCallIdForFilename,
 } from './spirit-filename-sanitize.js';
+import { TOOL_OUTPUT_ARCHIVES_DIR_NAME } from './tool-output-archive-path.js';
 
-export const TOOL_OUTPUT_ARCHIVES_DIR_NAME = 'tool-output-archives';
+export { isToolOutputArchivePath, TOOL_OUTPUT_ARCHIVES_DIR_NAME } from './tool-output-archive-path.js';
 
 export interface PersistToolOutputArchiveInput {
   content: string;

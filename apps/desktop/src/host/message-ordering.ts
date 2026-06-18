@@ -16,11 +16,13 @@ import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js'
 import { listDirectoryToolDisplayPath } from '@spirit-agent/host-internal/skill-paths';
 
 import {
-  isSkillMarkdownPath,
   parseReadFilePathFromRequest,
-  readFileVerbKey,
-  skillFolderBasename,
+  lineRangeForReadFile,
 } from '../lib/read-file-skill-display.js';
+import {
+  readFileToolHeadlineDetail,
+  readFileVerbKey,
+} from '../lib/read-file-tool-display.js';
 import { phaseToVerbContext } from '../lib/tool-verb-context.js';
 import {
   hasActiveRunSubagentToolInMessages,
@@ -1073,11 +1075,12 @@ function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase'
 
   const record = request as Record<string, unknown>;
   const rawPath = parseReadFilePathFromRequest(request);
-  const displayPath = isSkillMarkdownPath(rawPath)
-    ? skillFolderBasename(rawPath)
-    : displayPathForReadFile(rawPath);
   const lineRange = lineRangeForReadFile(record.start_line, record.end_line);
-  const detail = `${displayPath}${lineRange}`.trim();
+  const detail = readFileToolHeadlineDetail(rawPath, {
+    emptyFileLabel: i18n.t('tool.file'),
+    toolOutputLabel: i18n.t('tool.toolOutput'),
+    lineRange,
+  });
 
   return {
     headline: i18n.t(readFileVerbKey(rawPath), tOpts),
@@ -1140,27 +1143,6 @@ function displayPathForReadFile(path: string): string {
 
   const segments = normalized.split('/').filter(Boolean);
   return segments[segments.length - 1] || normalized;
-}
-
-function lineRangeForReadFile(startLine: unknown, endLine: unknown): string {
-  const start = positiveLineNumber(startLine);
-  const end = positiveLineNumber(endLine);
-  if (start !== undefined && end !== undefined) {
-    return ` ${start} - ${end}`;
-  }
-  if (start !== undefined) {
-    return ` ${start} -`;
-  }
-  if (end !== undefined) {
-    return ` 1 - ${end}`;
-  }
-  return '';
-}
-
-function positiveLineNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0
-    ? value
-    : undefined;
 }
 
 export function restoreMessagesFromArchive(

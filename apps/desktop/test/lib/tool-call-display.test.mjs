@@ -201,6 +201,29 @@ test('getToolCallSummaryParts: read_file SKILL.md re-translates from stored Chin
   }
 });
 
+test('getToolCallSummaryParts: read_file tool-output-archives uses tool output detail', async () => {
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      getToolCallSummaryParts({
+        toolName: 'read_file',
+        phase: 'succeeded',
+        headline: 'Read',
+        headlineDetail: 'call_1.txt',
+        argsExcerpt: JSON.stringify({
+          path: 'C:/Users/pc/AppData/Roaming/SpiritAgent/tool-output-archives/sess/call_1.txt',
+          start_line: 1,
+          end_line: 5,
+        }),
+        detailLines: [],
+      }),
+      { headline: 'Read', detail: 'tool output 1 - 5' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
 test('getToolCallSummaryParts: legacy Chinese "查看" headline still parsed', () => {
   assert.deepEqual(
     getToolCallSummaryParts({

@@ -59,6 +59,20 @@ export function readFileDisplayBase(path: string, emptyLabel: string): string {
   return readFileToolDisplayBase(path, emptyLabel);
 }
 
+export function readFileHeadlineDetailForPath(
+  rawPath: string,
+  options: {
+    emptyFileLabel: string;
+    lineRange?: string;
+  },
+): string {
+  const lineRange = options.lineRange ?? '';
+  const base = isSkillMarkdownPath(rawPath)
+    ? skillFolderBasename(rawPath)
+    : readFileToolDisplayBase(rawPath, options.emptyFileLabel);
+  return `${base}${lineRange}`.trim();
+}
+
 function positiveLineNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
     ? value

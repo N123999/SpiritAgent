@@ -79,6 +79,10 @@
       "types": "./dist/skill-paths.d.ts",
       "default": "./dist/skill-paths.js"
     },
+    "./tool-output-archive-path": {
+      "types": "./dist/tool-output-archive-path.d.ts",
+      "default": "./dist/tool-output-archive-path.js"
+    },
     "./tools": {
       "types": "./dist/tools.d.ts",
       "default": "./dist/tools.js"
