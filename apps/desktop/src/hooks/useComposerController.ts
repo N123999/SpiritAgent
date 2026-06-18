@@ -22,6 +22,7 @@ import {
 } from "@/lib/composer-direct-media";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
+import type { GitCommitAttachment } from "@/lib/git-commit-attachment";
 import type { FileSnippetAttachment } from "@/lib/file-snippet-attachment";
 import type { TerminalSnippetAttachment } from "@/lib/terminal-snippet-attachment";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
@@ -560,6 +561,12 @@ export function useComposerController({
     composerRichInputRef.current?.focus();
   }, []);
 
+  const handleGitCommitAddToSession = useCallback((attachment: GitCommitAttachment) => {
+    ensureConversationSurface();
+    composerRichInputRef.current?.insertGitCommitAttachment(attachment);
+    composerRichInputRef.current?.focus();
+  }, [ensureConversationSurface]);
+
   const handleTerminalAddToSession = useCallback((attachment: TerminalSnippetAttachment) => {
     composerRichInputRef.current?.insertTerminalSnippet(attachment);
     composerRichInputRef.current?.focus();
@@ -898,6 +905,7 @@ export function useComposerController({
     removeLocalFileAttachment,
     handleBrowserElementPicked,
     handlePrDiffAddToSession,
+    handleGitCommitAddToSession,
     handleTerminalAddToSession,
     handleFileSnippetAddToSession,
     handleWorkspaceFileAddToSession,

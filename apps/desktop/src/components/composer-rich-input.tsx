@@ -12,6 +12,7 @@ import {
 
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
 import type { PrDiffAttachment } from "@/lib/pr-diff-attachment";
+import type { GitCommitAttachment } from "@/lib/git-commit-attachment";
 import type { FileSnippetAttachment } from "@/lib/file-snippet-attachment";
 import type { TerminalSnippetAttachment } from "@/lib/terminal-snippet-attachment";
 import { hasInlineAttachmentChipSegments } from "@/lib/composer-inline-chip-dom";
@@ -126,6 +127,7 @@ export type ComposerRichInputHandle = {
   focus(): void;
   insertAttachment(a: BrowserElementAttachment): void;
   insertPrDiffAttachment(attachment: PrDiffAttachment): void;
+  insertGitCommitAttachment(attachment: GitCommitAttachment): void;
   insertTerminalSnippet(attachment: TerminalSnippetAttachment): void;
   insertFileSnippet(attachment: FileSnippetAttachment): void;
   insertWorkspaceFileReference(
@@ -407,6 +409,26 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           };
         const { segments: next, caret: nextCaret } = insertSegmentAtCaret(current, caret, {
           kind: "prDiff",
+          attachment,
+        });
+        commitSegments(next, nextCaret);
+      },
+      [commitSegments],
+    );
+
+    const insertGitCommitAttachment = useCallback(
+      (attachment: GitCommitAttachment) => {
+        const div = divRef.current;
+        if (!div) return;
+        div.focus();
+        const current = segmentsRef.current;
+        const caret =
+          selectionToCaret(div, current) ?? {
+            segmentIndex: current.length - 1,
+            offset: segmentsToPlainText(current).length,
+          };
+        const { segments: next, caret: nextCaret } = insertSegmentAtCaret(current, caret, {
+          kind: "gitCommit",
           attachment,
         });
         commitSegments(next, nextCaret);
@@ -703,6 +725,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         focus: () => divRef.current?.focus(),
         insertAttachment,
         insertPrDiffAttachment,
+        insertGitCommitAttachment,
         insertTerminalSnippet,
         insertFileSnippet,
         insertWorkspaceFileReference,
@@ -724,6 +747,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [
         insertAttachment,
         insertPrDiffAttachment,
+        insertGitCommitAttachment,
         insertTerminalSnippet,
         insertFileSnippet,
         insertWorkspaceFileReference,

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import { GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool, Terminal, FileText } from "lucide-react";
+import { GitCommit, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool, Terminal, FileText } from "lucide-react";
 
 import { BROWSER_ELEMENT_CHIP_CLASS } from "@/components/browser-element-card";
 import { ComposerLocalFileStrip } from "@/components/composer-local-file-strip";
@@ -16,6 +16,11 @@ import {
   trimMessageTextAroundElements,
   type MessageContentPart,
 } from "@/lib/composer-segment-model";
+import {
+  formatGitCommitChipLabel,
+  formatGitCommitChipTitle,
+} from "@/lib/git-commit-chip-styles";
+import { PLAN_CHIP_CLASS, PLAN_CHIP_ICON_CLASS } from "@/lib/plan-chip-styles";
 import {
   formatPrDiffChipLabel,
   formatPrDiffChipTitle,
@@ -145,13 +150,37 @@ function FileSnippetCard({
   );
 }
 
+function GitCommitCard({
+  part,
+}: {
+  part: Extract<MessageContentPart, { kind: "gitCommit" }>;
+}) {
+  return (
+    <span
+      title={formatGitCommitChipTitle({
+        id: "",
+        oid: part.oid,
+        subject: part.subject,
+        author: part.author,
+        authoredAt: part.authoredAt,
+        fullMessage: part.fullMessage,
+      })}
+      className={PLAN_CHIP_CLASS}
+    >
+      <GitCommit className={cn("size-[10px] shrink-0", PLAN_CHIP_ICON_CLASS)} aria-hidden />
+      {formatGitCommitChipLabel(part.subject)}
+    </span>
+  );
+}
+
 function isInlineChipPart(
   part: MessageContentPart | null | undefined,
-): part is Extract<MessageContentPart, { kind: "element" | "workspaceFile" | "prDiff" | "terminalSnippet" | "fileSnippet" }> {
+): part is Extract<MessageContentPart, { kind: "element" | "workspaceFile" | "prDiff" | "gitCommit" | "terminalSnippet" | "fileSnippet" }> {
   return (
     part?.kind === "element"
     || part?.kind === "workspaceFile"
     || part?.kind === "prDiff"
+    || part?.kind === "gitCommit"
     || part?.kind === "terminalSnippet"
     || part?.kind === "fileSnippet"
   );
@@ -202,6 +231,7 @@ export function UserMessageBubble({
           p.kind === "element"
           || p.kind === "workspaceFile"
           || p.kind === "prDiff"
+          || p.kind === "gitCommit"
           || p.kind === "terminalSnippet"
           || p.kind === "fileSnippet",
       )) &&
@@ -247,6 +277,9 @@ export function UserMessageBubble({
               }
               if (part.kind === "prDiff") {
                 return <PrDiffCard key={i} part={part} />;
+              }
+              if (part.kind === "gitCommit") {
+                return <GitCommitCard key={i} part={part} />;
               }
               if (part.kind === "terminalSnippet") {
                 return <TerminalCard key={i} part={part} />;
