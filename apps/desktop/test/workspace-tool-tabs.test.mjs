@@ -12,6 +12,7 @@ import {
   focusFirstTabOfKind,
   isBrowserNewTabUrl,
   normalizeWorkspaceToolTabsForHost,
+  openBrowserUrlInWorkspaceTabs,
   workspaceTerminalChipDisplayName,
   workspaceToolTabLabel,
 } from "../src/lib/workspace-tool-tabs.ts";
@@ -158,4 +159,24 @@ test("createInitialWorkspaceToolsState uses same tabs for active id", () => {
   const { tabs, activeTabId } = createInitialWorkspaceToolsState();
   assert.ok(tabs.some((t) => t.id === activeTabId));
   assert.equal(tabs.find((t) => t.id === activeTabId)?.kind, "files");
+});
+
+test("openBrowserUrlInWorkspaceTabs reuses untitled browser tab", () => {
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser: true });
+  const browserTab = tabs.find((t) => t.kind === "browser");
+  assert.ok(browserTab);
+  const result = openBrowserUrlInWorkspaceTabs(tabs, "https://example.com/docs");
+  assert.equal(result.tabs.filter((t) => t.kind === "browser").length, 1);
+  assert.equal(result.activeId, browserTab.id);
+  assert.equal(result.tabs.find((t) => t.id === browserTab.id)?.browserUrl, "https://example.com/docs");
+});
+
+test("openBrowserUrlInWorkspaceTabs creates new tab when titled browser tab exists", () => {
+  const tabs = createDefaultWorkspaceToolTabs({ includeBrowser: true });
+  const browserTab = tabs.find((t) => t.kind === "browser");
+  assert.ok(browserTab);
+  browserTab.tabTitle = "Example Docs";
+  const result = openBrowserUrlInWorkspaceTabs(tabs, "https://example.com/other");
+  assert.equal(result.tabs.filter((t) => t.kind === "browser").length, 2);
+  assert.notEqual(result.activeId, browserTab.id);
 });

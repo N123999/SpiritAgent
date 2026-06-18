@@ -41,7 +41,7 @@ import {
 } from "@/lib/desktop-shell";
 import { isMarkdownPath } from "@/lib/file-picker-path";
 import { isWorkspaceReferenceDirectoryPath, normalizeWorkspaceReferenceDirectoryPath } from "@spirit-agent/host-internal/workspace-file-reference-query";
-import { tryHandleGitHubPullRequestMarkdownLink } from "@/lib/github-markdown-link";
+import { tryHandleDesktopWorkspaceLink } from "@/lib/workspace-navigation-link";
 import { resolveDark } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -171,10 +171,24 @@ export default function App() {
 
   const handleWorkspaceMarkdownLinkClick = useCallback(
     (href: string) =>
-      tryHandleGitHubPullRequestMarkdownLink(href, workspaceTools.openPullRequestInPrTab, {
-        interceptInApp: workspaceTools.prTabEnabled && gitHubAuthConnected === true,
-      }),
-    [gitHubAuthConnected, workspaceTools.openPullRequestInPrTab, workspaceTools.prTabEnabled],
+      tryHandleDesktopWorkspaceLink(
+        href,
+        {
+          openPullRequestInPrTab: workspaceTools.openPullRequestInPrTab,
+          openBrowserUrlInNewTab: workspaceTools.openBrowserUrlInNewTab,
+        },
+        {
+          hostKind: runtime.hostKind ?? undefined,
+          interceptPrInApp: workspaceTools.prTabEnabled && gitHubAuthConnected === true,
+        },
+      ),
+    [
+      gitHubAuthConnected,
+      runtime.hostKind,
+      workspaceTools.openBrowserUrlInNewTab,
+      workspaceTools.openPullRequestInPrTab,
+      workspaceTools.prTabEnabled,
+    ],
   );
 
   if (runtime.webHostPairingRequired && runtime.hostKind === "web" && !snapshot) {

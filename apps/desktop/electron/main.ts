@@ -647,6 +647,14 @@ async function createMainWindow(): Promise<BrowserWindow> {
   registerDesktopAttention(window);
   registerWindowPresence(window);
 
+  window.webContents.setWindowOpenHandler((details) => {
+    const url = typeof details.url === 'string' ? details.url.trim() : '';
+    if (url && isAllowedExternalUrl(url) && !window.webContents.isDestroyed()) {
+      window.webContents.send('desktop:browser-open-url', { url });
+    }
+    return { action: 'deny' };
+  });
+
   return window;
 }
 
@@ -982,12 +990,15 @@ if (gotSpiritSingleInstanceLock) {
     openSystemTerminalInDirectory(cwd);
   });
 
-  ipcMain.handle('desktop:open-external-url', async (_event, payload: { url?: string }) => {
+  ipcMain.handle('desktop:open-external-url', async (event, payload: { url?: string }) => {
     const url = typeof payload?.url === 'string' ? payload.url.trim() : '';
     if (!url || !isAllowedExternalUrl(url)) {
       throw new Error('Invalid external URL');
     }
-    await shell.openExternal(url);
+    if (event.sender.isDestroyed()) {
+      return;
+    }
+    event.sender.send('desktop:browser-open-url', { url });
   });
 
   ipcMain.handle(

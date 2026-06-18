@@ -127,6 +127,21 @@ export function addWorkspaceToolTab(
   return { tabs: [...tabs, tab], activeId: tab.id };
 }
 
+/** 打开 URL：优先复用无标题的空浏览器 tab，否则新建。 */
+export function openBrowserUrlInWorkspaceTabs(
+  tabs: readonly WorkspaceToolTab[],
+  url: string,
+): { tabs: WorkspaceToolTab[]; activeId: string } {
+  const vacant = tabs.find((tab) => tab.kind === "browser" && !tab.tabTitle?.trim());
+  if (vacant) {
+    return {
+      tabs: tabs.map((tab) => (tab.id === vacant.id ? { ...tab, browserUrl: url } : tab)),
+      activeId: vacant.id,
+    };
+  }
+  return addWorkspaceBrowserTabWithUrl(tabs, url);
+}
+
 /** 新建浏览器子标签并直接带上目标 URL（避免先落在新标签页 sentinel 再二次更新）。 */
 export function addWorkspaceBrowserTabWithUrl(
   tabs: readonly WorkspaceToolTab[],

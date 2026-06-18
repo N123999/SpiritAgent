@@ -4,12 +4,12 @@ import type { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { normalizeBrowserUrl } from "@/lib/browser-url";
 import { readWorkspaceToolsWidthPx } from "@/lib/layout-prefs";
 import {
-  addWorkspaceBrowserTabWithUrl,
   addWorkspaceToolTab,
   createInitialWorkspaceToolsState,
   findWorkspaceToolTab,
   focusFirstTabOfKind,
   normalizeWorkspaceToolTabsForHost,
+  openBrowserUrlInWorkspaceTabs,
 } from "@/lib/workspace-tool-tabs";
 import {
   buildOpenEditorFileNavigation,
@@ -85,16 +85,10 @@ export function useWorkspaceToolsController({
     if (!url) {
       return;
     }
+    const navigation = openBrowserUrlInWorkspaceTabs(workspaceToolTabsRef.current, url);
     setWorkspaceToolsOpen(true);
-    let nextActiveId = "";
-    setWorkspaceToolTabs((prev) => {
-      const next = addWorkspaceBrowserTabWithUrl(prev, url);
-      nextActiveId = next.activeId;
-      return next.tabs;
-    });
-    if (nextActiveId) {
-      setActiveWorkspaceToolTabId(nextActiveId);
-    }
+    setWorkspaceToolTabs(navigation.tabs);
+    setActiveWorkspaceToolTabId(navigation.activeId);
   }, [runtime.hostKind]);
 
   const openEditorFile = useCallback((target: EditorFileTarget) => {
