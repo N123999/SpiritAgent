@@ -32,6 +32,7 @@ import {
 } from '../hooks/tool-hooks.js';
 import { toolInputFromArgumentsJson } from '../hooks/integration.js';
 import { appendToolResultMessages, isJsonObject } from '../tool-agent.js';
+import { prepareStateForContextRetryAsync } from './compaction.js';
 import { buildEarlyExecutableArgumentsJson } from '../tool-streaming-preview-gate.js';
 import {
   applyDeferredUserGuidance,
@@ -447,9 +448,7 @@ export async function runTurnLoop<
         turn.autoCompactAttempts < (runtime.options.maxAutoCompactRetries ?? 1)
       ) {
         turn.autoCompactAttempts += 1;
-        const preparedRetry = runtime.options.truncateStateForContextRetry
-          ? runtime.options.truncateStateForContextRetry(currentState)
-          : { state: currentState, changed: false };
+        const preparedRetry = await prepareStateForContextRetryAsync(runtime.options, currentState);
 
         try {
           const compaction = await runtime.compactHistoryImmediate();
@@ -975,9 +974,7 @@ export async function handlePendingToolAgentRoundCompletion<
       pending.turn.autoCompactAttempts < (runtime.options.maxAutoCompactRetries ?? 1)
     ) {
       pending.turn.autoCompactAttempts += 1;
-      const preparedRetry = runtime.options.truncateStateForContextRetry
-        ? runtime.options.truncateStateForContextRetry(pending.state)
-        : { state: pending.state, changed: false };
+      const preparedRetry = await prepareStateForContextRetryAsync(runtime.options, pending.state);
       runtime.startHistoryCompactionAsync(
         preparedRetry.state,
         pending.pendingUserInput,

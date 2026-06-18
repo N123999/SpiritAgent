@@ -415,6 +415,12 @@ export interface AgentRuntimeOptions<
     sessionId?: string;
   }) => Promise<string | undefined>;
   removePreCompactionHistoryArchive?: (archivePath: string) => Promise<void>;
+  persistToolOutputArchive?: (input: {
+    sessionId?: string;
+    toolCallId?: string;
+    content: string;
+    messageIndex?: number;
+  }) => Promise<string | undefined>;
   resolveWorkspaceFilesFromInput?: (
     userInput: string,
   ) => Promise<PendingWorkspaceFile[]> | PendingWorkspaceFile[];

@@ -32,6 +32,11 @@ export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
 export const PRE_COMPACTION_ARCHIVE_READ_FILE_GUIDANCE =
   'Important details may be recovered by reading this file with read_file.';
 
+export const TOOL_OUTPUT_ARCHIVE_READ_FILE_GUIDANCE =
+  'Use read_file on that path only when you need omitted details.';
+
+export const TOOL_OUTPUT_TRUNCATION_LABEL = '[tool output truncated for context retry]';
+
 const PRE_COMPACTION_ARCHIVE_EXAMPLE_PATH =
   '/path/to/compaction-archives/pre-compact-session-1234567890.json';
 
@@ -482,11 +487,7 @@ export function truncateHistoryForCompaction(
       };
     }
 
-    const replacement = buildContextRetryExcerpt(
-      contentText,
-      TOOL_OUTPUT_RETRY_MAX_CHARS,
-      '[tool output truncated for context retry]',
-    );
+    const replacement = buildContextRetryExcerpt(contentText);
     if (replacement === undefined) {
       return {
         role: message.role,
@@ -1020,29 +1021,28 @@ function truncateMessageContentForRetry(
   content: string,
 ): string | undefined {
   if (role === 'tool') {
-    return buildContextRetryExcerpt(
-      content,
-      TOOL_OUTPUT_RETRY_MAX_CHARS,
-      '[tool output truncated for context retry]',
-    );
+    return buildContextRetryExcerpt(content);
   }
 
   return undefined;
 }
 
-function buildContextRetryExcerpt(
+export function buildContextRetryExcerpt(
   text: string,
-  maxChars: number,
-  label: string,
+  archivePath?: string,
 ): string | undefined {
   const chars = Array.from(text);
-  if (chars.length <= maxChars) {
+  if (chars.length <= TOOL_OUTPUT_RETRY_MAX_CHARS) {
     return undefined;
   }
 
   const totalLines = text.split(/\r?\n/).length;
-  const overhead = Array.from(label).length + 160;
-  const usable = Math.max(maxChars - overhead, 256);
+  const label = TOOL_OUTPUT_TRUNCATION_LABEL;
+  const archiveHint = archivePath?.trim()
+    ? `\nFull output archived at: ${archivePath.trim()}\n${TOOL_OUTPUT_ARCHIVE_READ_FILE_GUIDANCE}`
+    : '';
+  const overhead = Array.from(label).length + Array.from(archiveHint).length + 160;
+  const usable = Math.max(TOOL_OUTPUT_RETRY_MAX_CHARS - overhead, 256);
   const headChars = Math.floor((usable * TOOL_TRUNCATION_HEAD_RATIO_NUM) / TOOL_TRUNCATION_HEAD_RATIO_DEN);
   const tailChars = Math.max(usable - headChars, 0);
   const head = takeFirstChars(text, headChars);
@@ -1050,9 +1050,11 @@ function buildContextRetryExcerpt(
   const omittedChars = Math.max(chars.length - Array.from(head).length - Array.from(tail).length, 0);
   const omittedLines = Math.max(totalLines - head.split(/\r?\n/).length - tail.split(/\r?\n/).length, 0);
 
+  const middle = `${label} omitted_chars=${omittedChars} omitted_lines≈${omittedLines}${archiveHint}`;
+
   return [
     head,
-    `${label} omitted_chars=${omittedChars} omitted_lines≈${omittedLines}`,
+    middle,
     tail,
   ]
     .filter((part) => part.trim().length > 0)
