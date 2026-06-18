@@ -129,6 +129,9 @@ export type WorkspaceToolsDockProps = {
     attachment: import("@/lib/file-snippet-attachment").FileSnippetAttachment,
   ) => void;
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
+  onGitCommitAddToSession?: (
+    attachment: import("@/lib/git-commit-attachment").GitCommitAttachment,
+  ) => void;
   onBrowserOpenInNewTab?: WorkspaceBrowserTabProps['onOpenUrlInNewTab'];
   /** Electron 桌面版可新建/使用浏览器选项卡；Web 宿主菜单项可见但禁用。 */
   browserTabEnabled?: boolean;
@@ -174,6 +177,7 @@ export type WorkspaceToolsDockProps = {
   gitChipBusy?: boolean;
   readGitWorkingTree: () => Promise<GitWorkingTreeSnapshot>;
   readGitHistory: (request?: ReadGitHistoryRequest) => Promise<GitHistorySnapshot>;
+  readGitCommitMessage: (request: import("@/types").ReadGitCommitMessageRequest) => Promise<import("@/types").GitCommitMessageSnapshot>;
   submitGitChip: (request: SubmitGitChipRequest) => Promise<boolean>;
   className?: string;
   /** Windows 云母 / macOS Vibrancy：工作区面板使用半透明主题底色。 */
@@ -213,6 +217,7 @@ function WorkspaceToolsDockInner({
   onTerminalAddToSession,
   onFileSnippetAddToSession,
   onWorkspaceFileAddToSession,
+  onGitCommitAddToSession,
   onBrowserOpenInNewTab,
   browserTabEnabled = false,
   prTabEnabled = false,
@@ -237,6 +242,7 @@ function WorkspaceToolsDockInner({
   gitChipBusy = false,
   readGitWorkingTree,
   readGitHistory,
+  readGitCommitMessage,
   submitGitChip,
   className,
   useMicaBackdrop = false,
@@ -755,7 +761,9 @@ function WorkspaceToolsDockInner({
                         gitChipBusy={gitChipBusy}
                         readGitWorkingTree={readGitWorkingTree}
                         readGitHistory={readGitHistory}
+                        readGitCommitMessage={readGitCommitMessage}
                         submitGitChip={submitGitChip}
+                        onGitCommitAddToSession={onGitCommitAddToSession}
                         onOpenChangedFile={onOpenWorkspaceFile}
                       />
                     </div>

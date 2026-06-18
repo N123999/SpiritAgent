@@ -149,6 +149,9 @@ export type WorkspaceToolsSectionProps = {
   onWorkspaceFileAddToSession?: NonNullable<
     ComponentProps<typeof WorkspaceToolsDock>["onWorkspaceFileAddToSession"]
   >;
+  onGitCommitAddToSession?: NonNullable<
+    ComponentProps<typeof WorkspaceToolsDock>["onGitCommitAddToSession"]
+  >;
   onBrowserOpenInNewTab: (rawUrl: string) => void;
   browserTabEnabled: boolean;
   prTabEnabled: boolean;
@@ -390,6 +393,7 @@ export function ConversationView({
           onTerminalAddToSession={workspaceTools.onTerminalAddToSession}
           onFileSnippetAddToSession={workspaceTools.onFileSnippetAddToSession}
           onWorkspaceFileAddToSession={workspaceTools.onWorkspaceFileAddToSession}
+          onGitCommitAddToSession={workspaceTools.onGitCommitAddToSession}
           onBrowserOpenInNewTab={workspaceTools.onBrowserOpenInNewTab}
           browserTabEnabled={workspaceTools.browserTabEnabled}
           prTabEnabled={workspaceTools.prTabEnabled}
@@ -412,6 +416,7 @@ export function ConversationView({
           gitChipBusy={workspaceTools.gitChipBusy}
           readGitWorkingTree={list.runtime.readGitWorkingTree}
           readGitHistory={list.runtime.readGitHistory}
+          readGitCommitMessage={list.runtime.readGitCommitMessage}
           submitGitChip={list.runtime.submitGitChip}
         />
       </div>

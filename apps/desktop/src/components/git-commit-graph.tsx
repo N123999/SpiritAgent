@@ -17,8 +17,9 @@ import {
   useHoverDetailTooltipContext,
 } from "@/components/ui/hover-detail-tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { WorkspaceGitCommitContextMenu } from "@/components/workspace-git-commit-context-menu";
 import { cn } from "@/lib/utils";
-import type { GitCommitGraphRow, GitHistorySnapshot } from "@/types";
+import type { GitCommitGraphRow, GitCommitRecord, GitHistorySnapshot } from "@/types";
 
 const ROW_HEIGHT_PX = 32;
 const LANE_WIDTH_PX = 16;
@@ -104,6 +105,8 @@ export type GitCommitGraphProps = {
   loadingMore?: boolean;
   hasMore?: boolean;
   onLoadMore?: () => void;
+  onAddCommitToSession?: (commit: GitCommitRecord) => void;
+  addCommitToSessionDisabled?: boolean;
   error?: string;
   className?: string;
 };
@@ -496,9 +499,13 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
 function CommitGraphRowWithHover({
   row,
   textInset,
+  onAddCommitToSession,
+  addCommitToSessionDisabled = false,
 }: {
   row: GitCommitGraphRow;
   textInset: number;
+  onAddCommitToSession?: (commit: GitCommitRecord) => void;
+  addCommitToSessionDisabled?: boolean;
 }) {
   const { getTriggerProps } = useHoverDetailTooltipContext<GitCommitGraphRow>();
   const { onPointerEnter, isHighlighted } = getTriggerProps(row);
@@ -518,13 +525,25 @@ function CommitGraphRowWithHover({
     </button>
   );
 
+  const trigger = onAddCommitToSession ? (
+    <WorkspaceGitCommitContextMenu
+      commit={row.commit}
+      onAddToSession={onAddCommitToSession}
+      addToSessionDisabled={addCommitToSessionDisabled}
+    >
+      {rowButton}
+    </WorkspaceGitCommitContextMenu>
+  ) : (
+    rowButton
+  );
+
   return (
     <div
       className="relative min-w-0"
       style={{ minHeight: ROW_HEIGHT_PX, paddingLeft: textInset }}
     >
       <HoverDetailTooltip.Anchor itemId={row.commit.oid}>
-        {rowButton}
+        {trigger}
       </HoverDetailTooltip.Anchor>
     </div>
   );
@@ -536,6 +555,8 @@ export function GitCommitGraph({
   loadingMore = false,
   hasMore = false,
   onLoadMore,
+  onAddCommitToSession,
+  addCommitToSessionDisabled = false,
   error,
   className,
 }: GitCommitGraphProps) {
@@ -671,6 +692,8 @@ export function GitCommitGraph({
                 key={row.commit.oid}
                 row={row}
                 textInset={textInsetForRow(row, rowIndex, rows)}
+                onAddCommitToSession={onAddCommitToSession}
+                addCommitToSessionDisabled={addCommitToSessionDisabled}
               />
             ))}
           </HoverDetailTooltip.TriggerZone>

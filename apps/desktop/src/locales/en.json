@@ -746,6 +746,7 @@
     "prChangesViewOnGitHub": "View on GitHub",
     "addSelectionToSession": "Add to Session",
     "addFileToSession": "Add to Session",
+    "addCommitToSession": "Add to Session",
     "fileActions": "File actions",
     "revealInExplorer": {
       "win32": "Reveal in File Explorer",
@@ -813,6 +814,8 @@
       "noHistory": "No commits yet.",
       "copySha": "Copy SHA",
       "copiedSha": "Copied",
+      "commitActions": "Commit actions",
+      "commitMessageUnavailable": "Could not load the full commit message.",
       "resizeChangesHistory": "Resize Changes and History height",
       "push": "Push",
       "moreActions": "More Git actions",

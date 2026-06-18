@@ -559,6 +559,7 @@ export default function App() {
               onTerminalAddToSession: composer.handleTerminalAddToSession,
               onFileSnippetAddToSession: composer.handleFileSnippetAddToSession,
               onWorkspaceFileAddToSession: composer.handleWorkspaceFileAddToSession,
+              onGitCommitAddToSession: composer.handleGitCommitAddToSession,
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
               prTabEnabled: workspaceTools.prTabEnabled,

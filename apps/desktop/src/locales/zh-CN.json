@@ -744,6 +744,7 @@
     "prChangesViewOnGitHub": "在 GitHub 查看",
     "addSelectionToSession": "添加到会话",
     "addFileToSession": "添加到会话",
+    "addCommitToSession": "添加到会话",
     "fileActions": "文件操作",
     "revealInExplorer": {
       "win32": "在文件资源管理器中显示",
@@ -811,6 +812,8 @@
       "noHistory": "暂无提交记录。",
       "copySha": "复制 SHA",
       "copiedSha": "已复制",
+      "commitActions": "提交操作",
+      "commitMessageUnavailable": "无法加载完整提交信息。",
       "resizeChangesHistory": "调整更改与历史区域高度",
       "push": "推送",
       "moreActions": "更多 Git 操作",

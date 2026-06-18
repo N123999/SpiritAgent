@@ -13,10 +13,13 @@ import {
   writeGitChangesPaneRatio,
 } from "@/lib/layout-prefs";
 import { cn } from "@/lib/utils";
+import type { GitCommitAttachment } from "@/lib/git-commit-attachment";
 import type {
   DesktopGitSnapshot,
+  GitCommitRecord,
   GitHistorySnapshot,
   GitWorkingTreeSnapshot,
+  ReadGitCommitMessageRequest,
   ReadGitHistoryRequest,
   SubmitGitChipRequest,
 } from "@/types";
@@ -34,7 +37,9 @@ export type WorkspaceGitTabProps = {
   gitChipBusy: boolean;
   readGitWorkingTree: () => Promise<GitWorkingTreeSnapshot>;
   readGitHistory: (request?: ReadGitHistoryRequest) => Promise<GitHistorySnapshot>;
+  readGitCommitMessage: (request: ReadGitCommitMessageRequest) => Promise<import("@/types").GitCommitMessageSnapshot>;
   submitGitChip: (request: SubmitGitChipRequest) => Promise<boolean>;
+  onGitCommitAddToSession?: (attachment: GitCommitAttachment) => void;
   onOpenChangedFile?: (
     relativePath: string,
     options?: { viewMode?: WorkspaceEditorViewMode },
@@ -48,7 +53,9 @@ export function WorkspaceGitTab({
   gitChipBusy,
   readGitWorkingTree,
   readGitHistory,
+  readGitCommitMessage,
   submitGitChip,
+  onGitCommitAddToSession,
   onOpenChangedFile,
   className,
 }: WorkspaceGitTabProps) {
@@ -60,6 +67,8 @@ export function WorkspaceGitTab({
   const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
   const [treeError, setTreeError] = useState("");
   const [historyError, setHistoryError] = useState("");
+  const [loadingCommitMessage, setLoadingCommitMessage] = useState(false);
+  const [commitMessageError, setCommitMessageError] = useState("");
   const prevTabActiveRef = useRef(false);
   const prevBranchRef = useRef<string | undefined>(undefined);
   const prevHasChangesRef = useRef<boolean | undefined>(undefined);
@@ -296,6 +305,38 @@ export function WorkspaceGitTab({
     [flashMergeButtonSucceeded, submitGitChip],
   );
 
+  const handleAddCommitToSession = useCallback(
+    (commit: GitCommitRecord) => {
+      if (!onGitCommitAddToSession || loadingCommitMessage) {
+        return;
+      }
+      setCommitMessageError("");
+      setLoadingCommitMessage(true);
+      void readGitCommitMessage({ oid: commit.oid })
+        .then((snapshot) => {
+          if (!snapshot.isRepository || !snapshot.oid) {
+            throw new Error(t("workspace.git.commitMessageUnavailable"));
+          }
+          const attachment: GitCommitAttachment = {
+            id: crypto.randomUUID(),
+            oid: snapshot.oid,
+            subject: commit.subject || snapshot.subject,
+            author: snapshot.author || commit.author,
+            authoredAt: snapshot.authoredAt || commit.authoredAt,
+            fullMessage: snapshot.fullMessage,
+          };
+          onGitCommitAddToSession(attachment);
+        })
+        .catch((error: unknown) => {
+          setCommitMessageError(describeError(error));
+        })
+        .finally(() => {
+          setLoadingCommitMessage(false);
+        });
+    },
+    [loadingCommitMessage, onGitCommitAddToSession, readGitCommitMessage, t],
+  );
+
   const canMerge =
     gitSnapshot?.isWorktreeSession === true &&
     Boolean(gitSnapshot?.worktreeBranch) &&
@@ -357,7 +398,9 @@ export function WorkspaceGitTab({
           loadingMore={loadingMoreHistory}
           hasMore={history?.hasMore === true}
           onLoadMore={loadMoreHistory}
-          error={historyError}
+          onAddCommitToSession={onGitCommitAddToSession ? handleAddCommitToSession : undefined}
+          addCommitToSessionDisabled={loadingCommitMessage}
+          error={historyError || commitMessageError || undefined}
         />
       </div>
     </div>
