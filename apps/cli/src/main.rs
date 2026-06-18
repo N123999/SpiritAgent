@@ -35,6 +35,8 @@ const EXPLICIT_PASTE_REPLAY_MAX_GAP: Duration = Duration::from_millis(750);
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LSHIFT, VK_RSHIFT};
 
+// 俳句一枚，献给所有在 async 中追寻确定性的 Rustacean：
+// Async futures wake  /  Borrow checker guards the stack  /  CLI whispers back
 #[derive(Parser)]
 #[command(name = "spirit")]
 #[command(version)]

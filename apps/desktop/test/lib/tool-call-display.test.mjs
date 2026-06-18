@@ -249,6 +249,22 @@ test('getToolCallSummaryParts: get_diagnostics failed uses checking headline not
   );
 });
 
+test('getToolCallSummaryParts: todo_complete prefers title from outputExcerpt', () => {
+  assert.deepEqual(
+    getToolCallSummaryParts({
+      toolName: 'todo_complete',
+      phase: 'succeeded',
+      headline: '完成 TODO',
+      headlineDetail: 'bc33e76c',
+      outputExcerpt: JSON.stringify({
+        todo: { id: 'bc33e76c', title: 'Inject haiku into main.rs' },
+      }),
+      detailLines: [],
+    }),
+    { headline: '完成 TODO', detail: 'Inject haiku into main.rs' },
+  );
+});
+
 test('getToolCallSummaryParts: shell verb uses tense in English', async () => {
   await i18n.changeLanguage('en');
   try {

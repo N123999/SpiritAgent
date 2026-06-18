@@ -872,7 +872,9 @@ export class DesktopRuntimeEventOrchestrator {
               execution.failed ? 'failed' : 'succeeded',
               execution.toolName,
               execution.request,
-              this.toolSummaryOptions(),
+              execution.toolName === 'todo_complete'
+                ? { ...this.toolSummaryOptions(), executionOutput: execution.output }
+                : this.toolSummaryOptions(),
             );
       const argsExcerpt = truncateJson(execution.request);
       const fileToolDiffArgumentsJson = FILE_DIFF_TOOL_NAMES.has(execution.toolName)

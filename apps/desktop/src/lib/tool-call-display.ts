@@ -17,6 +17,7 @@ import {
   readFileVerbKey,
 } from '@/lib/read-file-tool-display';
 import { phaseToVerbContext } from '@/lib/tool-verb-context';
+import { todoTitleFromCompleteOutput } from '@/lib/todo-tool-display.js';
 import type { ToolBlockSnapshot } from '@/types';
 
 export type ShellToolSummaryParts = {
@@ -251,9 +252,14 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
   const verbKey = TOOL_VERB_KEY_MAP[tool.toolName];
   if (verbKey) {
     const ctx = phaseToVerbContext(tool.phase);
+    const todoCompleteTitle =
+      tool.toolName === 'todo_complete'
+        ? todoTitleFromCompleteOutput(tool.outputExcerpt)
+        : undefined;
+    const detail = todoCompleteTitle || snapshotDetail;
     return {
       headline: i18n.t(verbKey, ctx ? { context: ctx } : {}),
-      ...(snapshotDetail ? { detail: snapshotDetail } : {}),
+      ...(detail ? { detail } : {}),
     };
   }
 

@@ -24,6 +24,7 @@ import {
   readFileVerbKey,
 } from '../lib/read-file-tool-display.js';
 import { phaseToVerbContext } from '../lib/tool-verb-context.js';
+import { todoTitleFromCompleteOutput } from '../lib/todo-tool-display.js';
 import {
   hasActiveRunSubagentToolInMessages,
   hasInFlightSubagentDelegationInMessages,
@@ -188,7 +189,11 @@ export interface ToolCallSummaryCopy {
 
 export type ToolCallSummaryOptions = {
   workspaceRoot?: string;
+  /** Host tool JSON output; used when request alone lacks display fields (e.g. todo_complete title). */
+  executionOutput?: unknown;
 };
+
+export { todoTitleFromCompleteOutput } from '../lib/todo-tool-display.js';
 
 const SUMMARY_DETAIL_MAX = 80;
 const SUBAGENT_TASK_PREVIEW_MAX = 48;
@@ -406,10 +411,14 @@ export function toolCallSummaryCopyForRequest(
       };
     }
     case 'todo_complete': {
+      const title = options?.executionOutput
+        ? todoTitleFromCompleteOutput(options.executionOutput)
+        : undefined;
       const id = typeof record.id === 'string' ? record.id.trim() : '';
+      const detail = title || id;
       return {
         headline: i18n.t('tool.todoComplete', tOpts),
-        ...(id ? { headlineDetail: truncateSummaryDetail(id) } : {}),
+        ...(detail ? { headlineDetail: truncateSummaryDetail(detail) } : {}),
       };
     }
     case 'todo_list':

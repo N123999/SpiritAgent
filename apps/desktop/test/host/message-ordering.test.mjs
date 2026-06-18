@@ -187,6 +187,42 @@ test('toolCallSummaryCopyForRequest: todo_create uses item count detail', () => 
   );
 });
 
+test('toolCallSummaryCopyForRequest: todo_complete prefers title from execution output', () => {
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('todo_complete', { id: 'bc33e76c' }),
+    { headline: '完成 TODO', headlineDetail: 'bc33e76c' },
+  );
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest(
+      'todo_complete',
+      { id: 'bc33e76c' },
+      'succeeded',
+      {
+        executionOutput: JSON.stringify({
+          todo: { id: 'bc33e76c', title: 'Inject haiku into main.rs' },
+        }),
+      },
+    ),
+    { headline: '完成 TODO', headlineDetail: 'Inject haiku into main.rs' },
+  );
+});
+
+test('toolCallSummaryForPhase: todo_complete succeeded uses title from execution output', () => {
+  assert.deepEqual(
+    toolCallSummaryForPhase(
+      'succeeded',
+      'todo_complete',
+      { id: 'bc33e76c' },
+      {
+        executionOutput: {
+          todo: { id: 'bc33e76c', title: 'Inject haiku into main.rs' },
+        },
+      },
+    ),
+    { headline: '完成 TODO', headlineDetail: 'Inject haiku into main.rs' },
+  );
+});
+
 test('toolCallSummaryForPhase: read_file splits headline and path detail', () => {
   assert.deepEqual(
     toolCallSummaryForPhase('succeeded', 'read_file', {
