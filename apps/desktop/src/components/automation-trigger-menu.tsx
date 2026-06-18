@@ -24,6 +24,7 @@ import {
   DESKTOP_OVERLAY_LIST_SCROLL_AREA,
   DESKTOP_OVERLAY_LIST_SHELL,
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
+  DESKTOP_OVERLAY_SHORT_LIST_PADDING,
   DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH,
   stopOverlayScrollPropagation,
 } from "@/lib/desktop-chrome";
@@ -102,43 +103,47 @@ export function AutomationTriggerMenu({
           <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[120]")}>
-        <DropdownMenuSub open={githubSubOpen} onOpenChange={setGithubSubOpen}>
-          <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
-            <GitHubMarkIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
-            {t("automations.trigger.github")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent
-            className={cn(DESKTOP_OVERLAY_LIST_CONTENT, DESKTOP_OVERLAY_LIST_SHELL, "z-[130] w-72")}
-          >
-            {!githubConnected ? (
-              <div className="max-w-56 px-3 py-2 text-xs text-muted-foreground">
-                {t("automations.trigger.connectGitHubHint")}
+      <DropdownMenuContent align="start" className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[120] p-0")}>
+        <div className={DESKTOP_OVERLAY_SHORT_LIST_PADDING}>
+          <DropdownMenuSub open={githubSubOpen} onOpenChange={setGithubSubOpen}>
+            <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
+              <GitHubMarkIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+              {t("automations.trigger.github")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent
+              className={cn(DESKTOP_OVERLAY_LIST_CONTENT, DESKTOP_OVERLAY_LIST_SHELL, "z-[130] w-72")}
+            >
+              {!githubConnected ? (
+                <div className="max-w-56 px-3 py-2 text-xs text-muted-foreground">
+                  {t("automations.trigger.connectGitHubHint")}
+                </div>
+              ) : (
+                <AutomationGitHubRepositoryList
+                  open={githubSubOpen}
+                  disabled={disabled}
+                  listGitHubRepositories={listGitHubRepositories}
+                  searchGitHubRepositories={searchGitHubRepositories}
+                  onSelect={setGitHubTrigger}
+                />
+              )}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
+              <Clock className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
+              {t("automations.trigger.time")}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[130] p-0")}>
+              <div className={DESKTOP_OVERLAY_SHORT_LIST_PADDING}>
+                <AutomationTimeScheduleOptions
+                  schedule={timeSchedule}
+                  disabled={disabled}
+                  onScheduleChange={setTimeSchedule}
+                />
               </div>
-            ) : (
-              <AutomationGitHubRepositoryList
-                open={githubSubOpen}
-                disabled={disabled}
-                listGitHubRepositories={listGitHubRepositories}
-                searchGitHubRepositories={searchGitHubRepositories}
-                onSelect={setGitHubTrigger}
-              />
-            )}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
-            <Clock className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
-            {t("automations.trigger.time")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[130]")}>
-            <AutomationTimeScheduleOptions
-              schedule={timeSchedule}
-              disabled={disabled}
-              onScheduleChange={setTimeSchedule}
-            />
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -230,21 +235,23 @@ function AutomationGitHubRepositoryList({
                   >
                     <span className="min-w-0 truncate">{item.fullName}</span>
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="z-[140]">
-                    <DropdownMenuItem
-                      disabled={disabled}
-                      className="text-xs"
-                      onSelect={() => onSelect(item, "pull_request_created")}
-                    >
-                      {t("automations.trigger.pullRequestCreated")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      disabled={disabled}
-                      className="text-xs"
-                      onSelect={() => onSelect(item, "issue_created")}
-                    >
-                      {t("automations.trigger.issueCreated")}
-                    </DropdownMenuItem>
+                  <DropdownMenuSubContent className="z-[140] p-0">
+                    <div className={DESKTOP_OVERLAY_SHORT_LIST_PADDING}>
+                      <DropdownMenuItem
+                        disabled={disabled}
+                        className="text-xs"
+                        onSelect={() => onSelect(item, "pull_request_created")}
+                      >
+                        {t("automations.trigger.pullRequestCreated")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={disabled}
+                        className="text-xs"
+                        onSelect={() => onSelect(item, "issue_created")}
+                      >
+                        {t("automations.trigger.issueCreated")}
+                      </DropdownMenuItem>
+                    </div>
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               ))}
