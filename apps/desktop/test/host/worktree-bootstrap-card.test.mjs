@@ -33,9 +33,9 @@ test('buildWorktreeBootstrapToolSnapshot uses create verb and Worktree detail', 
 test('buildWorktreeBootstrapToolSnapshot zh-CN progressive verbs', async () => {
   await i18n.changeLanguage('zh-CN');
   const running = buildWorktreeBootstrapToolSnapshot('running');
-  assert.equal(running.headline, '创建中');
+  assert.equal(running.headline, '创建');
   const succeeded = buildWorktreeBootstrapToolSnapshot('succeeded');
-  assert.equal(succeeded.headline, '已创建');
+  assert.equal(succeeded.headline, '创建');
 });
 
 test('isWorktreeBootstrapInFlight and isSessionBundleBusy', () => {

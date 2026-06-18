@@ -1058,8 +1058,6 @@
     "runCommand": "运行命令",
     "runShellVerb": "运行",
     "create": "创建",
-    "create_running": "创建中",
-    "create_succeeded": "已创建",
     "edit": "编辑",
     "delete": "删除",
     "diffArgsTruncated": "无法展示 Diff：工具参数在会话记录中已被截断。",
