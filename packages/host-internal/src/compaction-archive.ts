@@ -3,20 +3,12 @@ import path from 'node:path';
 
 import type { PreCompactionHistoryArchive } from '@spirit-agent/core';
 
+import { sanitizeSessionIdForFilename } from './spirit-filename-sanitize.js';
+
 export const COMPACTION_ARCHIVES_DIR_NAME = 'compaction-archives';
 
 export function resolveCompactionArchivesDir(spiritDataDir: string): string {
   return path.join(spiritDataDir, COMPACTION_ARCHIVES_DIR_NAME);
-}
-
-function sanitizeSessionIdForFilename(sessionId: string | undefined): string {
-  const normalized = sessionId?.trim();
-  if (!normalized) {
-    return 'unknown';
-  }
-
-  const sanitized = normalized.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-  return sanitized.length > 0 ? sanitized : 'unknown';
 }
 
 export function buildPreCompactionArchiveFileName(

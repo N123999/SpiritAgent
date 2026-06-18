@@ -22,12 +22,14 @@ import {
 } from '@spirit-agent/core';
 
 import { applyDiff } from './apply-diff.js';
+import { resolveCompactionArchivesDir } from './compaction-archive.js';
 import {
   defaultShellForPty,
   shellCommandParameterDescriptionForResolvedShell,
   shellDisplayNameForResolvedShell,
 } from './default-terminal-shell.js';
 import { runShellCommand } from './shell-execution.js';
+import { resolveToolOutputArchivesDir } from './tool-output-archive.js';
 import {
   readHostFileSnapshot,
   type HostFileChangeKind,
@@ -1335,7 +1337,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   private isAllowedReadLocation(canonical: string): boolean {
     return (
       isWithinRoot(canonical, this.workspaceRoot) ||
-      isInsideSpiritManagedUserArea(canonical, this.context)
+      isInsideSpiritManagedUserArea(canonical, this.context) ||
+      isSpiritDataInternalReadPath(canonical, this.context.spiritDataDir)
     );
   }
 
@@ -2836,6 +2839,15 @@ function isJsonObject(value: HostJsonValue): value is HostJsonObject {
 function isWithinRoot(candidate: string, root: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function isSpiritDataInternalReadPath(resolvedPath: string, spiritDataDir: string): boolean {
+  const resolvedSpiritDataDir = path.resolve(spiritDataDir);
+  const allowedRoots = [
+    resolveCompactionArchivesDir(resolvedSpiritDataDir),
+    resolveToolOutputArchivesDir(resolvedSpiritDataDir),
+  ];
+  return allowedRoots.some((allowed) => pathHasPrefix(resolvedPath, allowed));
 }
 
 function isInsideSpiritManagedUserArea(
