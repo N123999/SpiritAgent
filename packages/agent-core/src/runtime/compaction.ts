@@ -238,26 +238,34 @@ export function startHistoryCompactionAsync<
   resumeAsStreaming = false,
   streamingEmitBeginResponse = true,
 ): void {
-  void (async () => {
-    const archiveSourceHistory = cloneHistory(runtime.historyStore);
-    const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
-    runtime.historyStore = cloneHistory(historyForCompaction);
+  runtime.compactionTextStore = '';
+  const pending: PendingAutoHistoryCompaction<State, ToolRequest> = {
+    kind: 'auto-retry',
+    pendingUserInput,
+    retryState,
+    turn,
+    originalError,
+    toolTruncationApplied,
+    resumeAsStreaming,
+    streamingEmitBeginResponse,
+    compactedHistory: undefined,
+    result: undefined,
+    failure: undefined,
+  };
+  runtime.pendingHistoryCompaction = pending;
 
-    runtime.compactionTextStore = '';
-    const pending: PendingAutoHistoryCompaction<State, ToolRequest> = {
-      kind: 'auto-retry',
-      pendingUserInput,
-      retryState,
-      turn,
-      originalError,
-      toolTruncationApplied,
-      resumeAsStreaming,
-      streamingEmitBeginResponse,
-      compactedHistory: undefined,
-      result: undefined,
-      failure: undefined,
-    };
-    launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+  void (async () => {
+    try {
+      const archiveSourceHistory = cloneHistory(runtime.historyStore);
+      const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
+      runtime.historyStore = cloneHistory(historyForCompaction);
+      launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+    } catch (error: unknown) {
+      if (runtime.pendingHistoryCompaction !== pending) {
+        return;
+      }
+      pending.failure = renderError(error);
+    }
   })();
 }
 
@@ -269,19 +277,27 @@ export function startManualHistoryCompactionAsync<
 >(
   runtime: CompactionRuntime<Config, State, ToolRequest, TrustTarget>,
 ): void {
-  void (async () => {
-    const archiveSourceHistory = cloneHistory(runtime.historyStore);
-    const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
-    runtime.historyStore = cloneHistory(historyForCompaction);
+  runtime.compactionTextStore = '';
+  const pending: PendingManualHistoryCompaction = {
+    kind: 'manual',
+    compactedHistory: undefined,
+    result: undefined,
+    failure: undefined,
+  };
+  runtime.pendingHistoryCompaction = pending;
 
-    runtime.compactionTextStore = '';
-    const pending: PendingManualHistoryCompaction = {
-      kind: 'manual',
-      compactedHistory: undefined,
-      result: undefined,
-      failure: undefined,
-    };
-    launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+  void (async () => {
+    try {
+      const archiveSourceHistory = cloneHistory(runtime.historyStore);
+      const historyForCompaction = await prepareHistoryForCompaction(runtime, archiveSourceHistory);
+      runtime.historyStore = cloneHistory(historyForCompaction);
+      launchHistoryCompaction(runtime, pending, historyForCompaction, archiveSourceHistory);
+    } catch (error: unknown) {
+      if (runtime.pendingHistoryCompaction !== pending) {
+        return;
+      }
+      pending.failure = renderError(error);
+    }
   })();
 }
 
