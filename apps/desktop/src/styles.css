@@ -183,6 +183,8 @@ html.spirit-desktop-darwin {
   --spirit-macos-titlebar-inset: 2rem;
   /* hiddenInset 红绿灯占用宽度（约 12px 边距 + 三键 + 间距） */
   --spirit-macos-traffic-lights-inset-left: 4.875rem;
+  /* 侧栏切换：红绿灯右缘 + 小间距（fixed 钉位用，不改 drag 区域几何） */
+  --spirit-macos-sidebar-toggle-inset-left: calc(var(--spirit-macos-traffic-lights-inset-left) + 0.125rem);
 }
 
 /* 仅侧栏下移避让左上红绿灯；主区顶栏与标题栏同高同排 */
@@ -203,10 +205,22 @@ html.spirit-desktop-darwin #session-sidebar-panel::before {
   -webkit-app-region: drag;
 }
 
+/* macOS：切换按钮 fixed 钉在红绿灯右侧，仍留在 layout-chrome 树内以继承 no-drag */
+html.spirit-desktop-darwin [data-darwin-pinned-sidebar-toggle] {
+  position: fixed;
+  top: 0;
+  left: var(--spirit-macos-sidebar-toggle-inset-left);
+  z-index: 50;
+  display: flex;
+  height: var(--spirit-macos-titlebar-inset);
+  align-items: flex-end;
+}
+
 /* 顶栏空白区可拖，仅按钮/链接 no-drag（与 Windows 自绘标题栏一致） */
 html.spirit-desktop-darwin [data-spirit-surface="layout-chrome"] {
   -webkit-app-region: drag;
   transition: padding-left 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  align-items: flex-end;
 }
 
 html.spirit-desktop-darwin [data-spirit-surface="layout-chrome"] button,
@@ -229,10 +243,17 @@ html.spirit-desktop-darwin
   padding-left: var(--spirit-macos-traffic-lights-inset-left);
 }
 
+/* 侧栏展开时顶栏标题左缘留白与 flex-end 上缘留白对齐（titlebar 高度 − text-xs 行高 1rem） */
+html.spirit-desktop-darwin:not(.spirit-desktop-darwin-fullscreen)
+  [data-spirit-surface="layout-chrome"][data-session-sidebar-open="true"] {
+  padding-left: calc(var(--spirit-macos-titlebar-inset) - 1rem);
+}
+
 /* 全屏时红绿灯隐藏，取消顶栏/侧栏安全区内边距与拖拽带 */
 html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen {
   --spirit-macos-titlebar-inset: 0px;
   --spirit-macos-traffic-lights-inset-left: 0px;
+  --spirit-macos-sidebar-toggle-inset-left: 0.375rem;
 }
 
 html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen #session-sidebar-panel::before {

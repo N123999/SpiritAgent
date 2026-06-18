@@ -1,12 +1,12 @@
 import { useTranslation } from "react-i18next";
 
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Plus } from "lucide-react";
 
 import {
   NewSessionShortcutKbd,
-  SessionSidebarShortcutKbd,
   WorkspaceToolsShortcutKbd,
 } from "@/components/layout/desktop-shortcut-kbds";
+import { SessionSidebarToggleButton } from "@/components/layout/session-sidebar-toggle-button";
 import { SessionChromeBreadcrumb } from "@/components/session-chrome-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -16,6 +16,8 @@ import {
   DESKTOP_SHELL_LAYOUT_TRANSITION,
 } from "@/lib/desktop-chrome";
 import { desktopMicaTintClass } from "@/lib/desktop-mica-surface";
+import { isDarwinElectronShell } from "@/lib/desktop-shell";
+import { useDarwinWindowFullscreen } from "@/hooks/useDarwinWindowFullscreen";
 import { cn } from "@/lib/utils";
 
 export function DesktopLayoutChromeBar({
@@ -40,7 +42,10 @@ export function DesktopLayoutChromeBar({
   newSessionBusy?: boolean;
 }) {
   const { t } = useTranslation();
-  const { open: sessionSidebarOpen, toggle: onToggleSessionSidebar } = useSessionSidebarChrome();
+  const { open: sessionSidebarOpen } = useSessionSidebarChrome();
+  const darwinElectron = isDarwinElectronShell();
+  const darwinFullScreen = useDarwinWindowFullscreen(darwinElectron);
+  const pinSidebarToggleOnDarwin = darwinElectron && !darwinFullScreen;
   const showTrailingActions = showWorkspaceToggle;
   const trimmedSessionTitle = sessionTitle?.trim() ?? "";
   return (
@@ -56,26 +61,23 @@ export function DesktopLayoutChromeBar({
       )}
     >
       <div className="flex min-w-0 items-center">
-        <Tooltip delayDuration={300}>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(DESKTOP_CHROME_TOGGLE_ICON_BTN, "mr-1")}
-              onClick={onToggleSessionSidebar}
-              aria-label={sessionSidebarOpen ? t('app.hideSidebar') : t('app.showSidebar')}
-              aria-expanded={sessionSidebarOpen}
-              {...(sessionSidebarOpen ? { "aria-controls": "session-sidebar-panel" } : {})}
-            >
-              {sessionSidebarOpen ? <PanelLeftClose className="size-3.5" aria-hidden /> : <PanelLeftOpen className="size-3.5" aria-hidden />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top" sideOffset={4}>
-            {sessionSidebarOpen ? t("app.hideSidebar") : t("app.showSidebar")}{" "}
-            <SessionSidebarShortcutKbd />
-          </TooltipContent>
-        </Tooltip>
+        {pinSidebarToggleOnDarwin ? (
+          <div data-darwin-pinned-sidebar-toggle>
+            <SessionSidebarToggleButton />
+          </div>
+        ) : (
+          <SessionSidebarToggleButton className="mr-1" />
+        )}
+        {pinSidebarToggleOnDarwin ? (
+          <div
+            className={cn(
+              "shrink-0 overflow-hidden",
+              DESKTOP_SHELL_LAYOUT_TRANSITION,
+              sessionSidebarOpen ? "mr-0 w-0" : "mr-1 w-7",
+            )}
+            aria-hidden
+          />
+        ) : null}
         {onNewSession ? (
           <div
             className={cn(
