@@ -1,5 +1,6 @@
 import type { WorkLocationKind } from "@spirit-agent/host-internal";
-import { ChevronDown, FolderGit2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { ChevronDown, GitFork, Monitor } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -12,6 +13,11 @@ import { DESKTOP_OVERLAY_SHORT_LIST_PADDING } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
 const WORK_LOCATION_OPTIONS: WorkLocationKind[] = ["local", "worktree"];
+
+const WORK_LOCATION_ICONS: Record<WorkLocationKind, LucideIcon> = {
+  local: Monitor,
+  worktree: GitFork,
+};
 
 type WorkLocationMenuProps = {
   workLocation: WorkLocationKind;
@@ -28,6 +34,7 @@ export function WorkLocationMenu({
   const workLocationLabel = (kind: WorkLocationKind) =>
     kind === "worktree" ? t("composer.workLocationWorktree") : t("composer.workLocationLocal");
   const label = workLocationLabel(workLocation);
+  const TriggerIcon = WORK_LOCATION_ICONS[workLocation];
 
   return (
     <DropdownMenu>
@@ -41,7 +48,7 @@ export function WorkLocationMenu({
             "text-muted-foreground",
           )}
         >
-          <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
+          <TriggerIcon className="size-3.5 shrink-0 text-muted-foreground/80" aria-hidden />
           <span className="min-w-0 truncate" title={label}>
             {label}
           </span>
@@ -54,18 +61,22 @@ export function WorkLocationMenu({
         className="min-w-[9.5rem] p-0"
       >
         <div className={DESKTOP_OVERLAY_SHORT_LIST_PADDING}>
-          {WORK_LOCATION_OPTIONS.map((option) => (
-            <DropdownMenuItem
-              key={option}
-              onSelect={() => onWorkLocationChange(option)}
-              className={cn(
-                "flex flex-col items-start gap-0.5",
-                workLocation === option && "bg-accent/40",
-              )}
-            >
-              <span>{workLocationLabel(option)}</span>
-            </DropdownMenuItem>
-          ))}
+          {WORK_LOCATION_OPTIONS.map((option) => {
+            const Icon = WORK_LOCATION_ICONS[option];
+            return (
+              <DropdownMenuItem
+                key={option}
+                onSelect={() => onWorkLocationChange(option)}
+                className={cn(
+                  "flex items-center gap-2",
+                  workLocation === option && "bg-accent/40",
+                )}
+              >
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="min-w-0 truncate">{workLocationLabel(option)}</span>
+              </DropdownMenuItem>
+            );
+          })}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
