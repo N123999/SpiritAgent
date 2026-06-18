@@ -183,7 +183,7 @@ fn preview_summary_for_tool(tool_name: &str, request: &ToolUiRequest) -> (String
             let path = string_arg(request, "path")
                 .or_else(|| string_arg(request, "filePath"))
                 .unwrap_or("文件");
-            ("查看".to_string(), vec![path.to_string()])
+            ("读取".to_string(), vec![path.to_string()])
         }
         "list_directory_files" => (
             "列出目录".to_string(),
@@ -590,7 +590,7 @@ pub(crate) fn format_tool_ui_message(
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "default".to_string());
             format!(
-                "[tool] 阅读文件 {} {} - {}",
+                "[tool] 读取文件 {} {} - {}",
                 string_arg(request, "path").unwrap_or("<unknown>"),
                 start,
                 end
@@ -675,7 +675,8 @@ fn generated_media_paths_from_output(output: &str, prefixes: &[&str]) -> Vec<Str
 #[cfg(test)]
 mod tests {
     use super::{
-        ToolUiRequest, build_tool_result_block, tool_approval_block, tool_request_args_excerpt,
+        ToolUiPhase, ToolUiRequest, build_tool_preview_block, build_tool_result_block,
+        format_tool_ui_message, tool_approval_block, tool_request_args_excerpt,
     };
     use serde_json::{Value, json};
 
@@ -780,6 +781,46 @@ mod tests {
                 "快捷键: Y 允许一次 / N 拒绝 / T 信任并持久化".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn read_file_preview_block_uses_read_headline() {
+        let block = build_tool_preview_block(
+            "read_file",
+            "call_preview_read",
+            &ToolUiRequest::new(
+                "read_file",
+                json!({
+                    "path": "src/main.rs",
+                    "start_line": 1,
+                    "end_line": 20
+                }),
+            ),
+        );
+
+        assert_eq!(block.tool_call_id.as_deref(), Some("call_preview_read"));
+        assert_eq!(block.tool_name, "read_file");
+        assert_eq!(block.phase, ToolUiPhase::Preview);
+        assert_eq!(block.headline, "读取");
+        assert_eq!(block.detail_lines, vec!["src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn read_file_tool_message_uses_read_file_wording() {
+        let message = format_tool_ui_message(
+            &ToolUiRequest::new(
+                "read_file",
+                json!({
+                    "path": "src/main.rs",
+                    "start_line": 3,
+                    "end_line": 9
+                }),
+            ),
+            "read_file",
+            "line3\nline4\n",
+        );
+
+        assert_eq!(message, "[tool] 读取文件 src/main.rs 3 - 9");
     }
 
     #[test]
