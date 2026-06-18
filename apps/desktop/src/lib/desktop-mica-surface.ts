@@ -4,9 +4,6 @@ export const DESKTOP_MICA_CONTENT_TINT_CLASS = "bg-background/70";
 /** 工作区浏览器页槽：略高于主区，减轻 WebView 透底闪烁。 */
 export const DESKTOP_MICA_BROWSER_TINT_CLASS = "bg-background/80";
 
-/** 工作区终端：保留较高不透明度以保证 ANSI 可读性。 */
-export const DESKTOP_MICA_TERMINAL_TINT_CLASS = "bg-background/87";
-
 /** 工作区面板选中 tab：与面板底色衔接。 */
 export const DESKTOP_MICA_WORKSPACE_TAB_SELECTED_TINT_CLASS = "bg-background/60";
 
@@ -31,9 +28,9 @@ export function desktopMicaBrowserTintClass(useMicaBackdrop: boolean): string {
   return useMicaBackdrop ? DESKTOP_MICA_BROWSER_TINT_CLASS : SOLID_BACKGROUND_CLASS;
 }
 
-/** 工作区集成终端容器。 */
+/** 工作区集成终端容器：Mica 下透明以避免与面板 tint 叠深，由 xterm 透明底透出面板 blur。 */
 export function desktopMicaTerminalTintClass(useMicaBackdrop: boolean): string {
-  return useMicaBackdrop ? DESKTOP_MICA_TERMINAL_TINT_CLASS : SOLID_BACKGROUND_CLASS;
+  return useMicaBackdrop ? TRANSPARENT_BACKGROUND_CLASS : SOLID_BACKGROUND_CLASS;
 }
 
 /** 工作区面板选中 tab：Mica 下轻 tint 以衔接面板底色。 */

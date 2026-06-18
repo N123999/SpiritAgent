@@ -21,7 +21,7 @@ export type WorkspaceShellTabProps = {
   ) => void;
   /** 侧栏连续拖拽调整宽度时为 true，暂停终端 fit 直至松手。 */
   suspendTerminalResize?: boolean;
-  /** Windows 云母 / macOS Vibrancy：终端保留较高不透明度以保证 ANSI 可读性。 */
+  /** Windows 云母 / macOS Vibrancy：终端内层透明，由工作区面板 tint 着色。 */
   useMicaBackdrop?: boolean;
 };
 

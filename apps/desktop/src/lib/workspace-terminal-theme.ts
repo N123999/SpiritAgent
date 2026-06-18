@@ -1,5 +1,8 @@
 import type { ITheme, Terminal } from "@xterm/xterm";
 
+/** 与 Monaco Mica 编辑区一致：xterm 画布透明，由外层面板 tint 着色。 */
+const TRANSPARENT_TERMINAL_BG = "#00000000";
+
 const TERMINAL_CSS = {
   background: "--terminal-bg",
   foreground: "--terminal-fg",
@@ -29,10 +32,19 @@ function cssVar(name: string): string | undefined {
   return value || undefined;
 }
 
+function isNativeMicaBackdropActive(): boolean {
+  return document.documentElement.classList.contains("spirit-desktop-mica");
+}
+
 /** 从 document 根上的 CSS 变量读取 xterm ITheme。 */
 export function readTerminalThemeFromDocument(): ITheme {
   const theme: ITheme = {};
+  const mica = isNativeMicaBackdropActive();
   for (const [key, varName] of Object.entries(TERMINAL_CSS)) {
+    if (key === "background" && mica) {
+      (theme as Record<string, string>).background = TRANSPARENT_TERMINAL_BG;
+      continue;
+    }
     const value = cssVar(varName);
     if (value) {
       (theme as Record<string, string>)[key] = value;
