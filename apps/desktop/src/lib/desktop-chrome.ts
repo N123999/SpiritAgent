@@ -201,7 +201,7 @@ export function stopOverlayScrollPropagation(event: {
 }
 
 /** 可拖拽下限：默认宽度与之对齐，首次打开更紧凑 */
-export const SESSION_SIDEBAR_MIN_WIDTH_PX = 232;
+export const SESSION_SIDEBAR_MIN_WIDTH_PX = 200;
 
 /** 左侧会话侧栏默认宽度 */
 export const SESSION_SIDEBAR_DEFAULT_WIDTH_PX = SESSION_SIDEBAR_MIN_WIDTH_PX;
