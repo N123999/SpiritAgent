@@ -645,7 +645,7 @@
     "supplementOption": "补充一个未列出的选项"
   },
   "workspace": {
-    "planNotCreated": "Plan 还没有创建。使用 create_plan 写入后，这里会显示 plans/ 下的计划文件。",
+    "planNotCreated": "Plan 还没有创建。",
     "unsavedChangesCloseConfirm": "有未保存的更改，仍要关闭吗？",
     "markdownPreview": "Markdown 预览",
     "preview": "预览",

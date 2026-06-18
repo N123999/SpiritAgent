@@ -647,7 +647,7 @@
     "supplementOption": "Supplement an unlisted option"
   },
   "workspace": {
-    "planNotCreated": "Plan has not been created yet. After create_plan writes a file, the plan under plans/ will appear here.",
+    "planNotCreated": "Plan has not been created yet.",
     "unsavedChangesCloseConfirm": "There are unsaved changes. Close anyway?",
     "markdownPreview": "Markdown Preview",
     "preview": "Preview",
