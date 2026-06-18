@@ -534,12 +534,11 @@ function WorkspaceToolsDockInner({
                     {displayTitle ? (
                       <button
                         type="button"
-                        className="absolute inset-y-0 right-0 hidden items-center justify-end rounded-tr-md pr-1 outline-none group-hover/tab:flex"
-                        style={{
-                          ...maskFadeHorizontalEnd,
-                          width: "2rem",
-                          background: "inherit",
-                        }}
+                        className={cn(
+                          "absolute inset-y-0 right-0 hidden w-8 items-center justify-end rounded-tr-md pr-1 outline-none group-hover/tab:flex",
+                          selected ? "bg-background" : "bg-accent",
+                        )}
+                        style={maskFadeHorizontalEnd}
                         aria-label={t('workspace.closeTab', { label })}
                         onClick={(event) => {
                           event.stopPropagation();
