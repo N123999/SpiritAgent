@@ -17,8 +17,8 @@ import type {
 } from '../types.js';
 import type { DesktopToolRequest } from './contracts.js';
 import {
-  isSpiritBranchName,
-  isSpiritWorktreeName,
+  normalizeGeneratedWorktreeNames as normalizeGeneratedWorktreeNamesInternal,
+  parseGeneratedWorktreeNamingResponse as parseGeneratedWorktreeNamingResponseInternal,
   resolveWorkspaceGroupingRoot,
 } from '@spirit-agent/host-internal';
 import type { GeneratedWorktreeNames } from './worktree-naming.js';
@@ -116,62 +116,51 @@ export function normalizeGeneratedWorktreeNames(value: {
   worktreeName?: unknown;
   branchName?: unknown;
 }): GeneratedWorktreeNames {
-  if (typeof value.worktreeName !== 'string' || typeof value.branchName !== 'string') {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedMissingFields'));
+  try {
+    return normalizeGeneratedWorktreeNamesInternal(value);
+  } catch (error) {
+    throw mapWorktreeNamingValidationError(error);
   }
-
-  const worktreeName = value.worktreeName.trim();
-  const branchName = value.branchName.trim();
-  if (!worktreeName || !branchName) {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedEmpty'));
-  }
-  if (!isSpiritWorktreeName(worktreeName)) {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedInvalidWorktreeName', { worktreeName }));
-  }
-  if (!isSpiritBranchName(branchName)) {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedInvalidBranchName', { branchName }));
-  }
-
-  return { worktreeName, branchName };
 }
 
 export function parseGeneratedWorktreeNamingResponse(rawText: string): GeneratedWorktreeNames {
-  const trimmed = rawText.trim();
-  if (!trimmed) {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedNoBody'));
-  }
-
-  const candidate = extractJsonObjectText(trimmed);
-
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(candidate);
-  } catch {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedInvalidJson'));
+    return parseGeneratedWorktreeNamingResponseInternal(rawText);
+  } catch (error) {
+    throw mapWorktreeNamingValidationError(error);
   }
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(i18n.t('error.autoWorktreeNameFailedNotObject'));
-  }
-
-  return normalizeGeneratedWorktreeNames(parsed as { worktreeName?: unknown; branchName?: unknown });
 }
 
-function extractJsonObjectText(text: string): string {
-  if (text.startsWith('```')) {
-    const fenceMatch = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (fenceMatch?.[1]) {
-      return fenceMatch[1].trim();
-    }
+function mapWorktreeNamingValidationError(error: unknown): Error {
+  if (!(error instanceof Error)) {
+    return new Error(i18n.t('error.autoWorktreeNameFailedInvalidJson'));
   }
 
-  const firstBrace = text.indexOf('{');
-  const lastBrace = text.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return text.slice(firstBrace, lastBrace + 1).trim();
+  const message = error.message;
+  if (message.includes('missing worktreeName or branchName')) {
+    return new Error(i18n.t('error.autoWorktreeNameFailedMissingFields'));
   }
-
-  return text;
+  if (message.includes('empty worktreeName or branchName')) {
+    return new Error(i18n.t('error.autoWorktreeNameFailedEmpty'));
+  }
+  if (message.includes('Invalid worktreeName format:')) {
+    const worktreeName = message.replace(/^Invalid worktreeName format:\s*/u, '').trim();
+    return new Error(i18n.t('error.autoWorktreeNameFailedInvalidWorktreeName', { worktreeName }));
+  }
+  if (message.includes('Invalid branchName format:')) {
+    const branchName = message.replace(/^Invalid branchName format:\s*/u, '').trim();
+    return new Error(i18n.t('error.autoWorktreeNameFailedInvalidBranchName', { branchName }));
+  }
+  if (message.includes('no assistant text')) {
+    return new Error(i18n.t('error.autoWorktreeNameFailedNoBody'));
+  }
+  if (message.includes('not valid JSON')) {
+    return new Error(i18n.t('error.autoWorktreeNameFailedInvalidJson'));
+  }
+  if (message.includes('must be a JSON object')) {
+    return new Error(i18n.t('error.autoWorktreeNameFailedNotObject'));
+  }
+  return error;
 }
 
 export function sameDreamCollectorSnapshot(

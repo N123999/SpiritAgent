@@ -1,13 +1,10 @@
 import {
-  appendLlmToolResultMessages,
   buildDreamReadHostToolDefinitions,
-  createLlmTransport,
-  extractLastLlmAssistantText,
-  startLlmToolAgentState,
   type LlmExtensionSystemPrompt,
   type LlmToolAgentBasicInfo,
   type LlmTransportConfig,
 } from '@spirit-agent/core';
+import { generateWorktreeNamesFromTask } from '@spirit-agent/host-internal';
 
 import i18n from '../lib/i18n-host.js';
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
@@ -22,7 +19,6 @@ import {
 } from './sessions.js';
 import {
   currentApiBase,
-  parseGeneratedWorktreeNamingResponse,
 } from './service-utils.js';
 import type {
   DesktopConfigFile,
@@ -64,16 +60,31 @@ export async function generateWorktreeNamesFromModelTask(
   const baseMessages = buildBaseMessages(prompt);
 
   try {
-    const assistantText = await runEphemeralToolAgentRounds({
-      context,
-      transportConfig,
-      prompt,
-      failurePrefixKey: 'error.autoWorktreeNameFailed',
-      noBodyKey: 'error.autoWorktreeNameFailedNoBody',
-      interactiveToolKey: 'error.autoWorktreeNameFailedInteractiveTool',
-      incompleteKey: 'error.autoWorktreeNameFailedIncomplete',
+    const dreamContextText = await buildDreamContextText({
+      workspaceRoot: context.workspaceRoot,
+      gitBranch: context.gitBranch,
     });
-    const names = parseGeneratedWorktreeNamingResponse(assistantText);
+    const names = await generateWorktreeNamesFromTask({
+      transport: transportConfig,
+      task: context.userPrompt,
+      baseBranch: context.baseBranch,
+      repoRoot: context.repoRoot,
+      workspaceRoot: context.workspaceRoot,
+      toolExecutor: context.toolExecutor,
+      enabledRules: context.metadata.rules.enabledRules,
+      enabledSkillCatalog: context.metadata.skills.enabledSkillCatalog,
+      extensionSystemPrompts: context.extensionSystemPrompts,
+      planMetadata: context.metadata.planMetadata,
+      runtimeBasicInfo: context.runtimeBasicInfo,
+      ...(dreamContextText ? { dreamContextText } : {}),
+      extraToolDefinitions: context.gitBranch ? buildDreamReadHostToolDefinitions() : [],
+      errorMessages: {
+        failurePrefix: (error) => i18n.t('error.autoWorktreeNameFailed', { error }),
+        noBody: i18n.t('error.autoWorktreeNameFailedNoBody'),
+        interactiveTool: (name) => i18n.t('error.autoWorktreeNameFailedInteractiveTool', { name }),
+        incomplete: i18n.t('error.autoWorktreeNameFailedIncomplete'),
+      },
+    });
     context.rememberEphemeralSession(buildWorktreeEphemeralSessionRecord({
       path: sessionPath,
       displayName: `[Worktree] ${names.worktreeName}`,
@@ -107,85 +118,6 @@ function buildTaskTransportConfig(context: EphemeralLlmTaskContext): LlmTranspor
     profile: context.taskProfile,
     agentMode: resolveDesktopAgentMode(context.config),
   });
-}
-
-async function runEphemeralToolAgentRounds(input: {
-  context: EphemeralLlmTaskContext;
-  transportConfig: LlmTransportConfig;
-  prompt: string;
-  failurePrefixKey: string;
-  noBodyKey: string;
-  interactiveToolKey: string;
-  incompleteKey: string;
-}): Promise<string> {
-  const { context, transportConfig } = input;
-  const llmTransport = createLlmTransport(transportConfig);
-  context.toolExecutor.setActiveTransportConfig(transportConfig);
-  const dreamContextText = await buildDreamContextText({
-    workspaceRoot: context.workspaceRoot,
-    gitBranch: context.gitBranch,
-  });
-  const dreamToolDefinitions = context.gitBranch ? buildDreamReadHostToolDefinitions() : [];
-  let toolState = startLlmToolAgentState(
-    [],
-    input.prompt,
-    context.workspaceRoot,
-    context.metadata.rules.enabledRules,
-    context.metadata.skills.enabledSkillCatalog,
-    [],
-    transportConfig.model,
-    context.metadata.planMetadata,
-    context.extensionSystemPrompts,
-    dreamContextText || undefined,
-    undefined,
-    context.runtimeBasicInfo,
-  );
-
-  for (let round = 0; round < 6; round += 1) {
-    const completion = await llmTransport.startToolAgentRound(
-      transportConfig,
-      toolState,
-      dreamToolDefinitions,
-    );
-
-    if (completion.kind !== 'success') {
-      throw new Error(i18n.t(input.failurePrefixKey, { error: completion.error }));
-    }
-
-    toolState = completion.result.state;
-
-    if (completion.result.step.kind === 'final-response-ready') {
-      const assistantText = extractLastLlmAssistantText(toolState)?.trim();
-      if (!assistantText) {
-        throw new Error(i18n.t(input.noBodyKey));
-      }
-      return assistantText;
-    }
-
-    const toolResults = [];
-    for (const call of completion.result.step.calls) {
-      const request = await context.toolExecutor.requestFromFunctionCall(call.name, call.argumentsJson);
-      const requestWithMetadata = context.toolExecutor.attachRequestMetadata
-        ? context.toolExecutor.attachRequestMetadata(request, {
-            toolCallId: call.id,
-            toolName: call.name,
-          })
-        : request;
-      const authorization = await context.toolExecutor.authorize(requestWithMetadata);
-      if (authorization.kind !== 'allowed') {
-        throw new Error(i18n.t(input.interactiveToolKey, { name: call.name }));
-      }
-      const output = await context.toolExecutor.execute(requestWithMetadata);
-      toolResults.push({
-        toolCallId: call.id,
-        content: output.summaryText,
-      });
-    }
-
-    toolState = appendLlmToolResultMessages(toolState, toolResults);
-  }
-
-  throw new Error(i18n.t(input.incompleteKey));
 }
 
 function buildBaseMessages(prompt: string): ConversationMessageSnapshot[] {

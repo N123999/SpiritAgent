@@ -49,7 +49,7 @@ export function createDesktopSubagentWorkspaceBootstrap(
         return { error: 'cannot determine base branch for subagent worktree' };
       }
 
-      const names = buildDeterministicSubagentWorktreeNames(input.subagentSessionId);
+      const names = await deps.generateWorktreeNames(input.task, baseBranch, repoRoot);
       const created = await createWorkspaceGitWorktree(repoRoot, names, baseBranch);
       createdWorktreePath = created.worktreePath;
       const scopedExecutor = await deps.buildScopedToolExecutor(created.worktreePath);
@@ -71,25 +71,6 @@ export function createDesktopSubagentWorkspaceBootstrap(
       const message = error instanceof Error ? error.message : String(error);
       return { error: message };
     }
-  };
-}
-
-export function normalizeSubagentWorktreeSlug(sessionId: string): string {
-  const slug = sessionId
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, '-')
-    .replace(/^-+|-+$/gu, '');
-  return slug.length > 0 ? slug : 'subagent';
-}
-
-export function buildDeterministicSubagentWorktreeNames(sessionId: string): {
-  worktreeName: string;
-  branchName: string;
-} {
-  const slug = normalizeSubagentWorktreeSlug(sessionId).slice(0, 48);
-  return {
-    worktreeName: `spirit-subagent-${slug}`,
-    branchName: `spirit/subagent-${slug}`,
   };
 }
 
