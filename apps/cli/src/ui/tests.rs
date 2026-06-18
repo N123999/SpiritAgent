@@ -1322,10 +1322,10 @@ fn generate_video_tool_card_shows_managed_uri_when_aux_details_collapsed() {
             headline: "视频生成完成".to_string(),
             detail_lines: Vec::new(),
             image_paths: Vec::new(),
-            video_paths: vec!["spirit-agent://generated/video/example.mp4".to_string()],
+            video_paths: vec!["spirit://generated/video/example.mp4".to_string()],
             args_excerpt: Some("{\n  \"prompt\": \"生成一段视频\"\n}".to_string()),
             output_excerpt: Some(
-                "[generated video]\nvideo_ref: spirit-agent://generated/video/example.mp4"
+                "[generated video]\nvideo_ref: spirit://generated/video/example.mp4"
                     .to_string(),
             ),
         },
@@ -1336,7 +1336,7 @@ fn generate_video_tool_card_shows_managed_uri_when_aux_details_collapsed() {
 
     assert!(lines.iter().any(|line| line.contains("视频生成完成")));
     assert!(lines.iter().any(|line| {
-        line.contains("路径: spirit-agent://generated/video/example.mp4")
+        line.contains("路径: spirit://generated/video/example.mp4")
     }));
 }
 

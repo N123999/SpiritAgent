@@ -142,7 +142,7 @@ interface Deferred<T> {
   reject(error: unknown): void;
 }
 
-const MANAGED_GENERATED_ASSET_PROTOCOL = 'spirit-agent:';
+const MANAGED_GENERATED_ASSET_PROTOCOL = 'spirit:';
 const MANAGED_GENERATED_ASSET_HOST = 'generated';
 
 export function normalizeGeneratedImageMarkdownRef(markdownRef: string): string {
@@ -190,7 +190,7 @@ export function normalizeGeneratedImageMarkdownRef(markdownRef: string): string 
     throw new Error('Host returned an invalid generated image markdownRef.');
   }
 
-  return `spirit-agent://generated/image/${encodeURIComponent(imageId)}`;
+  return `spirit://generated/image/${encodeURIComponent(imageId)}`;
 }
 
 export class AiSdkOpenAiCompatibleTransport

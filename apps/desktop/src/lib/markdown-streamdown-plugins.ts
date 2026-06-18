@@ -4,11 +4,11 @@ import { defaultRehypePlugins } from "streamdown";
 import type { Pluggable } from "unified";
 
 /** hast-util-sanitize compares protocol names without the trailing colon. */
-export const MANAGED_GENERATED_ASSET_SANITIZE_PROTOCOL = "spirit-agent";
+export const MANAGED_GENERATED_ASSET_SANITIZE_PROTOCOL = "spirit";
 
 /**
  * Streamdown's default sanitize schema only allows http/https src values.
- * Spirit-managed generated assets use spirit-agent:// and must survive sanitization
+ * Spirit-managed generated assets use spirit:// and must survive sanitization
  * before rehype-harden and our Markdown media resolvers run.
  */
 export const streamdownSanitizeSchema = {

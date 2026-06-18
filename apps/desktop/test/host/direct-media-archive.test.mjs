@@ -15,7 +15,7 @@ test('appendDirectMediaTurnToArchive appends user, assistant tool_calls, and too
     request: { name: 'generate_video', prompt: 'a moonlit courtyard' },
     summaryText: [
       '[generated video]',
-      'video_ref: spirit-agent://generated/video/courtyard.mp4',
+      'video_ref: spirit://generated/video/courtyard.mp4',
     ].join('\n'),
   });
 
@@ -31,5 +31,5 @@ test('appendDirectMediaTurnToArchive appends user, assistant tool_calls, and too
   );
   assert.equal(bundle.archiveHistory[2].role, 'tool');
   assert.equal(bundle.archiveHistory[2].toolCallId, 'call-direct-video');
-  assert.match(bundle.archiveHistory[2].content[0].text, /spirit-agent:\/\/generated\/video/);
+  assert.match(bundle.archiveHistory[2].content[0].text, /spirit:\/\/generated\/video/);
 });

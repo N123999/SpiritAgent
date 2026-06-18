@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-export const MANAGED_GENERATED_ASSET_PROTOCOL = 'spirit-agent:';
+export const MANAGED_GENERATED_ASSET_PROTOCOL = 'spirit:';
 export const MANAGED_GENERATED_ASSET_HOST = 'generated';
 
 export const GENERATED_IMAGES_DIR = 'generated-images';

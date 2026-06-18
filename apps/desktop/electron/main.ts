@@ -149,7 +149,7 @@ import i18nHost from '../src/lib/i18n-host.js';
 /** 与 `titleBarOverlay.height` 及自绘标题栏 CSS 高度一致（px） */
 const TITLE_BAR_OVERLAY_HEIGHT = 32;
 const LOCAL_IMAGE_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
-const MANAGED_ASSET_PROTOCOL = 'spirit-agent:';
+const MANAGED_ASSET_PROTOCOL = 'spirit:';
 const MANAGED_ASSET_HOST = 'generated';
 const MANAGED_GENERATED_IMAGES_DIR = 'generated-images';
 const MANAGED_GENERATED_VIDEOS_DIR = 'generated-videos';

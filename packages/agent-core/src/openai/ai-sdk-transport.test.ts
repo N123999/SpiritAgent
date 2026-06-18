@@ -5,8 +5,8 @@ import { normalizeGeneratedImageMarkdownRef } from './ai-sdk-transport.js';
 
 test('normalizeGeneratedImageMarkdownRef normalizes valid managed refs', () => {
   assert.equal(
-    normalizeGeneratedImageMarkdownRef('  SPIRIT-AGENT://GENERATED/image/example%20image.png  '),
-    'spirit-agent://generated/image/example%20image.png',
+    normalizeGeneratedImageMarkdownRef('  SPIRIT://GENERATED/image/example%20image.png  '),
+    'spirit://generated/image/example%20image.png',
   );
 });
 
@@ -19,7 +19,7 @@ test('normalizeGeneratedImageMarkdownRef rejects empty refs', () => {
 
 test('normalizeGeneratedImageMarkdownRef rejects invalid managed refs', () => {
   assert.throws(
-    () => normalizeGeneratedImageMarkdownRef('spirit-agent://generated/image/%2Fsecret.png'),
+    () => normalizeGeneratedImageMarkdownRef('spirit://generated/image/%2Fsecret.png'),
     /invalid generated image markdownRef/u,
   );
 });

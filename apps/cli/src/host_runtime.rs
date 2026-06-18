@@ -742,7 +742,7 @@ mod tests {
 
     #[test]
     fn generate_video_result_block_shows_managed_uri() {
-        let output = "[generated video]\nvideo_ref: spirit-agent://generated/video/example.mp4\nread_file_path: spirit-agent://generated/video/example.mp4\nmime_type: video/mp4\nmodel: video-model";
+        let output = "[generated video]\nvideo_ref: spirit://generated/video/example.mp4\nread_file_path: spirit://generated/video/example.mp4\nmime_type: video/mp4\nmodel: video-model";
         let block = build_tool_result_block(
             &ToolUiRequest::new("generate_video", json!({ "prompt": "生成一段视频" })),
             "generate_video",
@@ -753,11 +753,11 @@ mod tests {
         assert_eq!(block.headline, "视频生成完成");
         assert_eq!(
             block.detail_lines,
-            vec!["路径: spirit-agent://generated/video/example.mp4"]
+            vec!["路径: spirit://generated/video/example.mp4"]
         );
         assert_eq!(
             block.video_paths,
-            vec!["spirit-agent://generated/video/example.mp4"]
+            vec!["spirit://generated/video/example.mp4"]
         );
     }
 

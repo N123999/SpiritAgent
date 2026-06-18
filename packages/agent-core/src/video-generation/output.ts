@@ -20,7 +20,7 @@ export function normalizeGeneratedVideoMarkdownRef(markdownRef: string): string 
   }
 
   if (
-    url.protocol.toLowerCase() !== 'spirit-agent:' ||
+    url.protocol.toLowerCase() !== 'spirit:' ||
     url.hostname.toLowerCase() !== 'generated' ||
     url.search.length > 0 ||
     url.hash.length > 0
@@ -50,7 +50,7 @@ export function normalizeGeneratedVideoMarkdownRef(markdownRef: string): string 
     throw new Error('Host returned an invalid generated video markdownRef.');
   }
 
-  return `spirit-agent://generated/video/${encodeURIComponent(videoId)}`;
+  return `spirit://generated/video/${encodeURIComponent(videoId)}`;
 }
 
 export function buildGeneratedVideoToolOutput(

@@ -132,7 +132,7 @@ function createGenerateVideoRuntime(
         throw new Error(`generate_video smoke 未解析出预期 resolution：${request.resolution}`);
       }
 
-      const markdownRef = 'spirit-agent://generated/video/courtyard-clip.mp4';
+      const markdownRef = 'spirit://generated/video/courtyard-clip.mp4';
       const summaryText = [
         '[generated video]',
         `video_ref: ${markdownRef}`,
@@ -163,7 +163,7 @@ function assertTerminalGenerateVideoResult(
   }
 
   const execution = toolExecutions.find((item) => item.toolName === 'generate_video');
-  if (!execution || execution.failed || !execution.output.includes('spirit-agent://generated/video/courtyard-clip.mp4')) {
+  if (!execution || execution.failed || !execution.output.includes('spirit://generated/video/courtyard-clip.mp4')) {
     throw new Error(`${label} 未记录正确的 generate_video 工具结果。`);
   }
   if (!execution.artifacts?.some((artifact) => artifact.path === 'generated/courtyard-clip.mp4')) {

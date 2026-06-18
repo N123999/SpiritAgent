@@ -129,7 +129,7 @@ function createGenerateImageRuntime(
         throw new Error(`generate_image smoke 未解析出预期 size：${request.size}`);
       }
 
-      const markdownRef = 'spirit-agent://generated/image/square-poster.png';
+      const markdownRef = 'spirit://generated/image/square-poster.png';
       const summaryText = [
         '[generated image]',
         `image_ref: ${markdownRef}`,
@@ -160,7 +160,7 @@ function assertTerminalGenerateImageResult(
   }
 
   const execution = toolExecutions.find((item) => item.toolName === 'generate_image');
-  if (!execution || execution.failed || !execution.output.includes('spirit-agent://generated/image/square-poster.png')) {
+  if (!execution || execution.failed || !execution.output.includes('spirit://generated/image/square-poster.png')) {
     throw new Error(`${label} 未记录正确的 generate_image 工具结果。`);
   }
   if (execution.output.includes('path: generated/square-poster.png')) {
@@ -185,7 +185,7 @@ function assertToolResultMessagePersisted(
 
   if (
     typeof toolMessage?.content !== 'string' ||
-    !toolMessage.content.includes('spirit-agent://generated/image/square-poster.png')
+    !toolMessage.content.includes('spirit://generated/image/square-poster.png')
   ) {
     throw new Error(`${label} 未把 generate_image 结果写回 runtime state messages。`);
   }

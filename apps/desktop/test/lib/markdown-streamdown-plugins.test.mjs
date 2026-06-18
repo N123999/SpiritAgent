@@ -9,7 +9,7 @@ import {
 
 test("streamdown sanitize schema keeps spirit-agent img src", () => {
   const ref =
-    "spirit-agent://generated/image/1780701216913-a51ab479-f44c-4efc-86f8-a0a2fe4f85e7.png";
+    "spirit://generated/image/1780701216913-a51ab479-f44c-4efc-86f8-a0a2fe4f85e7.png";
   const tree = {
     type: "root",
     children: [
@@ -32,7 +32,7 @@ test("streamdown sanitize schema keeps spirit-agent img src", () => {
 });
 
 test("streamdown sanitize schema keeps spirit-agent video src", () => {
-  const ref = "spirit-agent://generated/video/example.mp4";
+  const ref = "spirit://generated/video/example.mp4";
   const tree = {
     type: "root",
     children: [
@@ -73,7 +73,7 @@ test("streamdown sanitize schema still allows https image src", () => {
 });
 
 test("default github schema strips spirit-agent src", () => {
-  const ref = "spirit-agent://generated/image/test.png";
+  const ref = "spirit://generated/image/test.png";
   const tree = {
     type: "root",
     children: [
@@ -88,5 +88,5 @@ test("default github schema strips spirit-agent src", () => {
 
   const safe = sanitize(tree);
   assert.equal(safe.children[0].properties.src, undefined);
-  assert.equal(MANAGED_GENERATED_ASSET_SANITIZE_PROTOCOL, "spirit-agent");
+  assert.equal(MANAGED_GENERATED_ASSET_SANITIZE_PROTOCOL, "spirit");
 });

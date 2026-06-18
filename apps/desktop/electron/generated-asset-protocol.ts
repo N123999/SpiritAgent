@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 
 import { net, protocol } from 'electron';
 
-const SCHEME = 'spirit-agent';
+const SCHEME = 'spirit';
 const GENERATED_HOST = 'generated';
 
 export function registerSpiritGeneratedAssetPrivilegedScheme(): void {

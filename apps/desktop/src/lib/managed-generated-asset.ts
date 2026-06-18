@@ -1,4 +1,4 @@
-export const MANAGED_GENERATED_ASSET_PROTOCOL_PREFIX = "spirit-agent://generated/";
+export const MANAGED_GENERATED_ASSET_PROTOCOL_PREFIX = "spirit://generated/";
 
 export type ManagedGeneratedAssetKind = "image" | "video";
 
