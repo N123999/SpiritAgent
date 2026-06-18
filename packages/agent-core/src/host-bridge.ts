@@ -950,13 +950,44 @@ async function bootstrapCliSubagentWorkspace(
       return { error: 'cannot determine base branch for subagent worktree' };
     }
 
-    const slug = input.subagentSessionId
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/gu, '-')
-      .replace(/^-+|-+$/gu, '')
-      .slice(0, 48) || 'subagent';
-    const worktreeName = `spirit-subagent-${slug}`;
-    const branchName = `spirit/subagent-${slug}`;
+    const config = transportConfig;
+    if (!config) {
+      return { error: 'transportConfig is not initialized for worktree subagent naming' };
+    }
+
+    const namingModulePath = path.join(path.dirname(modulePath), 'generate-worktree-names.js');
+    const naming = await import(pathToFileURL(namingModulePath).href) as {
+      generateWorktreeNamesFromTask: (input: {
+        transport: NonNullable<typeof transportConfig>;
+        task: string;
+        baseBranch: string;
+        repoRoot: string;
+        workspaceRoot: string;
+        toolExecutor: typeof toolExecutor;
+        enabledRules: typeof enabledRules;
+        enabledSkillCatalog: typeof enabledSkillCatalog;
+        extensionSystemPrompts: typeof extensionSystemPrompts;
+        planMetadata: typeof planMetadata;
+        runtimeBasicInfo: ReturnType<typeof buildRuntimeBasicInfo>;
+      }) => Promise<{ worktreeName: string; branchName: string }>;
+    };
+
+    const names = await naming.generateWorktreeNamesFromTask({
+      transport: config,
+      task: input.task,
+      baseBranch,
+      repoRoot,
+      workspaceRoot: parentRoot,
+      toolExecutor,
+      enabledRules,
+      enabledSkillCatalog,
+      extensionSystemPrompts,
+      planMetadata,
+      runtimeBasicInfo: buildRuntimeBasicInfo(parentRoot, host.service),
+    });
+
+    const worktreeName = names.worktreeName;
+    const branchName = names.branchName;
     const worktreePath = git.buildWorktreeRootPath(repoRoot, worktreeName);
     await git.addGitWorktree(repoRoot, {
       worktreePath,
