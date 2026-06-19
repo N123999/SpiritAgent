@@ -622,11 +622,6 @@ html.spirit-clickable-pointer .workspace-shell-xterm .xterm-link {
   text-decoration: underline;
 }
 
-/* Shell 内嵌 xterm：Mica 下 viewport 透明（xterm.css 默认 #000 会盖住 blur 叠层） */
-html.spirit-desktop-native.spirit-desktop-mica .workspace-shell-xterm .xterm-viewport {
-  background-color: transparent;
-}
-
 /* Shell 内嵌 xterm：滚动条与侧栏 ScrollArea 接近（细轨 + 半透明拇指），避免系统默认灰条 */
 .workspace-shell-xterm .xterm-viewport {
   scrollbar-width: thin;
