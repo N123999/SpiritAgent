@@ -9,7 +9,7 @@ export interface HostTodoScope {
   sessionKey: string;
 }
 
-export type HostTodoStatus = 'pending' | 'completed';
+export type HostTodoStatus = 'pending' | 'in_progress' | 'completed';
 
 /** Model-visible todo item (tool list/write payloads). */
 export interface HostTodoItem {
@@ -66,7 +66,7 @@ export class HostTodoStore {
     const file = await this.loadFile();
     const includeCompleted = options.includeCompleted !== false;
     return file.records
-      .filter((record) => includeCompleted || record.status === 'pending')
+      .filter((record) => includeCompleted || record.status !== 'completed')
       .sort((left, right) => left.createdAtUnixMs - right.createdAtUnixMs);
   }
 
@@ -81,7 +81,12 @@ export class HostTodoStore {
 
     const now = Date.now();
     const records: HostTodoRecord[] = items.map((item) => {
-      const status = item.status === 'completed' ? 'completed' : 'pending';
+      const status: HostTodoStatus =
+        item.status === 'completed'
+          ? 'completed'
+          : item.status === 'in_progress'
+            ? 'in_progress'
+            : 'pending';
       const record: HostTodoRecord = {
         id: randomUUID().slice(0, 8),
         title: normalizeNonEmpty(item.title, 'title'),
@@ -191,7 +196,12 @@ function normalizeTodoRecord(value: unknown): HostTodoRecord | undefined {
   if (typeof record.title !== 'string' || !record.title.trim()) {
     return undefined;
   }
-  const status = record.status === 'completed' ? 'completed' : 'pending';
+  const status: HostTodoStatus =
+    record.status === 'completed'
+      ? 'completed'
+      : record.status === 'in_progress'
+        ? 'in_progress'
+        : 'pending';
   const createdAtUnixMs =
     typeof record.createdAtUnixMs === 'number' ? record.createdAtUnixMs : Date.now();
   const updatedAtUnixMs =

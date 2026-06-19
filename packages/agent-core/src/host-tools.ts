@@ -646,8 +646,9 @@ export function buildTodoHostToolDefinitions(): JsonValue[] {
       },
       status: {
         type: 'string',
-        enum: ['pending', 'completed'],
-        description: 'Todo status.',
+        enum: ['pending', 'in_progress', 'completed'],
+        description:
+          'Todo status: "pending" (not started), "in_progress" (actively working), or "completed" (done).',
       },
     },
     required: ['title', 'status'],

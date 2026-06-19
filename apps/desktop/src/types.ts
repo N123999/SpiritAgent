@@ -1120,7 +1120,7 @@ export interface McpStatusSnapshot {
   lastError?: string;
 }
 
-export type DesktopTodoStatus = 'pending' | 'completed';
+export type DesktopTodoStatus = 'pending' | 'in_progress' | 'completed';
 
 export interface DesktopTodoItem {
   id: string;

@@ -89,7 +89,7 @@ export interface DesktopRuntimeEventOrchestratorOptions {
   ) => void;
   onTodoStoreMutated?: () => void;
   /** todo_write 工具卡增量文案：返回执行前的会话 TODO。 */
-  todoItemsBeforeWrite?: () => ReadonlyArray<{ title: string; status: 'pending' | 'completed' }>;
+  todoItemsBeforeWrite?: () => ReadonlyArray<{ title: string; status: 'pending' | 'in_progress' | 'completed' }>;
   requestLiveSnapshotUpdate?: () => void;
   /** delete_file：删除前按路径读取磁盘并统计行数 */
   lineDeltaForDeleteFile?: (inputPath: string) => EditFileLineDelta | undefined;

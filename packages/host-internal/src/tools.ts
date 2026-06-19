@@ -2203,7 +2203,11 @@ function parseTodoWriteItems(parsed: HostJsonObject): HostTodoItem[] {
       throw new Error(`todos[${index}] 必须是对象。`);
     }
     const statusRaw = requiredString(entry, 'status');
-    if (statusRaw !== 'pending' && statusRaw !== 'completed') {
+    if (
+      statusRaw !== 'pending' &&
+      statusRaw !== 'in_progress' &&
+      statusRaw !== 'completed'
+    ) {
       throw new Error(`todos[${index}].status 无效: ${statusRaw}`);
     }
     return {

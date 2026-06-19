@@ -118,6 +118,33 @@ test('todoWriteSummaryDetail counts completed items when after payload is reliab
   );
 });
 
+test('parseTodoItemsFromPayload preserves in_progress status', () => {
+  assert.deepEqual(
+    parseTodoItemsFromPayload({
+      todos: [
+        { title: 'A', status: 'pending' },
+        { title: 'B', status: 'in_progress' },
+        { title: 'C', status: 'completed' },
+      ],
+    }),
+    [
+      { title: 'A', status: 'pending' },
+      { title: 'B', status: 'in_progress' },
+      { title: 'C', status: 'completed' },
+    ],
+  );
+});
+
+test('computeTodoWriteDelta counts in_progress to completed as completed', () => {
+  assert.deepEqual(
+    computeTodoWriteDelta(
+      [{ title: 'A', status: 'in_progress' }],
+      [{ title: 'A', status: 'completed' }],
+    ),
+    { added: 0, completed: 1, removed: 0 },
+  );
+});
+
 test('resolveTodoWriteBeforeSnapshot prefers existing non-empty snapshot', () => {
   assert.deepEqual(
     resolveTodoWriteBeforeSnapshot(

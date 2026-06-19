@@ -65,6 +65,36 @@ test('todo_list and todo_write replace the full session list', async () => {
   }
 });
 
+test('todo_write stores in_progress status and lists it when include_completed is false', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-todos-inprogress-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const sessionKey = join(workspaceRoot, 'session-c.json');
+
+  try {
+    const store = createHostTodoStore({ spiritDataDir, scope: { sessionKey } });
+    await store.write([
+      { title: 'Pending task', status: 'pending' },
+      { title: 'Active task', status: 'in_progress' },
+      { title: 'Done task', status: 'completed' },
+    ]);
+
+    const all = await store.listItems({ includeCompleted: true });
+    assert.deepEqual(all, [
+      { title: 'Pending task', status: 'pending' },
+      { title: 'Active task', status: 'in_progress' },
+      { title: 'Done task', status: 'completed' },
+    ]);
+
+    const withoutCompleted = await store.listItems({ includeCompleted: false });
+    assert.deepEqual(withoutCompleted, [
+      { title: 'Pending task', status: 'pending' },
+      { title: 'Active task', status: 'in_progress' },
+    ]);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('todo store replaceAll restores rewind snapshot', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-todos-rewind-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');

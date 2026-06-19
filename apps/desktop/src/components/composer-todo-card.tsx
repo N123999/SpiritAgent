@@ -42,12 +42,16 @@ export function ComposerTodoCard({ todos, sessionKey }: ComposerTodoCardProps) {
     }
   }, [sessionKey, todos.items.length]);
 
-  const firstPendingIndex = useMemo(
-    () => todos.items.findIndex((item) => item.status === "pending"),
+  const firstActiveIndex = useMemo(
+    () =>
+      todos.items.findIndex(
+        (item) => item.status === "in_progress" || item.status === "pending",
+      ),
     [todos.items],
   );
 
   const completedCount = todos.items.filter((item) => item.status === "completed").length;
+  const hasInProgress = todos.items.some((item) => item.status === "in_progress");
 
   const toggleExpanded = () => {
     setExpanded((current) => {
@@ -63,7 +67,7 @@ export function ComposerTodoCard({ todos, sessionKey }: ComposerTodoCardProps) {
     return null;
   }
 
-  const summaryTitle = todos.items[firstPendingIndex >= 0 ? firstPendingIndex : 0]?.title ?? "";
+  const summaryTitle = todos.items[firstActiveIndex >= 0 ? firstActiveIndex : 0]?.title ?? "";
 
   return (
     <div
@@ -80,7 +84,7 @@ export function ComposerTodoCard({ todos, sessionKey }: ComposerTodoCardProps) {
       >
         <StatusIcon
           status={
-            firstPendingIndex >= 0 && todos.items[firstPendingIndex]?.status === "pending"
+            hasInProgress
               ? "in-progress"
               : todos.items.every((item) => item.status === "completed")
                 ? "completed"
@@ -108,17 +112,9 @@ export function ComposerTodoCard({ todos, sessionKey }: ComposerTodoCardProps) {
       >
         <div className="overflow-hidden">
           <ul className="space-y-0.5 px-3 pb-2.5 pt-0">
-            {todos.items.map((item, index) => (
+            {todos.items.map((item) => (
               <li key={item.id} className="flex items-start gap-2 text-sm leading-snug">
-                <StatusIcon
-                  status={
-                    item.status === "completed"
-                      ? "completed"
-                      : index === firstPendingIndex
-                        ? "in-progress"
-                        : "pending"
-                  }
-                />
+                <StatusIcon status={item.status === "completed" ? "completed" : item.status === "in_progress" ? "in-progress" : "pending"} />
                 <span
                   className={cn(
                     "min-w-0 flex-1",
@@ -143,5 +139,5 @@ function StatusIcon({ status }: { status: "pending" | "in-progress" | "completed
   if (status === "in-progress") {
     return <LoaderCircle className="mt-0.5 size-3.5 shrink-0 animate-spin text-foreground/80" />;
   }
-  return <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/50" strokeWidth={1.5} />;
+  return <Circle className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/55" strokeWidth={1.5} />;
 }

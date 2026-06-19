@@ -806,7 +806,12 @@ function normalizeTodoWriteBeforeTodosSnapshot(
       }
       return {
         title,
-        status: entry.status === 'completed' ? 'completed' as const : 'pending' as const,
+        status:
+          entry.status === 'completed'
+            ? ('completed' as const)
+            : entry.status === 'in_progress'
+              ? ('in_progress' as const)
+              : ('pending' as const),
       };
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);

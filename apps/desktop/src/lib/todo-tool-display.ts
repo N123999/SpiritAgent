@@ -1,6 +1,6 @@
 export type TodoDisplayItem = {
   title: string;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'in_progress' | 'completed';
 };
 
 export type TodoWriteDelta = {
@@ -47,7 +47,12 @@ export function parseTodoItemsFromPayload(payload: unknown): TodoDisplayItem[] |
     }
     items.push({
       title,
-      status: record.status === 'completed' ? 'completed' : 'pending',
+      status:
+        record.status === 'completed'
+          ? 'completed'
+          : record.status === 'in_progress'
+            ? 'in_progress'
+            : 'pending',
     });
   }
   return items;
@@ -76,7 +81,7 @@ export function computeTodoWriteDelta(
       added += 1;
       continue;
     }
-    if (beforeItem.status === 'pending' && afterItem.status === 'completed') {
+    if (beforeItem.status !== 'completed' && afterItem.status === 'completed') {
       completed += 1;
     }
   }
