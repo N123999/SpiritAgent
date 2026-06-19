@@ -671,7 +671,7 @@ export function buildTodoHostToolDefinitions(): JsonValue[] {
     ),
     functionTool(
       'todo_write',
-      'Replace the full session todo list. Pass the entire list each time (same shape as todo_list returns). Use an empty list to clear todos.',
+      'Replace the full session todo list. Pass the entire list each time (same shape as todo_list returns). Use an empty list to clear todos. Call this tool frequently as you work through tasks to keep your progress tracked and visible to the user.',
       {
         type: 'object',
         properties: {
