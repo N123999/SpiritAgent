@@ -7,7 +7,6 @@ import {
   type TodoHostToolName,
 } from './host-tools.js';
 import { isJsonObject } from './tool-agent.js';
-import { buildTodosSystemMessage, hasTodosSystemMessage } from './tool-agent.js';
 
 function readToolName(definition: JsonValue): string {
   if (!isJsonObject(definition)) {
@@ -45,16 +44,4 @@ test('todo_create schema requires items with title', () => {
   const parameters = fn.parameters;
   assert.ok(isJsonObject(parameters));
   assert.deepEqual(parameters.required, ['items']);
-});
-
-test('buildTodosSystemMessage returns undefined for empty catalog', () => {
-  assert.equal(buildTodosSystemMessage(undefined), undefined);
-  assert.equal(buildTodosSystemMessage('   '), undefined);
-});
-
-test('buildTodosSystemMessage embeds catalog with SPIRIT_TODOS prefix', () => {
-  const message = buildTodosSystemMessage('- id: abc | pending | Fix tests');
-  assert.ok(message?.includes('[SPIRIT_TODOS]'));
-  assert.ok(message?.includes('todo_list'));
-  assert.ok(hasTodosSystemMessage(message ?? ''));
 });

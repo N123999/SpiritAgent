@@ -4,7 +4,6 @@ export {
   buildBasicInfoSystemMessage,
   buildDreamsSystemMessage,
   buildLoopModeSystemMessage,
-  buildTodosSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,

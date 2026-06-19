@@ -369,7 +369,6 @@ import {
 } from './dreams.js';
 import { resolveLightweightChatModelProfile } from './lightweight-chat-model.js';
 import {
-  buildSessionTodosContextText,
   createTodoScope,
 } from './todos.js';
 import {
@@ -875,7 +874,6 @@ class DesktopHostService {
         [],
         planMetadata,
         [dreamCollectorExtensionPrompt()],
-        undefined,
         undefined,
         toolExecutor,
       ),
@@ -2108,7 +2106,6 @@ class DesktopHostService {
         workspaceRoot: bundle.workspaceRoot || state.workspaceRoot,
         gitBranch: state.git.branch,
       }),
-      (await buildSessionTodosContextText(this.resolveTodoSessionKeyForBundle(bundle))) || undefined,
       await this.ensureToolExecutor(bundle),
       bundle.runtimeTransport,
       bundle,
@@ -2653,7 +2650,6 @@ class DesktopHostService {
     planMetadata: LlmPlanMetadata,
     extensionSystemPrompts: LlmExtensionSystemPrompt[],
     dreamsContextText?: string,
-    todosContextText?: string,
     toolExecutor: DesktopToolExecutor = this.requireToolExecutor(),
     llmTransport: SpiritLlmTransport = createLlmTransport(transportConfig),
     bundle: SessionBundle = this.activeBundle(),
@@ -2670,7 +2666,6 @@ class DesktopHostService {
       planMetadata,
       extensionSystemPrompts,
       ...(dreamsContextText === undefined ? {} : { dreamsContextText }),
-      ...(todosContextText === undefined ? {} : { todosContextText }),
       toolExecutor,
       llmTransport,
       activeSkills: bundle.currentTurnSkills,

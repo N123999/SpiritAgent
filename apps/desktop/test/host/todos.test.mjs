@@ -4,14 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
-import {
-  buildTodosSystemMessage,
-  startOpenAiToolAgentState,
-} from '@spirit-agent/core';
 import { createHostTodoStore } from '@spirit-agent/host-internal';
 
 import {
-  buildSessionTodosContextText,
   createTodoSessionScopeKey,
   listSessionTodos,
   replaceSessionTodos,
@@ -85,52 +80,6 @@ test('desktop todo tools are exposed on the main agent executor', () => {
   assert.ok(names.includes('todo_list'));
   assert.ok(names.includes('todo_update'));
   assert.ok(names.includes('todo_complete'));
-});
-
-test('desktop todos context is injected into the main agent system message', async () => {
-  const tempRoot = await mkdtemp(path.join(tmpdir(), 'spirit-agent-todos-'));
-  const previousAppData = process.env.APPDATA;
-  const sessionKey = path.join(tempRoot, 'session-todos.json');
-
-  try {
-    process.env.APPDATA = tempRoot;
-
-    const store = createHostTodoStore({
-      spiritDataDir: spiritAgentDataDir(),
-      scope: { sessionKey },
-    });
-    await store.create([{ title: 'Add session todo tools' }]);
-
-    const todosContextText = await buildSessionTodosContextText(sessionKey);
-    assert.match(todosContextText, /pending \| Add session todo tools/);
-
-    const state = startOpenAiToolAgentState(
-      [],
-      'Continue the desktop work.',
-      process.cwd(),
-      [],
-      [],
-      [],
-      'gpt-5.4',
-      undefined,
-      [],
-      undefined,
-      todosContextText,
-    );
-
-    const systemMessage = state.messages[0]?.content;
-    assert.equal(typeof systemMessage, 'string');
-    assert.match(systemMessage, /\[SPIRIT_TODOS\]/);
-    assert.match(systemMessage, /todo_list/);
-    assert.ok(systemMessage.includes(buildTodosSystemMessage(todosContextText)));
-  } finally {
-    if (previousAppData === undefined) {
-      delete process.env.APPDATA;
-    } else {
-      process.env.APPDATA = previousAppData;
-    }
-    await rm(tempRoot, { recursive: true, force: true });
-  }
 });
 
 test('replaceAll restores rewind todo snapshot per session', async () => {

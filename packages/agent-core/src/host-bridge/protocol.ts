@@ -95,7 +95,7 @@ export interface RuntimeInitParams {
   extensionToolDefinitions?: JsonValue[];
   loopEnabled?: boolean;
   approvalLevel?: BridgeApprovalLevel;
-  /** CLI: must be set before createRuntime so [SPIRIT_TODOS] is included in tool-agent state. */
+  /** CLI: must be set before createRuntime so session todo tools are registered on the executor. */
   todoSessionKey?: string;
 }
 

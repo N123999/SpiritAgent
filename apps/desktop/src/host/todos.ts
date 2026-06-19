@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
 import {
-  buildTodoContextText,
   createHostTodoStore,
   type HostTodoRecord,
   type HostTodoScope,
@@ -51,11 +50,6 @@ export async function listSessionTodos(sessionKey: string): Promise<HostTodoReco
     scope: createTodoScope(sessionKey),
   });
   return store.list({ includeCompleted: true });
-}
-
-export async function buildSessionTodosContextText(sessionKey: string): Promise<string> {
-  const records = await listSessionTodos(sessionKey);
-  return buildTodoContextText(records) ?? '';
 }
 
 export async function replaceSessionTodos(

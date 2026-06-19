@@ -24,7 +24,6 @@ const LOOP_MODE_SECTION_PREFIX = '[SPIRIT_LOOP_MODE]';
 const ACTIVE_SKILLS_SECTION_PREFIX = '[SPIRIT_ACTIVE_SKILLS]';
 const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
 const DREAMS_SECTION_PREFIX = '[SPIRIT_DREAMS]';
-const TODOS_SECTION_PREFIX = '[SPIRIT_TODOS]';
 const BASIC_INFO_SECTION_PREFIX = '[SPIRIT_BASIC_INFO]';
 
 export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
@@ -265,7 +264,6 @@ export function buildToolAgentMessages(input: {
   planMetadata?: ToolAgentPlanMetadata;
   extensionSystemPrompts?: ToolAgentExtensionSystemPrompt[];
   dreamsContextText?: string;
-  todosContextText?: string;
   basicInfo?: ToolAgentBasicInfo;
   applyPatchFileToolsPromptSection?: string;
   providerWebSearchPromptSection?: string;
@@ -279,7 +277,6 @@ export function buildToolAgentMessages(input: {
   const activeSkillsSystemMessage = buildActiveSkillsSystemMessage(input.activeSkills ?? []);
   const extensionsSystemMessage = buildExtensionsSystemMessage(input.extensionSystemPrompts ?? []);
   const dreamsSystemMessage = buildDreamsSystemMessage(input.dreamsContextText);
-  const todosSystemMessage = buildTodosSystemMessage(input.todosContextText);
   const basicInfoSystemMessage = buildBasicInfoSystemMessage(input.basicInfo);
 
   return [
@@ -295,7 +292,6 @@ export function buildToolAgentMessages(input: {
         activeSkillsSystemMessage,
         extensionsSystemMessage,
         dreamsSystemMessage,
-        todosSystemMessage,
         basicInfoSystemMessage,
         input.applyPatchFileToolsPromptSection,
         input.providerWebSearchPromptSection,
@@ -758,29 +754,6 @@ export function buildDreamsSystemMessage(
   ].join('\n');
 }
 
-export function buildTodosSystemMessage(
-  todosContextText?: string,
-): string | undefined {
-  const trimmed = todosContextText?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  return [
-    TODOS_SECTION_PREFIX,
-    'Session todo catalog',
-    '',
-    'These are host-provided task items for the current chat session only.',
-    'They track work the user asked you to do in this conversation; they are not permanent memory.',
-    'Prefer the current user request and visible conversation when they conflict with this catalog.',
-    'Use `todo_list` to refresh ids and status before `todo_update` or `todo_complete`.',
-    'Use `todo_create` to add items; use `todo_update` when titles need correction; use `todo_complete` when an item is done.',
-    'Do not assume todos that are not listed here or returned by the todo tools.',
-    '',
-    trimmed,
-  ].join('\n');
-}
-
 export function buildBasicInfoSystemMessage(
   basicInfo?: ToolAgentBasicInfo,
 ): string | undefined {
@@ -881,10 +854,6 @@ export function hasDreamsSystemMessage(content: string): boolean {
   return content.includes(DREAMS_SECTION_PREFIX);
 }
 
-export function hasTodosSystemMessage(content: string): boolean {
-  return content.includes(TODOS_SECTION_PREFIX);
-}
-
 export function hasBasicInfoSystemMessage(content: string): boolean {
   return content.includes(BASIC_INFO_SECTION_PREFIX);
 }
@@ -905,7 +874,6 @@ export function findSpiritSystemMessageContent(messages: JsonValue[]): string | 
         ACTIVE_SKILLS_SECTION_PREFIX,
         EXTENSIONS_SECTION_PREFIX,
         DREAMS_SECTION_PREFIX,
-        TODOS_SECTION_PREFIX,
         BASIC_INFO_SECTION_PREFIX,
       ]
         .map((prefix) => content.indexOf(prefix))

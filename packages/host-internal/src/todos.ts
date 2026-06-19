@@ -51,17 +51,6 @@ export function createHostTodoStore(input: {
   return new HostTodoStore(input.spiritDataDir, normalizeTodoScope(input.scope));
 }
 
-export function buildTodoContextText(records: HostTodoRecord[]): string | undefined {
-  const visible = records.filter((record) => record.status === 'pending');
-  if (visible.length === 0) {
-    return undefined;
-  }
-
-  return visible
-    .map((record) => `- id: ${record.id} | ${record.status} | ${record.title}`)
-    .join('\n');
-}
-
 export class HostTodoStore {
   private readonly filePath: string;
 

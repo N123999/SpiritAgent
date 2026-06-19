@@ -106,7 +106,6 @@ async function runWorktreeNamingToolAgentRounds(input: {
     input.planMetadata,
     [...input.extensionSystemPrompts],
     input.dreamContextText || undefined,
-    undefined,
     input.runtimeBasicInfo,
   );
 

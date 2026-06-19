@@ -14,7 +14,6 @@ import {
   buildBasicInfoSystemMessage,
   buildDreamsSystemMessage,
   buildLoopModeSystemMessage,
-  buildTodosSystemMessage,
   buildToolAgentMessages,
   buildToolAgentSystemMessage,
   cloneJsonValue,
@@ -25,7 +24,6 @@ import {
   hasBasicInfoSystemMessage,
   hasDreamsSystemMessage,
   hasLoopModeSystemMessage,
-  hasTodosSystemMessage,
   isJsonObject,
   startToolAgentState,
   truncateHistoryForCompaction,
@@ -47,7 +45,6 @@ export {
   buildBasicInfoSystemMessage,
   buildDreamsSystemMessage,
   buildLoopModeSystemMessage,
-  buildTodosSystemMessage,
   buildExtensionsSystemMessage,
   buildPlanSystemMessage,
   buildRulesSystemMessage,
@@ -76,7 +73,6 @@ export function startOpenAiToolAgentState(
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
   dreamsContextText?: string,
-  todosContextText?: string,
   basicInfo?: OpenAiToolAgentBasicInfo,
   applyPatchFileToolsPromptSection?: string,
   providerWebSearchPromptSection?: string,
@@ -93,7 +89,6 @@ export function startOpenAiToolAgentState(
       planMetadata,
       extensionSystemPrompts,
       dreamsContextText,
-      todosContextText,
       basicInfo,
       applyPatchFileToolsPromptSection,
       providerWebSearchPromptSection,
@@ -113,7 +108,6 @@ export function continueOpenAiToolAgentState(
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
   dreamsContextText?: string,
-  todosContextText?: string,
   basicInfo?: OpenAiToolAgentBasicInfo,
   applyPatchFileToolsPromptSection?: string,
   providerWebSearchPromptSection?: string,
@@ -130,7 +124,6 @@ export function continueOpenAiToolAgentState(
       planMetadata,
       extensionSystemPrompts,
       dreamsContextText,
-      todosContextText,
       basicInfo,
       applyPatchFileToolsPromptSection,
       providerWebSearchPromptSection,
@@ -149,7 +142,6 @@ function buildOpenAiToolAgentMessages(
   planMetadata: OpenAiPlanMetadata | undefined,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[],
   dreamsContextText: string | undefined,
-  todosContextText: string | undefined,
   basicInfo: OpenAiToolAgentBasicInfo | undefined,
   applyPatchFileToolsPromptSection: string | undefined,
   providerWebSearchPromptSection: string | undefined,
@@ -164,7 +156,6 @@ function buildOpenAiToolAgentMessages(
     ...(planMetadata === undefined ? {} : { planMetadata }),
     extensionSystemPrompts,
     ...(dreamsContextText === undefined ? {} : { dreamsContextText }),
-    ...(todosContextText === undefined ? {} : { todosContextText }),
     ...(basicInfo === undefined ? {} : { basicInfo }),
     ...(applyPatchFileToolsPromptSection === undefined
       ? {}
@@ -246,7 +237,6 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   planMetadata?: OpenAiPlanMetadata,
   extensionSystemPrompts: OpenAiExtensionSystemPrompt[] = [],
   dreamsContextText?: string,
-  todosContextText?: string,
   basicInfo?: OpenAiToolAgentBasicInfo,
   applyPatchFileToolsPromptSection?: string,
   providerWebSearchPromptSection?: string,
@@ -264,7 +254,6 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
     preservedSpiritSystemMessage === undefined ? planMetadata : undefined,
     preservedSpiritSystemMessage === undefined ? extensionSystemPrompts : [],
     preservedSpiritSystemMessage === undefined ? dreamsContextText : undefined,
-    preservedSpiritSystemMessage === undefined ? todosContextText : undefined,
     basicInfo,
     applyPatchFileToolsPromptSection,
     providerWebSearchPromptSection,
@@ -272,7 +261,6 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
   );
   if (preservedSpiritSystemMessage !== undefined) {
     const preservedDreams = hasDreamsSystemMessage(preservedSpiritSystemMessage);
-    const preservedTodos = hasTodosSystemMessage(preservedSpiritSystemMessage);
     const preservedBasicInfo = hasBasicInfoSystemMessage(preservedSpiritSystemMessage);
     const preservedLoop = hasLoopModeSystemMessage(preservedSpiritSystemMessage);
     rebuilt.messages[0] = {
@@ -282,7 +270,6 @@ export function rebuildOpenAiToolAgentStateAfterCompaction(
         preservedSpiritSystemMessage,
         preservedDreams ? undefined : buildDreamsSystemMessage(dreamsContextText),
         preservedLoop ? undefined : buildLoopModeSystemMessage(loopEnabled),
-        preservedTodos ? undefined : buildTodosSystemMessage(todosContextText),
         preservedBasicInfo ? undefined : buildBasicInfoSystemMessage(basicInfo),
       ),
     };

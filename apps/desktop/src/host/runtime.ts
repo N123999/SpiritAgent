@@ -54,7 +54,6 @@ export function createDesktopRuntime(input: {
   planMetadata: LlmPlanMetadata;
   extensionSystemPrompts: LlmExtensionSystemPrompt[];
   dreamsContextText?: string;
-  todosContextText?: string;
   toolExecutor: DesktopToolExecutor;
   llmTransport: SpiritLlmTransport;
   activeSkills: LlmActiveSkill[];
@@ -95,7 +94,6 @@ export function createDesktopRuntime(input: {
         input.planMetadata,
         input.extensionSystemPrompts,
         input.dreamsContextText,
-        input.todosContextText,
         input.basicInfo,
         applyPatchFileToolsPromptSection,
         providerWebSearchPromptSection,
@@ -112,7 +110,6 @@ export function createDesktopRuntime(input: {
         input.planMetadata,
         input.extensionSystemPrompts,
         input.dreamsContextText,
-        input.todosContextText,
         input.basicInfo,
         applyPatchFileToolsPromptSection,
         providerWebSearchPromptSection,
@@ -138,7 +135,6 @@ export function createDesktopRuntime(input: {
         input.planMetadata,
         input.extensionSystemPrompts,
         input.dreamsContextText,
-        input.todosContextText,
         input.basicInfo,
         applyPatchFileToolsPromptSection,
         providerWebSearchPromptSection,

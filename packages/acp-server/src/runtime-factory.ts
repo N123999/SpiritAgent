@@ -142,8 +142,7 @@ export async function createAcpRuntime(
       transportConfig.model,
       currentPlanMetadata,
       [], // extensionSystemPrompts
-      undefined, // dreamSystemMessage
-      undefined, // todosContextText
+      undefined, // dreamsContextText
       basicInfo,
       applyPatchPromptSection,
       providerWebSearchPromptSection,
@@ -160,8 +159,7 @@ export async function createAcpRuntime(
       transportConfig.model,
       currentPlanMetadata,
       [], // extensionSystemPrompts
-      undefined, // dreamSystemMessage
-      undefined, // todosContextText
+      undefined, // dreamsContextText
       basicInfo,
       applyPatchPromptSection,
       providerWebSearchPromptSection,
@@ -197,8 +195,7 @@ export async function createAcpRuntime(
         transportConfig.model,
         currentPlanMetadata,
         [], // extensionSystemPrompts
-        undefined, // dreamSystemMessage
-        undefined, // todosContextText
+        undefined, // dreamsContextText
         basicInfo,
         applyPatchPromptSection,
         providerWebSearchPromptSection,

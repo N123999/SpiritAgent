@@ -37,7 +37,6 @@ import {
 } from './llm-tool-agent.js';
 import { buildContributedHostToolDefinitions, buildTodoHostToolDefinitions } from './host-tools.js';
 import type { PreCompactionHistoryArchive } from './compaction-archive.js';
-import { buildTodosSystemMessage } from './tool-agent.js';
 import {
   buildApplyPatchFileToolsPromptSection,
   shouldUseApplyPatchFileTools,
@@ -132,7 +131,6 @@ let planMetadata: LlmPlanMetadata | undefined;
 let activePlanPath: string | undefined;
 let extensionSystemPrompts: LlmExtensionSystemPrompt[] = [];
 let currentTodoSessionKey: string | undefined;
-let currentTodosContextText: string | undefined;
 
 interface CliHostInternalModule {
   NodeHostToolService: new (
@@ -159,7 +157,6 @@ interface CliHostInternalModule {
     replaceAll(records: unknown[]): Promise<unknown[]>;
     purge(): Promise<void>;
   };
-  buildTodoContextText?: (records: unknown[]) => string | undefined;
   persistPreCompactionHistoryArchive?: (
     spiritDataDir: string,
     archive: PreCompactionHistoryArchive,
@@ -773,25 +770,6 @@ async function readCliGitBranchLabelForBasicInfo(workspaceRoot: string): Promise
   return git.readGitBranchLabelForBasicInfo(workspaceRoot);
 }
 
-async function buildTodosContextTextForSession(
-  sessionKey: string | undefined,
-): Promise<string | undefined> {
-  if (!sessionKey?.trim() || !cliHostInternal?.module.createHostTodoStore) {
-    return undefined;
-  }
-  const store = cliHostInternal.module.createHostTodoStore({
-    spiritDataDir: cliHostInternal.spiritDataDir,
-    scope: { sessionKey: sessionKey.trim() },
-  });
-  const records = await store.list({ includeCompleted: true });
-  const text = cliHostInternal.module.buildTodoContextText?.(records)?.trim();
-  return text && text.length > 0 ? text : undefined;
-}
-
-async function refreshCurrentTodosContextText(): Promise<void> {
-  currentTodosContextText = await buildTodosContextTextForSession(currentTodoSessionKey);
-}
-
 async function updateCliTodoScope(sessionKey: string | undefined): Promise<void> {
   const normalized = sessionKey?.trim() || undefined;
   if (currentTodoSessionKey === normalized) {
@@ -809,7 +787,6 @@ async function updateCliTodoScope(sessionKey: string | undefined): Promise<void>
       normalized ? { sessionKey: normalized } : undefined,
     );
   }
-  await refreshCurrentTodosContextText();
 }
 
 async function rebuildCliHostToolService(workspaceRoot: string): Promise<void> {
@@ -1733,7 +1710,6 @@ async function createRuntime(
     hostInternal?.service,
     await readCliGitBranchLabelForBasicInfo(workspaceRoot),
   );
-  await refreshCurrentTodosContextText();
   toolExecutor.setImageGenerationAvailable('imageGeneration' in config && config.imageGeneration !== undefined);
   toolExecutor.setVideoGenerationAvailable('videoGeneration' in config && config.videoGeneration !== undefined);
   toolExecutor.setTransportConfigForToolDefinitions(config);
@@ -1760,7 +1736,6 @@ async function createRuntime(
       planMetadata,
       extensionSystemPrompts,
       undefined,
-      currentTodosContextText,
       basicInfo,
       applyPatchPromptSection,
       providerWebSearchPromptSection,
@@ -1785,7 +1760,6 @@ async function createRuntime(
         planMetadata,
         extensionSystemPrompts,
         undefined,
-        currentTodosContextText,
         basicInfo,
         applyPatchPromptSection,
         providerWebSearchPromptSection,
@@ -1811,7 +1785,6 @@ async function createRuntime(
         planMetadata,
         extensionSystemPrompts,
         undefined,
-        currentTodosContextText,
         basicInfo,
         applyPatchPromptSection,
         providerWebSearchPromptSection,
