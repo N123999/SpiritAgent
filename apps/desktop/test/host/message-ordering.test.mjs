@@ -36,7 +36,7 @@ test('toolCallSummaryCopyForRequest: create_automation uses title and trigger de
       overview: 'Summarize CI failures.',
       trigger: { kind: 'time', schedule: { kind: 'weekly', weekday: 1, hour: 9, minute: 0 } },
     }),
-    { headline: '创建自动化', headlineDetail: 'CI check · 每周一 09:00' },
+    { headline: '创建自动化', headlineDetail: 'CI check · Weekly Mon 09:00' },
   );
 });
 
