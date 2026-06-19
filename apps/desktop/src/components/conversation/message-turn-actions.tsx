@@ -79,17 +79,19 @@ export function MessageTurnActions({
               <MoreHorizontal className="size-3.5 text-muted-foreground" aria-hidden />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-40">
-            <DropdownMenuItem
-              disabled={forkBusy || !forkEnabled}
-              className="gap-2"
-              onSelect={() => {
-                onFork();
-              }}
-            >
-              <GitFork className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              <span>{t("app.forkChat")}</span>
-            </DropdownMenuItem>
+          <DropdownMenuContent align="end" className="min-w-40 p-0">
+            <div className="p-1">
+              <DropdownMenuItem
+                disabled={forkBusy || !forkEnabled}
+                className="gap-2"
+                onSelect={() => {
+                  onFork();
+                }}
+              >
+                <GitFork className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <span>{t("app.forkChat")}</span>
+              </DropdownMenuItem>
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
       ) : null}
