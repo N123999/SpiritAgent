@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   DESKTOP_MICA_BROWSER_TINT_CLASS,
   DESKTOP_MICA_CONTENT_TINT_CLASS,
+  DESKTOP_MICA_TERMINAL_TINT_CLASS,
   DESKTOP_MICA_WORKSPACE_TAB_SELECTED_TINT_CLASS,
   DESKTOP_FILES_DETAIL_PREVIEW_TINT_CLASS,
   desktopMicaBrowserTintClass,
@@ -35,9 +36,9 @@ test('desktopMicaBrowserTintClass uses higher opacity than main content tint', (
   assert.notEqual(DESKTOP_MICA_BROWSER_TINT_CLASS, DESKTOP_MICA_CONTENT_TINT_CLASS);
 });
 
-test('desktopMicaTerminalTintClass avoids stacking tint under Mica', () => {
-  assert.equal(desktopMicaTerminalTintClass(false), 'bg-background');
-  assert.equal(desktopMicaTerminalTintClass(true), 'bg-transparent');
+test('desktopMicaTerminalTintClass keeps high opacity for readability', () => {
+  assert.equal(desktopMicaTerminalTintClass(true), DESKTOP_MICA_TERMINAL_TINT_CLASS);
+  assert.match(DESKTOP_MICA_TERMINAL_TINT_CLASS, /\/87$/);
 });
 
 test('desktopMicaWorkspaceTabSelectedClass uses light tint when Mica is on', () => {
