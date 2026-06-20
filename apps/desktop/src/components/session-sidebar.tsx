@@ -121,6 +121,7 @@ type SessionSidebarProps = {
 };
 
 export type SettingsSidebarTab =
+  | "general"
   | "appearance"
   | "networks"
   | "models"
@@ -770,6 +771,11 @@ const settingsPrimaryTabs: Array<{
   labelKey: string;
   icon: LucideIcon;
 }> = [
+  {
+    id: "general",
+    labelKey: "settings.general",
+    icon: Settings,
+  },
   {
     id: "appearance",
     labelKey: "settings.appearance",

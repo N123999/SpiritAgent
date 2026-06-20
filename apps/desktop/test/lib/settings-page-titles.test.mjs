@@ -4,6 +4,7 @@ import test from "node:test";
 import { settingsPageTitleKey } from "../../src/components/settings/constants.ts";
 
 const EXPECTED_TABS = [
+  "general",
   "appearance",
   "networks",
   "models",

@@ -2,6 +2,7 @@ import type { SettingsSidebarTab } from "@/components/session-sidebar";
 import type { ThemePreference } from "@/lib/theme";
 
 export const settingsPageTitleKey: Record<SettingsSidebarTab, string> = {
+  general: "settings.general",
   models: "settings.models",
   agents: "settings.agents",
   extensions: "settings.extensions",

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { isViteDev } from "@/lib/vite-dev";
 import { AgentsSettingsPanel } from "@/components/settings/panels/agents-settings-panel";
+import { GeneralSettingsPanel } from "@/components/settings/panels/general-settings-panel";
 import { AppearanceSettingsPanel } from "@/components/settings/panels/appearance-settings-panel";
 import { DeveloperSettingsPanel } from "@/components/settings/panels/developer-settings-panel";
 import { DreamSettingsPanel } from "@/components/settings/panels/dream-settings-panel";
@@ -195,6 +196,8 @@ export function SettingsView({
                 onSaveHookEntry={onSaveHookEntry}
                 onDeleteHookEntry={onDeleteHookEntry}
               />
+            ) : tab === "general" ? (
+              <GeneralSettingsPanel />
             ) : tab === "appearance" ? (
               <AppearanceSettingsPanel
                 theme={theme}
