@@ -85,12 +85,14 @@ function askQuestionsNotificationPayload(
 }
 
 export function useDesktopSystemNotifications(options: {
+  enabled?: boolean;
   apiKind: string | null | undefined;
   snapshot: DesktopSnapshot | null | undefined;
   sessions: readonly SessionListItem[];
   onNotifyRefresh?: () => void;
 }): void {
   const { apiKind, snapshot, sessions, onNotifyRefresh } = options;
+  const enabled = options.enabled !== false;
   const prevBusyRef = useRef<boolean | undefined>(undefined);
   const prevSessionsBusyRef = useRef<Map<string, boolean>>(new Map());
   const notifiedTaskCompleteRef = useRef<Set<string>>(new Set());
@@ -136,10 +138,33 @@ export function useDesktopSystemNotifications(options: {
       return;
     }
     const bridge = window.spiritDesktop;
+    if (!bridge?.syncAttentionPending) {
+      return;
+    }
+    if (enabled) {
+      return;
+    }
+    taskCompleteAttentionRef.current = false;
+    lastAttentionSyncKeyRef.current = '';
+    void bridge.syncAttentionPending({
+      needsApproval: false,
+      needsQuestions: false,
+      needsTaskComplete: false,
+    });
+  }, [apiKind, enabled]);
+
+  useEffect(() => {
+    if (apiKind !== 'electron') {
+      return;
+    }
+    const bridge = window.spiritDesktop;
     if (!bridge?.subscribeAppAwayChanged) {
       return;
     }
     return bridge.subscribeAppAwayChanged((away) => {
+      if (!enabled) {
+        return;
+      }
       if (away) {
         return;
       }
@@ -154,10 +179,10 @@ export function useDesktopSystemNotifications(options: {
         needsTaskComplete: false,
       });
     });
-  }, [apiKind]);
+  }, [apiKind, enabled]);
 
   useEffect(() => {
-    if (apiKind !== 'electron' || !window.spiritDesktop?.showNotification) {
+    if (!enabled || apiKind !== 'electron' || !window.spiritDesktop?.showNotification) {
       return;
     }
     const bridge = window.spiritDesktop;
@@ -253,7 +278,7 @@ export function useDesktopSystemNotifications(options: {
       }
     }
     prevSessionsBusyRef.current = nextMap;
-  }, [apiKind, snapshot, sessions]);
+  }, [apiKind, enabled, snapshot, sessions]);
 
   useEffect(() => {
     if (apiKind !== 'electron' || !onNotifyRefresh || !window.spiritDesktop?.subscribeNotifyRefresh) {

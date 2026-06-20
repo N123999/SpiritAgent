@@ -91,6 +91,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
       ...(input.config.uiLocale ? { uiLocale: input.config.uiLocale } : {}),
       activeApiKeyConfigured: input.activeApiKeyConfigured,
       windowsMica: input.config.windowsMica !== false,
+      systemNotifications: input.config.systemNotifications !== false,
       agentMode: input.config.agentMode ?? 'agent',
       modelCatalogHints: buildModelCatalogHints(input.config),
       networks: {

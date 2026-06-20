@@ -197,7 +197,7 @@ export function SettingsView({
                 onDeleteHookEntry={onDeleteHookEntry}
               />
             ) : tab === "general" ? (
-              <GeneralSettingsPanel />
+              <GeneralSettingsPanel settings={settings} onSavePatch={onSavePatch} />
             ) : tab === "appearance" ? (
               <AppearanceSettingsPanel
                 theme={theme}

@@ -200,6 +200,7 @@ function updateConfigFromSettingsForm(
     lightweightChatModel: s.lightweightChatModel,
     apiBase: s.apiBase,
     windowsMica: s.windowsMica,
+    systemNotifications: s.systemNotifications,
     agentMode: s.agentMode,
     webHost,
     dreams: {
@@ -323,6 +324,7 @@ export function useDesktopRuntime() {
     uiLocale: "",
     apiKey: "",
     windowsMica: true,
+    systemNotifications: true,
     agentMode: "agent",
     webHostEnabled: false,
     webHostHost: "127.0.0.1",
@@ -545,6 +547,7 @@ export function useDesktopRuntime() {
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
         windowsMica: next.config.windowsMica !== false,
+        systemNotifications: next.config.systemNotifications !== false,
         agentMode,
         webHostEnabled: next.webHost.config.enabled,
         webHostHost: next.webHost.config.host,
@@ -2847,6 +2850,7 @@ export function useDesktopRuntime() {
   }, [api, applySnapshot, refreshSessions]);
 
   useDesktopSystemNotifications({
+    enabled: settings.systemNotifications,
     apiKind: kind,
     snapshot,
     sessions,

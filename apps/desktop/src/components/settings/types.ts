@@ -36,6 +36,7 @@ export type SettingsFormState = {
   uiLocale: string;
   apiKey: string;
   windowsMica: boolean;
+  systemNotifications: boolean;
   agentMode: DesktopAgentMode;
   webHostEnabled: boolean;
   webHostHost: string;

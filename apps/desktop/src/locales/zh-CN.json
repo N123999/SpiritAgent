@@ -104,6 +104,8 @@
     "rules": "规则",
     "dreams": "梦境",
     "general": "通用",
+    "systemNotifications": "系统通知",
+    "systemNotificationsDescription": "Agent 完成任务或需要处理时发送系统通知",
     "appearance": "外观",
     "networks": "网络",
     "integrations": "集成",

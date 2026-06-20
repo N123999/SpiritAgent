@@ -48,6 +48,8 @@ export interface UpdateConfigRequest {
   apiKey?: string;
   /** 与 Rust `UpdateConfigRequest.windows_mica` 一致；缺省不修改已保存的 Mica 开关。 */
   windowsMica?: boolean;
+  /** 关闭时不发送桌面系统通知（含 Windows 任务栏需要关注）。缺省为 true。 */
+  systemNotifications?: boolean;
   /** 缺省时不修改运行方式（Agent / Plan / Ask）。 */
   agentMode?: DesktopAgentMode;
   /** @deprecated 使用 agentMode。 */
@@ -765,6 +767,8 @@ export interface DesktopConfigSnapshot {
   activeApiKeyConfigured: boolean;
   /** 桌面宿主在 Windows 上是否使用 Mica 风格；无字段时按 true 处理。 */
   windowsMica?: boolean;
+  /** 是否发送系统通知；无字段时按 true 处理。 */
+  systemNotifications?: boolean;
   /** 运行方式：影响宿主指令元数据、工具暴露与 SPIRIT_AGENT_MODE。 */
   agentMode: DesktopAgentMode;
   /** 与 `spiritAgentDataDir()/model-catalog-cache` 对齐；无缓存时为空数组。 */

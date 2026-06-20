@@ -104,6 +104,8 @@
     "rules": "Rules",
     "dreams": "Dreams",
     "general": "General",
+    "systemNotifications": "System Noti",
+    "systemNotificationsDescription": "Shows system notifications when the agent finishes or needs your attention.",
     "appearance": "Appearance",
     "networks": "Networks",
     "integrations": "Integrations",

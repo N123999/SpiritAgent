@@ -214,6 +214,9 @@ export async function updateConfigCommand(
       }
     }
     state.config.windowsMica = request.windowsMica !== false;
+    if (request.systemNotifications !== undefined) {
+      state.config.systemNotifications = request.systemNotifications !== false;
+    }
     if (request.agentMode !== undefined) {
       state.config.agentMode = request.agentMode;
     } else if (request.planMode !== undefined) {

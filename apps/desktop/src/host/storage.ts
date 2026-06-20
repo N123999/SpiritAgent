@@ -124,6 +124,7 @@ export interface DesktopConfigFile {
   lastProjectWorkspaceRoot?: string;
   uiLocale?: string;
   windowsMica?: boolean;
+  systemNotifications?: boolean;
   agentMode?: DesktopAgentMode;
   /** @deprecated 使用 agentMode。 */
   planMode?: boolean;
@@ -712,6 +713,7 @@ function defaultConfig(): DesktopConfigFile {
     activeModel: '',
     recentWorkspaces: [],
     windowsMica: true,
+    systemNotifications: true,
     agentMode: 'agent',
     webHost: defaultWebHostConfig(),
     dreams: defaultDreamConfig(),
@@ -899,6 +901,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
       ? { uiLocale: raw.uiLocale.trim() }
       : {}),
     windowsMica: raw.windowsMica !== false,
+    systemNotifications: raw.systemNotifications !== false,
     agentMode: resolveDesktopAgentMode({ agentMode: raw.agentMode, planMode: raw.planMode }),
     webHost: normalizeWebHostConfig(raw.webHost),
     dreams,
