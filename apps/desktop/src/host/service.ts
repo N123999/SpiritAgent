@@ -417,6 +417,10 @@ import {
   sameDreamCollectorSnapshot,
   sameWorkspaceRoot,
 } from './service-utils.js';
+import {
+  needsHostWorkspaceRootSync,
+  resolveEffectiveWorkspaceRoot,
+} from './workspace-root-sync.js';
 import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot, buildModelCatalogHints } from './snapshot.js';
 import {
@@ -2868,6 +2872,16 @@ class DesktopHostService {
 
     await this.adoptWorkspaceRootForActiveBundle(created.worktreePath);
     this.startDreamCollectorIfNeeded();
+  }
+
+  private async syncHostWorkspaceRootToActiveBundle(
+    bundle: SessionBundle = this.activeBundle(),
+  ): Promise<void> {
+    const state = this.requireState();
+    if (!needsHostWorkspaceRootSync(bundle, state)) {
+      return;
+    }
+    await this.adoptWorkspaceRootForActiveBundle(resolveEffectiveWorkspaceRoot(bundle, state));
   }
 
   private async adoptWorkspaceRootForActiveBundle(workspaceRoot: string): Promise<void> {
