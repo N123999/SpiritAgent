@@ -418,7 +418,14 @@
     "deleteWorkspace": "Delete workspace",
     "deleteWorkspaceConfirm_one": "Delete workspace \"{{name}}\" and its 1 session? This cannot be undone.",
     "deleteWorkspaceConfirm_other": "Delete workspace \"{{name}}\" and all its {{count}} sessions? This cannot be undone.",
-    "deleteWorkspaceConfirm_zero": "Delete workspace \"{{name}}\" and all its sessions? This cannot be undone."
+    "deleteWorkspaceConfirm_zero": "Delete workspace \"{{name}}\" and all its sessions? This cannot be undone.",
+    "sectionActions": "Section actions",
+    "deleteAllWorkspaces": "Delete all workspaces",
+    "deleteAllWorkspacesConfirm": "Delete all {{workspaceCount}} workspaces and {{sessionCount}} sessions under \"Workspace\"? This cannot be undone.",
+    "deleteAllNoWorkspaceSessions": "Delete all sessions without workspace",
+    "deleteAllNoWorkspaceSessionsConfirm_one": "Delete the 1 session under \"No workspace\"? This cannot be undone.",
+    "deleteAllNoWorkspaceSessionsConfirm_other": "Delete all {{count}} sessions under \"No workspace\"? This cannot be undone.",
+    "cannotDeleteBusyInSection": "Cannot delete while a session in this section is running."
   },
   "titleBar": {
     "file": "File",

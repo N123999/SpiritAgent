@@ -416,7 +416,13 @@
     "resizeWidth": "调整侧栏宽度",
     "workspaceActions": "工作区操作",
     "deleteWorkspace": "删除工作区",
-    "deleteWorkspaceConfirm": "确定删除工作区「{{name}}」及其全部 {{count}} 个会话？此操作无法撤销。"
+    "deleteWorkspaceConfirm": "确定删除工作区「{{name}}」及其全部 {{count}} 个会话？此操作无法撤销。",
+    "sectionActions": "分区操作",
+    "deleteAllWorkspaces": "删除全部工作区",
+    "deleteAllWorkspacesConfirm": "确定删除「工作区」下的全部 {{workspaceCount}} 个工作区及其 {{sessionCount}} 个会话？此操作无法撤销。",
+    "deleteAllNoWorkspaceSessions": "删除全部无工作区会话",
+    "deleteAllNoWorkspaceSessionsConfirm": "确定删除「无工作区」下的全部 {{count}} 个会话？此操作无法撤销。",
+    "cannotDeleteBusyInSection": "该分区下有会话运行中，无法删除。"
   },
   "titleBar": {
     "file": "文件",

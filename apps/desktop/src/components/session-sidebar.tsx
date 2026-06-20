@@ -265,12 +265,21 @@ const sidebarSectionHeaderTriggerClass =
 const sidebarSectionChevronClass =
   "hidden size-3 shrink-0 text-muted-foreground/55 transition-transform duration-150 group-hover:inline-flex group-focus-visible:inline-flex";
 
+type SidebarSectionContextMenuConfig = {
+  ariaLabel: string;
+  deleteLabel: string;
+  disabled?: boolean;
+  disabledTitle?: string;
+  onRequestDelete(): void;
+};
+
 type SidebarSectionCollapsibleProps = {
   label: string;
   expanded: boolean;
   disabled?: boolean;
   headerClassName?: string;
   onOpenChange(open: boolean): void;
+  contextMenu?: SidebarSectionContextMenuConfig;
   children: ReactNode;
 };
 
@@ -280,8 +289,24 @@ function SidebarSectionCollapsible({
   disabled,
   headerClassName,
   onOpenChange,
+  contextMenu,
   children,
 }: SidebarSectionCollapsibleProps) {
+  const headerTrigger = (
+    <AnimatedCollapseTrigger
+      disabled={disabled}
+      className={cn(sidebarSectionHeaderTriggerClass, headerClassName)}
+    >
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+        <span className="truncate">{label}</span>
+        <ChevronRight
+          className={cn(sidebarSectionChevronClass, expanded && "rotate-90")}
+          aria-hidden
+        />
+      </span>
+    </AnimatedCollapseTrigger>
+  );
+
   return (
     <AnimatedCollapse
       open={expanded}
@@ -293,18 +318,26 @@ function SidebarSectionCollapsible({
       }}
       className="min-w-0"
     >
-      <AnimatedCollapseTrigger
-        disabled={disabled}
-        className={cn(sidebarSectionHeaderTriggerClass, headerClassName)}
-      >
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-          <span className="truncate">{label}</span>
-          <ChevronRight
-            className={cn(sidebarSectionChevronClass, expanded && "rotate-90")}
-            aria-hidden
-          />
-        </span>
-      </AnimatedCollapseTrigger>
+      {contextMenu ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>{headerTrigger}</ContextMenuTrigger>
+          <ContextMenuContent aria-label={contextMenu.ariaLabel}>
+            <ContextMenuItem
+              variant="destructive"
+              disabled={contextMenu.disabled}
+              title={contextMenu.disabled ? contextMenu.disabledTitle : undefined}
+              onSelect={() => {
+                contextMenu.onRequestDelete();
+              }}
+            >
+              <Trash2 aria-hidden />
+              {contextMenu.deleteLabel}
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : (
+        headerTrigger
+      )}
       <AnimatedCollapseContent className="min-w-0">{children}</AnimatedCollapseContent>
     </AnimatedCollapse>
   );
@@ -950,6 +983,9 @@ function SessionSidebarInner({
   const [unboundVisibleCount, setUnboundVisibleCount] = useState(SIDEBAR_SESSION_PAGE_SIZE);
   const [deleteTarget, setDeleteTarget] = useState<SessionListItem | null>(null);
   const [deleteWorkspaceTarget, setDeleteWorkspaceTarget] = useState<SessionWorkspaceGroup | null>(null);
+  const [deleteSectionTarget, setDeleteSectionTarget] = useState<
+    "workspace-section" | "no-workspace-section" | null
+  >(null);
   const [contextMenuSession, setContextMenuSession] = useState<SessionListItem | null>(null);
   const contextMenuSessionRef = useRef<SessionListItem | null>(null);
   const [contextMenuWorkspaceGroup, setContextMenuWorkspaceGroup] = useState<SessionWorkspaceGroup | null>(null);
@@ -968,6 +1004,19 @@ function SessionSidebarInner({
   }, [sessions]);
   const canDeleteSession = Boolean(onDeleteSession) && !disabled;
   const canDeleteWorkspace = Boolean(onDeleteWorkspace) && !disabled;
+  const workspaceSectionSessionCount = useMemo(
+    () => workspaceGroups.reduce((total, group) => total + group.sessions.length, 0),
+    [workspaceGroups],
+  );
+  const workspaceSectionHasBusySession = useMemo(
+    () => workspaceGroups.some((group) => group.sessions.some((session) => session.isBusy)),
+    [workspaceGroups],
+  );
+  const noWorkspaceSectionHasBusySession = useMemo(
+    () => unboundSessions.some((session) => session.isBusy),
+    [unboundSessions],
+  );
+  const sectionDeleteBusy = deleteSessionBusy || deleteWorkspaceBusy;
 
   const workspaceGroupById = useMemo(() => {
     const map = new Map<string, SessionWorkspaceGroup>();
@@ -1374,6 +1423,21 @@ function SessionSidebarInner({
                   disabled={disabled}
                   headerClassName="pt-2"
                   onOpenChange={setWorkspaceSectionExpandedPersisted}
+                  contextMenu={
+                    canDeleteWorkspace
+                      ? {
+                          ariaLabel: t("sidebar.sectionActions"),
+                          deleteLabel: t("sidebar.deleteAllWorkspaces"),
+                          disabled: sectionDeleteBusy || workspaceSectionHasBusySession,
+                          disabledTitle: workspaceSectionHasBusySession
+                            ? t("sidebar.cannotDeleteBusyInSection")
+                            : undefined,
+                          onRequestDelete: () => {
+                            setDeleteSectionTarget("workspace-section");
+                          },
+                        }
+                      : undefined
+                  }
                 >
                   <WorkspaceListNav
                     canDeleteWorkspace={canDeleteWorkspace}
@@ -1441,6 +1505,21 @@ function SessionSidebarInner({
                     disabled={disabled}
                     headerClassName="pt-1"
                     onOpenChange={setNoWorkspaceSectionExpandedPersisted}
+                    contextMenu={
+                      canDeleteSession
+                        ? {
+                            ariaLabel: t("sidebar.sectionActions"),
+                            deleteLabel: t("sidebar.deleteAllNoWorkspaceSessions"),
+                            disabled: sectionDeleteBusy || noWorkspaceSectionHasBusySession,
+                            disabledTitle: noWorkspaceSectionHasBusySession
+                              ? t("sidebar.cannotDeleteBusyInSection")
+                              : undefined,
+                            onRequestDelete: () => {
+                              setDeleteSectionTarget("no-workspace-section");
+                            },
+                          }
+                        : undefined
+                    }
                   >
                     <div className="flex min-w-0 flex-col gap-0.5">
                       {unboundSessions.slice(0, unboundVisibleCount).map((session) => (
@@ -1539,6 +1618,82 @@ function SessionSidebarInner({
               }}
             >
               {deleteSessionBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+              {t("common.delete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteSectionTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteSectionTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteSectionTarget === "workspace-section"
+                ? t("sidebar.deleteAllWorkspaces")
+                : t("sidebar.deleteAllNoWorkspaceSessions")}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteSectionTarget === "workspace-section"
+                ? t("sidebar.deleteAllWorkspacesConfirm", {
+                    workspaceCount: workspaceGroups.length,
+                    sessionCount: workspaceSectionSessionCount,
+                  })
+                : t("sidebar.deleteAllNoWorkspaceSessionsConfirm", {
+                    count: unboundSessions.length,
+                  })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteSectionTarget(null)}
+              disabled={sectionDeleteBusy}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={
+                sectionDeleteBusy
+                || deleteSectionTarget === null
+                || (deleteSectionTarget === "workspace-section"
+                  ? !onDeleteWorkspace || workspaceGroups.length === 0
+                  : !onDeleteSession || unboundSessions.length === 0)
+              }
+              onClick={() => {
+                const target = deleteSectionTarget;
+                if (!target) {
+                  return;
+                }
+                void (async () => {
+                  if (target === "workspace-section") {
+                    if (!onDeleteWorkspace) {
+                      return;
+                    }
+                    for (const group of workspaceGroups) {
+                      await onDeleteWorkspace(group.rootPath ?? group.id);
+                    }
+                  } else if (onDeleteSession) {
+                    for (const session of unboundSessions) {
+                      await onDeleteSession(session.path);
+                    }
+                  }
+                  setDeleteSectionTarget(null);
+                })();
+              }}
+            >
+              {sectionDeleteBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
               {t("common.delete")}
             </Button>
           </div>
