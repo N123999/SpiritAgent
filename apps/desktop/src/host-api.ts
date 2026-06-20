@@ -205,7 +205,7 @@ export interface HostApi {
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
   readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
-  revealWorkspaceEntry(relativePath: string): Promise<void>;
+  revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<void>;
   renameWorkspaceEntry(relativePath: string, newName: string): Promise<{ relativePath: string }>;
   moveWorkspaceEntry(
     relativePath: string,

@@ -143,7 +143,7 @@ export type CommandPayloads = {
   listWorkspaceExplorerChildren: { relativePath: string };
   readWorkspaceTextFile: { relativePath: string };
   writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };
-  revealWorkspaceEntry: { relativePath: string };
+  revealWorkspaceEntry: { relativePath: string; workspaceRoot?: string };
   renameWorkspaceEntry: { relativePath: string; newName: string };
   moveWorkspaceEntry: { relativePath: string; targetDirectoryRel: string };
   trashWorkspaceEntry: { relativePath: string };

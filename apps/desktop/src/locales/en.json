@@ -418,6 +418,7 @@
     "loadMoreSessions": "See more",
     "resizeWidth": "Resize sidebar width",
     "workspaceActions": "Workspace actions",
+    "openWorkspaceDirectory": "Open workspace folder",
     "deleteWorkspace": "Delete workspace",
     "deleteWorkspaceConfirm_one": "Delete workspace \"{{name}}\" and its 1 session? This cannot be undone.",
     "deleteWorkspaceConfirm_other": "Delete workspace \"{{name}}\" and all its {{count}} sessions? This cannot be undone.",

@@ -412,10 +412,12 @@ export async function writeWorkspaceTextFileCommand(
 export async function revealWorkspaceEntryCommand(
   ctx: HostWorkspaceGitCommandContext,
   relativePath: string,
+  workspaceRoot?: string,
 ): Promise<void> {
   await ctx.ensureInitialized(undefined, { fastPath: true });
   const state = ctx.requireState();
-  await revealWorkspaceEntryOnDisk(state.workspaceRoot, relativePath);
+  const root = workspaceRoot?.trim() || state.workspaceRoot;
+  await revealWorkspaceEntryOnDisk(root, relativePath);
 }
 
 export async function renameWorkspaceEntryCommand(

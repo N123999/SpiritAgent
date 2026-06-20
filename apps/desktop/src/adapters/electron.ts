@@ -297,8 +297,8 @@ export async function createElectronHostApi(): Promise<HostApi> {
     writeWorkspaceTextFile(request) {
       return bridge.writeWorkspaceTextFile(request);
     },
-    revealWorkspaceEntry(relativePath) {
-      return bridge.revealWorkspaceEntry(relativePath);
+    revealWorkspaceEntry(relativePath, workspaceRoot) {
+      return bridge.revealWorkspaceEntry(relativePath, workspaceRoot);
     },
     renameWorkspaceEntry(relativePath, newName) {
       return bridge.renameWorkspaceEntry(relativePath, newName);

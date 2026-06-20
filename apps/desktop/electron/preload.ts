@@ -315,8 +315,11 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   writeWorkspaceTextFile(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'writeWorkspaceTextFile', { request });
   },
-  revealWorkspaceEntry(relativePath: string) {
-    return ipcRenderer.invoke('desktop:invoke', 'revealWorkspaceEntry', { relativePath });
+  revealWorkspaceEntry(relativePath: string, workspaceRoot?: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'revealWorkspaceEntry', {
+      relativePath,
+      workspaceRoot,
+    });
   },
   renameWorkspaceEntry(relativePath: string, newName: string) {
     return ipcRenderer.invoke('desktop:invoke', 'renameWorkspaceEntry', { relativePath, newName });

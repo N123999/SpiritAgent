@@ -100,7 +100,7 @@ export interface HostCommandDelegate {
   markGitHubPullRequestReady(request: CommandPayloads['markGitHubPullRequestReady']['request']): Promise<unknown>;
   readWorkspaceTextFile(relativePath: string): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
-  revealWorkspaceEntry(relativePath: string): Promise<unknown>;
+  revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<unknown>;
   renameWorkspaceEntry(
     relativePath: string,
     newName: string,
@@ -220,7 +220,8 @@ const hostCommandDispatch = {
   markGitHubPullRequestReady: (host, payload) => host.markGitHubPullRequestReady(payload.request),
   readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
-  revealWorkspaceEntry: (host, payload) => host.revealWorkspaceEntry(payload.relativePath),
+  revealWorkspaceEntry: (host, payload) =>
+    host.revealWorkspaceEntry(payload.relativePath, payload.workspaceRoot),
   renameWorkspaceEntry: (host, payload) =>
     host.renameWorkspaceEntry(payload.relativePath, payload.newName),
   moveWorkspaceEntry: (host, payload) =>

@@ -46,6 +46,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -71,6 +72,7 @@ import { isViteDev } from "@/lib/vite-dev";
 import { cn } from "@/lib/utils";
 import { shortcutLabel } from "@/lib/desktop-shell";
 import i18n from "@/lib/i18n";
+import { useHostApi } from "@/hooks/useHostApi";
 import type { SessionListItem } from "@/types";
 
 /** 平台快捷键提示，模块加载时计算（平台不会运行时变化）。 */
@@ -704,8 +706,10 @@ function WorkspaceListNav({
   children,
 }: WorkspaceListNavProps) {
   const { t } = useTranslation();
+  const { api, kind, ready: hostReady } = useHostApi();
+  const canOpenWorkspaceDirectory = kind === "electron" && hostReady && api != null;
 
-  const canShowMenu = canDeleteWorkspace || canDeleteSession;
+  const canShowMenu = canDeleteWorkspace || canDeleteSession || canOpenWorkspaceDirectory;
 
   const inner = (
     <div
@@ -721,8 +725,12 @@ function WorkspaceListNav({
   }
 
   const isWorkspaceTarget = Boolean(contextMenuWorkspaceGroup ?? contextMenuWorkspaceGroupRef.current);
+  const workspaceTarget = contextMenuWorkspaceGroupRef.current ?? contextMenuWorkspaceGroup;
   const sessionTarget = contextMenuSession ?? contextMenuSessionRef.current;
   const sessionBusy = sessionTarget?.isBusy === true;
+  const showOpenWorkspaceDirectory =
+    isWorkspaceTarget && canOpenWorkspaceDirectory && Boolean(workspaceTarget?.rootPath);
+  const showDeleteWorkspace = isWorkspaceTarget && canDeleteWorkspace;
 
   // 不在 onOpenChange(false) 清 target：Radix exit 动画（duration-100）未结束时 Content 仍挂载，
   // 立刻清空会让 isWorkspaceTarget 变 false，退场末帧闪成「删除会话」。capture / 删除确认时再更新即可。
@@ -730,7 +738,22 @@ function WorkspaceListNav({
     <ContextMenu>
       <ContextMenuTrigger asChild>{inner}</ContextMenuTrigger>
       <ContextMenuContent aria-label={isWorkspaceTarget ? t("sidebar.workspaceActions") : t("sidebar.sessionActions")}>
-        {isWorkspaceTarget && canDeleteWorkspace ? (
+        {showOpenWorkspaceDirectory ? (
+          <ContextMenuItem
+            onSelect={() => {
+              const group = contextMenuWorkspaceGroupRef.current ?? contextMenuWorkspaceGroup;
+              const rootPath = group?.rootPath?.trim();
+              if (rootPath && api) {
+                void api.revealWorkspaceEntry("", rootPath);
+              }
+            }}
+          >
+            <FolderOpen aria-hidden />
+            {t("sidebar.openWorkspaceDirectory")}
+          </ContextMenuItem>
+        ) : null}
+        {showOpenWorkspaceDirectory && showDeleteWorkspace ? <ContextMenuSeparator /> : null}
+        {showDeleteWorkspace ? (
           <ContextMenuItem
             variant="destructive"
             disabled={deleteWorkspaceBusy}

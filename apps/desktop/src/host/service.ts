@@ -1872,8 +1872,12 @@ class DesktopHostService {
     return writeWorkspaceTextFileCommand(this.workspaceGitCommandContext(), request);
   }
 
-  async revealWorkspaceEntry(relativePath: string): Promise<void> {
-    return revealWorkspaceEntryCommand(this.workspaceGitCommandContext(), relativePath);
+  async revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<void> {
+    return revealWorkspaceEntryCommand(
+      this.workspaceGitCommandContext(),
+      relativePath,
+      workspaceRoot,
+    );
   }
 
   async renameWorkspaceEntry(
