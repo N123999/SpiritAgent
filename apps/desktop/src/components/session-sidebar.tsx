@@ -327,6 +327,8 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
 }: WorkspaceSessionGroupCollapsibleProps) {
   const { t } = useTranslation();
   const workspaceRoot = group.rootPath?.trim() ?? "";
+  const [workspaceRowHovered, setWorkspaceRowHovered] = useState(false);
+  const [plusTooltipAnchorLocked, setPlusTooltipAnchorLocked] = useState(false);
 
   return (
     <AnimatedCollapse
@@ -340,6 +342,8 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
           sidebarItemDefaultTextClass,
           sessionRowHoverClass(micaStyle),
         )}
+        onMouseEnter={() => setWorkspaceRowHovered(true)}
+        onMouseLeave={() => setWorkspaceRowHovered(false)}
       >
         <AnimatedCollapseTrigger
           disabled={disabled}
@@ -376,15 +380,27 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
           <span className="truncate text-xs font-medium">{group.label}</span>
         </AnimatedCollapseTrigger>
         {onNewSessionInWorkspace && workspaceRoot ? (
-          <Tooltip delayDuration={300}>
+          <Tooltip
+            delayDuration={300}
+            onOpenChange={(open) => {
+              if (open) {
+                setPlusTooltipAnchorLocked(true);
+              } else if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                setPlusTooltipAnchorLocked(false);
+              }
+            }}
+          >
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "mr-0.5 hidden size-6 shrink-0",
-                  "group-hover/workspace-row:inline-flex group-has-[button:focus-visible]/workspace-row:inline-flex",
+                  "mr-0.5 size-6 shrink-0",
+                  workspaceRowHovered || plusTooltipAnchorLocked
+                    ? "inline-flex"
+                    : "hidden group-has-[button:focus-visible]/workspace-row:inline-flex",
+                  plusTooltipAnchorLocked && !workspaceRowHovered && "pointer-events-none opacity-0",
                   sidebarItemDefaultTextClass,
                   sidebarInteractionMotionClass,
                   sidebarItemHoverClass(micaStyle),
@@ -396,7 +412,19 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
                 <Plus className="size-3.5" aria-hidden />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>
+            <TooltipContent
+              side="right"
+              sideOffset={8}
+              onAnimationEnd={(event) => {
+                if (event.target !== event.currentTarget) {
+                  return;
+                }
+                if (event.currentTarget.getAttribute("data-state") !== "closed") {
+                  return;
+                }
+                setPlusTooltipAnchorLocked(false);
+              }}
+            >
               {t("sidebar.newSessionInWorkspace", { workspace: group.label })}
             </TooltipContent>
           </Tooltip>
