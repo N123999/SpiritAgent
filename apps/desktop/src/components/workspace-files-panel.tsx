@@ -25,6 +25,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useHostApi } from "@/hooks/useHostApi";
 import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
+import {
+  collapseWorkspaceExplorerDirChain,
+  isWorkspaceExplorerCollapsedDirOpen,
+  joinExplorerRel,
+} from "@/lib/workspace-explorer-dir-collapse";
 import { evictRecordKeysUnderPrefix } from "@/lib/workspace-entry-path-sync";
 import { cn } from "@/lib/utils";
 import type { PlanSnapshot, WorkspaceExplorerEntry, WorkspaceExplorerListResult } from "@/types";
@@ -79,9 +84,7 @@ function isExplorerListChromeDragTarget(target: EventTarget | null): boolean {
 
 export { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 
-export function joinExplorerRel(parent: string, name: string): string {
-  return parent === "" ? name : `${parent}/${name}`;
-}
+export { joinExplorerRel } from "@/lib/workspace-explorer-dir-collapse";
 
 type DirCacheEntry =
   | { status: "loading" }
@@ -144,6 +147,8 @@ type ExplorerRowProps = {
   onDrop?: (event: DragEvent<HTMLElement>) => void;
   children?: ReactNode;
   ignored?: boolean;
+  /** 合并目录链时的展示名；缺省为 `target.name`。 */
+  label?: string;
 };
 
 function ExplorerRow({
@@ -173,7 +178,9 @@ function ExplorerRow({
   onDrop,
   children,
   ignored = false,
+  label,
 }: ExplorerRowProps) {
+  const rowLabel = label ?? target.name;
   const renameInputRef = useRef<HTMLInputElement>(null);
   const pendingRenameFocusRef = useRef(false);
   const skipBlurCommitRef = useRef(false);
@@ -260,7 +267,7 @@ function ExplorerRow({
     >
       {leading}
       <Icon className={iconClassName} aria-hidden />
-      <span className={labelClassName}>{target.name}</span>
+      <span className={labelClassName}>{rowLabel}</span>
     </button>
   );
 
@@ -493,14 +500,38 @@ export function WorkspaceFilesPanel({
     }
   }, [expandDirectoryNonce, expandDirectoryPath, loadDir]);
 
+  const getExplorerDirEntries = useCallback(
+    (relativePath: string): WorkspaceExplorerEntry[] | undefined => {
+      const state = cache[relativePath];
+      if (!state || state.status !== "ready") {
+        return undefined;
+      }
+      return state.entries;
+    },
+    [cache],
+  );
+
   const onToggleDir = useCallback(
-    (dirRel: string) => {
-      const nextOpen = !expanded[dirRel];
-      setExpanded((s) => ({ ...s, [dirRel]: nextOpen }));
+    (dirRel: string, chainRels: readonly string[] = [dirRel]) => {
+      const nextOpen = !isWorkspaceExplorerCollapsedDirOpen(chainRels, expanded);
+      setExpanded((previous) => {
+        const next = { ...previous };
+        for (const rel of chainRels) {
+          if (!nextOpen) {
+            delete next[rel];
+          }
+        }
+        if (nextOpen) {
+          next[dirRel] = true;
+        }
+        return next;
+      });
       if (nextOpen) {
-        const cur = cache[dirRel];
-        if (cur === undefined || cur.status === "error") {
-          void loadDir(dirRel);
+        for (const rel of chainRels) {
+          const cur = cache[rel];
+          if (cur === undefined || cur.status === "error") {
+            void loadDir(rel);
+          }
         }
       }
     },
@@ -799,14 +830,21 @@ export function WorkspaceFilesPanel({
         {state.entries.map((entry) => {
           const childRel = joinExplorerRel(rel, entry.name);
           const isDir = entry.kind === "dir";
+          const collapsedDir = isDir
+            ? collapseWorkspaceExplorerDirChain(childRel, entry.name, getExplorerDirEntries)
+            : null;
+          const dirRel = collapsedDir?.leafRel ?? childRel;
           const Icon = workspaceExplorerIcon(entry.name, entry.kind);
-          const open = isDir && expanded[childRel] === true;
+          const open =
+            isDir
+            && collapsedDir !== null
+            && isWorkspaceExplorerCollapsedDirOpen(collapsedDir.chainRels, expanded);
           const ignored = entry.ignored === true;
           const chevronClassName = "size-3.5 shrink-0 opacity-60";
           const target: WorkspaceExplorerContextTarget = {
-            relativePath: childRel,
+            relativePath: dirRel,
             kind: entry.kind,
-            name: entry.name,
+            name: isDir ? fileBasename(dirRel) : entry.name,
           };
 
           if (!isDir) {
@@ -841,23 +879,24 @@ export function WorkspaceFilesPanel({
 
           return (
             <ExplorerRow
-              key={childRel}
+              key={dirRel}
               target={target}
               workspaceRoot={workspaceRoot}
               depth={depth}
               selected={false}
               ignored={ignored}
               isElectron={isElectron}
-              renaming={renamingPath === childRel}
+              renaming={renamingPath === dirRel}
               renameValue={renameValue}
-              renameError={renamingPath === childRel ? renameError : ""}
+              renameError={renamingPath === dirRel ? renameError : ""}
               onReveal={handleReveal}
               onRenameStart={handleRenameStart}
               onDelete={handleDeleteRequest}
               onRenameValueChange={setRenameValue}
               onRenameCommit={() => void handleRenameCommit()}
               onRenameCancel={handleRenameCancel}
-              onClick={() => onToggleDir(childRel)}
+              onClick={() => onToggleDir(dirRel, collapsedDir?.chainRels ?? [dirRel])}
+              label={collapsedDir?.displayName}
               leading={
                 open ? (
                   <ChevronDown className={chevronClassName} aria-hidden />
@@ -866,12 +905,12 @@ export function WorkspaceFilesPanel({
                 )
               }
               icon={Icon}
-              dropHighlight={dragOverDirectory === childRel}
+              dropHighlight={dragOverDirectory === dirRel}
               draggable
               onDragStart={(event) => handleDragStart(event, target)}
               onDragOver={(event) => {
                 event.stopPropagation();
-                handleDirectoryDragOver(event, childRel);
+                handleDirectoryDragOver(event, dirRel);
               }}
               onDragLeave={(event) => {
                 if (isDragLeaveForCurrentTarget(event)) {
@@ -880,10 +919,10 @@ export function WorkspaceFilesPanel({
               }}
               onDrop={(event) => {
                 event.stopPropagation();
-                void handleDirectoryDrop(event, childRel);
+                void handleDirectoryDrop(event, dirRel);
               }}
             >
-              {open ? <div className="min-w-0">{renderDirBody(childRel, depth + 1)}</div> : null}
+              {open ? <div className="min-w-0">{renderDirBody(dirRel, depth + 1)}</div> : null}
             </ExplorerRow>
           );
         })}
