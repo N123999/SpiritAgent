@@ -765,7 +765,19 @@ function WorkspaceListNav({
   );
 }
 
-const settingsTabs: Array<{
+const settingsPrimaryTabs: Array<{
+  id: SettingsSidebarTab;
+  labelKey: string;
+  icon: LucideIcon;
+}> = [
+  {
+    id: "appearance",
+    labelKey: "settings.appearance",
+    icon: Palette,
+  },
+];
+
+const settingsCapabilityTabs: Array<{
   id: SettingsSidebarTab;
   labelKey: string;
   icon: LucideIcon;
@@ -791,16 +803,6 @@ const settingsTabs: Array<{
     icon: BookText,
   },
   {
-    id: "dreams",
-    labelKey: "settings.dreams",
-    icon: MoonStar,
-  },
-  {
-    id: "extensions",
-    labelKey: "settings.extensions",
-    icon: Package,
-  },
-  {
     id: "mcps",
     labelKey: "settings.mcps",
     icon: Plug,
@@ -811,10 +813,17 @@ const settingsTabs: Array<{
     icon: Code2,
   },
   {
-    id: "appearance",
-    labelKey: "settings.appearance",
-    icon: Palette,
+    id: "dreams",
+    labelKey: "settings.dreams",
+    icon: MoonStar,
   },
+];
+
+const settingsConnectTabs: Array<{
+  id: SettingsSidebarTab;
+  labelKey: string;
+  icon: LucideIcon;
+}> = [
   {
     id: "networks",
     labelKey: "settings.networks",
@@ -824,6 +833,11 @@ const settingsTabs: Array<{
     id: "integrations",
     labelKey: "settings.integrations",
     icon: Link2,
+  },
+  {
+    id: "extensions",
+    labelKey: "settings.extensions",
+    icon: Package,
   },
   ...(isViteDev
     ? [
@@ -1348,34 +1362,47 @@ function SessionSidebarInner({
         >
           {settingsMode ? (
             <nav className="flex min-w-0 flex-col gap-0.5 p-1.5" aria-label={t('sidebar.settingsTabsAria')}>
-              {settingsTabs.map((tab) => {
-                const selected = extensionSettingsId === null && tab.id === settingsTab;
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => onSettingsTabChange?.(tab.id)}
-                    aria-current={selected ? "page" : undefined}
-                    title={narrow ? t(tab.labelKey) : undefined}
-                    className={cn(
-                      buttonVariants({
-                        variant: sidebarNavButtonVariant(micaStyle, selected),
-                        size: narrow ? "icon" : "sm",
-                      }),
-                      "text-xs",
-                      sidebarItemDefaultTextClass,
-                      sidebarInteractionMotionClass,
-                      selected ? sidebarItemSelectedClass(micaStyle) : sidebarItemHoverClass(micaStyle),
-                      narrow ? "size-8 shrink-0" : "h-8 w-full justify-start gap-2",
-                    )}
-                  >
-                    <Icon className="size-3.5" aria-hidden />
-                    <span className={cn("min-w-0 truncate", narrow && "sr-only")}>{t(tab.labelKey)}</span>
-                  </button>
-                );
-              })}
+              {(
+                [
+                  { key: "settings-primary", tabs: settingsPrimaryTabs },
+                  { key: "settings-capability", tabs: settingsCapabilityTabs },
+                  { key: "settings-connect", tabs: settingsConnectTabs },
+                ] as const
+              ).map((group, groupIndex) => (
+                <div
+                  key={group.key}
+                  className={cn("flex min-w-0 flex-col gap-0.5", groupIndex > 0 && "mt-3")}
+                >
+                  {group.tabs.map((tab) => {
+                    const selected = extensionSettingsId === null && tab.id === settingsTab;
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onSettingsTabChange?.(tab.id)}
+                        aria-current={selected ? "page" : undefined}
+                        title={narrow ? t(tab.labelKey) : undefined}
+                        className={cn(
+                          buttonVariants({
+                            variant: sidebarNavButtonVariant(micaStyle, selected),
+                            size: narrow ? "icon" : "sm",
+                          }),
+                          "text-xs",
+                          sidebarItemDefaultTextClass,
+                          sidebarInteractionMotionClass,
+                          selected ? sidebarItemSelectedClass(micaStyle) : sidebarItemHoverClass(micaStyle),
+                          narrow ? "size-8 shrink-0" : "h-8 w-full justify-start gap-2",
+                        )}
+                      >
+                        <Icon className="size-3.5" aria-hidden />
+                        <span className={cn("min-w-0 truncate", narrow && "sr-only")}>{t(tab.labelKey)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
               {extensionSettingsItems.length > 0 ? (
                 <>
                   <div className="h-2" aria-hidden />
