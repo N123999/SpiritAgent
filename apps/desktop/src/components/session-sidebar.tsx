@@ -337,23 +337,29 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
         title={group.rootPath ?? group.label}
         data-workspace-path={group.rootPath ?? group.id}
       >
-        {expanded ? (
-          <FolderOpen className="size-3.5 shrink-0" aria-hidden />
-        ) : (
-          <FolderClosed className="size-3.5 shrink-0" aria-hidden />
-        )}
-        <span className="flex min-w-0 flex-1 items-center overflow-hidden">
-          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-            <span className="truncate text-xs font-medium">{group.label}</span>
-            <ChevronRight
-              className={cn(
-                "hidden size-3 shrink-0 text-muted-foreground/55 transition-transform duration-150",
-                "group-hover:inline-flex group-focus-visible:inline-flex",
-                expanded && "rotate-90",
-              )}
+        <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center">
+          {expanded ? (
+            <FolderOpen
+              className="size-3.5 group-hover:hidden group-focus-visible:hidden"
               aria-hidden
             />
-          </span>
+          ) : (
+            <FolderClosed
+              className="size-3.5 group-hover:hidden group-focus-visible:hidden"
+              aria-hidden
+            />
+          )}
+          <ChevronRight
+            className={cn(
+              "absolute size-3.5 hidden transition-transform duration-150",
+              "group-hover:inline-flex group-focus-visible:inline-flex",
+              expanded && "rotate-90",
+            )}
+            aria-hidden
+          />
+        </span>
+        <span className="flex min-w-0 flex-1 items-center overflow-hidden">
+          <span className="truncate text-xs font-medium">{group.label}</span>
         </span>
       </AnimatedCollapseTrigger>
 
