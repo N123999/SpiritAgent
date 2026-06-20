@@ -11,6 +11,11 @@ import {
 } from "@/components/ui/context-menu";
 import { desktopShellPlatform } from "@/lib/desktop-shell";
 
+import {
+  formatWorkspaceRelativePathForCopy,
+  joinWorkspaceAbsolutePath,
+} from "@/lib/workspace-entry-path-sync";
+
 export type WorkspaceExplorerContextTarget = {
   relativePath: string;
   kind: "file" | "dir";
@@ -37,6 +42,7 @@ export function useMoveToTrashLabel(): string {
 
 export type WorkspaceFileContextMenuProps = {
   target: WorkspaceExplorerContextTarget;
+  workspaceRoot: string;
   isElectron: boolean;
   onReveal?: (target: WorkspaceExplorerContextTarget) => void;
   onRename?: (target: WorkspaceExplorerContextTarget) => void;
@@ -48,6 +54,7 @@ export type WorkspaceFileContextMenuProps = {
 
 export function WorkspaceFileContextMenu({
   target,
+  workspaceRoot,
   isElectron,
   onReveal,
   onRename,
@@ -60,6 +67,8 @@ export function WorkspaceFileContextMenu({
   const revealLabel = useRevealInExplorerLabel();
   const shellActionsEnabled = isElectron && Boolean(onReveal);
   const deleteEnabled = isElectron && Boolean(onDelete);
+  const absolutePath = joinWorkspaceAbsolutePath(workspaceRoot, target.relativePath);
+  const relativePathForCopy = formatWorkspaceRelativePathForCopy(target.relativePath);
 
   const menuItems: ContextMenuSectionItem[] = [];
 
@@ -95,6 +104,33 @@ export function WorkspaceFileContextMenu({
       ),
     });
   }
+
+  menuItems.push(
+    {
+      section: "copy-path",
+      item: (
+        <ContextMenuItem
+          onSelect={() => {
+            void navigator.clipboard.writeText(absolutePath);
+          }}
+        >
+          {t("workspace.copyPath")}
+        </ContextMenuItem>
+      ),
+    },
+    {
+      section: "copy-path",
+      item: (
+        <ContextMenuItem
+          onSelect={() => {
+            void navigator.clipboard.writeText(relativePathForCopy);
+          }}
+        >
+          {t("workspace.copyRelativePath")}
+        </ContextMenuItem>
+      ),
+    },
+  );
 
   if (onRename) {
     menuItems.push({

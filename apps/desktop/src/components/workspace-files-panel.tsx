@@ -119,6 +119,7 @@ export type WorkspaceFilesPanelProps = {
 
 type ExplorerRowProps = {
   target: WorkspaceExplorerContextTarget;
+  workspaceRoot: string;
   depth: number;
   selected: boolean;
   isElectron: boolean;
@@ -147,6 +148,7 @@ type ExplorerRowProps = {
 
 function ExplorerRow({
   target,
+  workspaceRoot,
   depth,
   selected,
   isElectron,
@@ -279,6 +281,7 @@ function ExplorerRow({
     <li className="min-w-0">
       <WorkspaceFileContextMenu
         target={target}
+        workspaceRoot={workspaceRoot}
         isElectron={isElectron}
         onReveal={onReveal}
         onRename={onRenameStart ? handleRenameStartFromMenu : undefined}
@@ -812,6 +815,7 @@ export function WorkspaceFilesPanel({
               <ExplorerRow
                 key={childRel}
                 target={target}
+                workspaceRoot={workspaceRoot}
                 depth={depth}
                 selected={selected}
                 ignored={ignored}
@@ -839,6 +843,7 @@ export function WorkspaceFilesPanel({
             <ExplorerRow
               key={childRel}
               target={target}
+              workspaceRoot={workspaceRoot}
               depth={depth}
               selected={false}
               ignored={ignored}
@@ -902,6 +907,7 @@ export function WorkspaceFilesPanel({
       ) : null}
       <WorkspaceFileContextMenu
         target={rootTarget}
+        workspaceRoot={workspaceRoot}
         isElectron={isElectron}
         onReveal={handleReveal}
       >
