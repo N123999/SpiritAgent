@@ -28,7 +28,7 @@ import {
   Palette,
   Plug,
   SquarePen,
-  Settings2,
+  Settings,
   Sparkles,
   Trash2,
   type LucideIcon,
@@ -1420,7 +1420,7 @@ function SessionSidebarInner({
             )}
             onClick={onOpenSettings}
           >
-            <Settings2 className="size-4" aria-hidden />
+            <Settings className="size-4" aria-hidden />
             <span className={cn(narrow && "sr-only")}>{t('settings.title')}</span>
           </Button>
         </div>
