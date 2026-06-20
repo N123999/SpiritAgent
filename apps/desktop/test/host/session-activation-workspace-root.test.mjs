@@ -21,6 +21,7 @@ test('finishSessionActivationCommand syncs host workspace root before plan state
   const ctx = {
     syncHostWorkspaceRootToActiveBundle: async (target) => {
       calls.push(['syncHostWorkspaceRootToActiveBundle', target.id]);
+      return false;
     },
     syncPlanStateForBundle: async (target) => {
       calls.push(['syncPlanStateForBundle', target.id]);
@@ -65,6 +66,7 @@ test('finishSessionActivationCommand still syncs host workspace root when runtim
   const ctx = {
     syncHostWorkspaceRootToActiveBundle: async (target) => {
       calls.push(['syncHostWorkspaceRootToActiveBundle', target.id]);
+      return false;
     },
     syncPlanStateForBundle: async (target) => {
       calls.push(['syncPlanStateForBundle', target.id]);
@@ -89,4 +91,48 @@ test('finishSessionActivationCommand still syncs host workspace root when runtim
     ['tickSession'],
     ['syncActiveRuntimePointer'],
   ]);
+});
+
+test('finishSessionActivationCommand skips plan sync when host workspace root was adopted', async () => {
+  const calls = [];
+  const bundle = createMinimalBundle();
+  const ctx = {
+    syncHostWorkspaceRootToActiveBundle: async (target) => {
+      calls.push(['syncHostWorkspaceRootToActiveBundle', target.id]);
+      return true;
+    },
+    syncPlanStateForBundle: async (target) => {
+      calls.push(['syncPlanStateForBundle', target.id]);
+    },
+    resetStreamingPlacementState: () => {
+      calls.push(['resetStreamingPlacementState']);
+    },
+    ensureToolExecutor: async () => {
+      calls.push(['ensureToolExecutor']);
+    },
+    refreshTodoSnapshotForBundle: async () => {
+      calls.push(['refreshTodoSnapshotForBundle']);
+    },
+    refreshRuntimeForBundle: async () => {
+      calls.push(['refreshRuntimeForBundle']);
+    },
+    flushDeferredRuntimeRefreshIfIdle: async () => {
+      calls.push(['flushDeferredRuntimeRefreshIfIdle']);
+    },
+    syncActiveRuntimePointer: () => {
+      calls.push(['syncActiveRuntimePointer']);
+    },
+    requireState: () => ({
+      config: { activeModel: 'test-model', models: [{ name: 'test-model' }] },
+      workspaceRoot: 'D:\\SpiritAgent.worktrees\\spirit-a',
+    }),
+  };
+
+  await finishSessionActivationCommand(ctx, bundle);
+
+  assert.equal(calls[0]?.[0], 'syncHostWorkspaceRootToActiveBundle');
+  assert.equal(
+    calls.filter((entry) => entry[0] === 'syncPlanStateForBundle').length,
+    0,
+  );
 });

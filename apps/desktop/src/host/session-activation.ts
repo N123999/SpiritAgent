@@ -60,7 +60,7 @@ export interface SessionActivationContext {
     timelineSnapshot?: DesktopTimelineTurnSnapshot[],
   ): DesktopMessageTimeline;
   syncPlanStateForBundle(bundle: SessionBundle): Promise<void>;
-  syncHostWorkspaceRootToActiveBundle(bundle: SessionBundle): Promise<void>;
+  syncHostWorkspaceRootToActiveBundle(bundle: SessionBundle): Promise<boolean>;
   tickSession(bundle: SessionBundle): Promise<void>;
   syncActiveRuntimePointer(): void;
   refreshTodoSnapshotForBundle(bundle: SessionBundle): Promise<void>;
@@ -257,8 +257,10 @@ export async function finishSessionActivationCommand(
   bundle: SessionBundle,
   options?: { sessionStartSource?: SessionStartHookInput['source'] },
 ): Promise<void> {
-  await ctx.syncHostWorkspaceRootToActiveBundle(bundle);
-  await ctx.syncPlanStateForBundle(bundle);
+  const adoptedWorkspaceRoot = await ctx.syncHostWorkspaceRootToActiveBundle(bundle);
+  if (!adoptedWorkspaceRoot) {
+    await ctx.syncPlanStateForBundle(bundle);
+  }
   if (bundle.runtime?.isBusy()) {
     await ctx.tickSession(bundle);
     ctx.syncActiveRuntimePointer();

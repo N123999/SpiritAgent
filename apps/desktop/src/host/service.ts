@@ -2877,12 +2877,13 @@ class DesktopHostService {
 
   private async syncHostWorkspaceRootToActiveBundle(
     bundle: SessionBundle = this.activeBundle(),
-  ): Promise<void> {
+  ): Promise<boolean> {
     const state = this.requireState();
     if (!needsHostWorkspaceRootSync(bundle, state)) {
-      return;
+      return false;
     }
     await this.adoptWorkspaceRootForActiveBundle(resolveEffectiveWorkspaceRoot(bundle, state));
+    return true;
   }
 
   private async adoptWorkspaceRootForActiveBundle(workspaceRoot: string): Promise<void> {
