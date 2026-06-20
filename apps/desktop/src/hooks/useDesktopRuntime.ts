@@ -22,6 +22,7 @@ import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
 import { clearGitHubAutomationRepositoriesCache } from "@/lib/github-automation-repositories-cache";
 import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
+import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
 import { useDesktopSystemNotifications } from "@/hooks/useDesktopSystemNotifications";
 import type {
   AddModelRequest,
@@ -2475,8 +2476,15 @@ export function useDesktopRuntime() {
       }
       const normalizedTarget = workspacePath.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
       const workspaceSessions = sessions.filter((s) => {
-        const root = (s.workspaceRoot ?? "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-        return root === normalizedTarget;
+        const rawRoot = (s.workspaceRoot ?? "").trim();
+        if (!rawRoot) {
+          return false;
+        }
+        const groupingRoot = resolveWorkspaceGroupingRoot(rawRoot)
+          .replace(/\\/g, "/")
+          .replace(/\/+$/, "")
+          .toLowerCase();
+        return groupingRoot === normalizedTarget;
       });
       setBusyAction("session");
       try {
