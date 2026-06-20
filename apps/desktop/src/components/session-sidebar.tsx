@@ -1577,12 +1577,15 @@ function SessionSidebarInner({
       <Dialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
+          if (!open && deleteSessionBusy) {
+            return;
+          }
           if (!open) {
             setDeleteTarget(null);
           }
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogContent className="sm:max-w-md" showCloseButton={!deleteSessionBusy}>
           <DialogHeader>
             <DialogTitle>{t("sidebar.deleteSession")}</DialogTitle>
             <DialogDescription>
@@ -1625,12 +1628,15 @@ function SessionSidebarInner({
       <Dialog
         open={deleteSectionTarget !== null}
         onOpenChange={(open) => {
+          if (!open && sectionDeleteBusy) {
+            return;
+          }
           if (!open) {
             setDeleteSectionTarget(null);
           }
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogContent className="sm:max-w-md" showCloseButton={!sectionDeleteBusy}>
           <DialogHeader>
             <DialogTitle>
               {deleteSectionTarget === "workspace-section"
@@ -1701,12 +1707,15 @@ function SessionSidebarInner({
       <Dialog
         open={deleteWorkspaceTarget !== null}
         onOpenChange={(open) => {
+          if (!open && deleteWorkspaceBusy) {
+            return;
+          }
           if (!open) {
             setDeleteWorkspaceTarget(null);
           }
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogContent className="sm:max-w-md" showCloseButton={!deleteWorkspaceBusy}>
           <DialogHeader>
             <DialogTitle>{t("sidebar.deleteWorkspace")}</DialogTitle>
             <DialogDescription>

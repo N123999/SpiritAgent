@@ -288,13 +288,9 @@ export default function App() {
             newSessionBusy={newSessionBusy}
             sessionNavigationBusy={sessionNavigationBusy}
             deleteSessionBusy={sessionNavigationBusy}
-            onDeleteSession={(path) => {
-              void runtime.deleteSession(path);
-            }}
+            onDeleteSession={(path) => runtime.deleteSession(path)}
             deleteWorkspaceBusy={sessionNavigationBusy}
-            onDeleteWorkspace={(workspacePath) => {
-              void runtime.deleteWorkspace(workspacePath);
-            }}
+            onDeleteWorkspace={(workspacePath) => runtime.deleteWorkspace(workspacePath)}
             unseenCompletedSessionPaths={runtime.unseenCompletedSessionPaths}
           />
         </SessionSidebarShell>
