@@ -894,8 +894,12 @@ const sidebarMenuHoverClass = cn(
   "hover:!text-sidebar-foreground focus-visible:!text-sidebar-foreground",
 );
 
-const sidebarSelectedHoverClass = cn(
-  "hover:!bg-secondary hover:!text-sidebar-foreground",
+/** 侧栏菜单/会话行选中：与 hover 同色半透明铺底，不因选中加深 */
+const sidebarMenuSelectedClass = cn(
+  "!bg-foreground/[0.06] hover:!bg-foreground/[0.06] focus-visible:!bg-foreground/[0.06]",
+  "dark:!bg-white/[0.06] dark:hover:!bg-white/[0.06] dark:focus-visible:!bg-white/[0.06]",
+  sidebarItemActiveTextClass,
+  "hover:!text-sidebar-foreground focus-visible:!text-sidebar-foreground",
 );
 
 const SIDEBAR_SCROLL_EDGE_THRESHOLD_PX = 1;
@@ -926,36 +930,20 @@ function sidebarScrollAreaMaskStyle(top: boolean, bottom: boolean): React.CSSPro
   } as React.CSSProperties;
 }
 
-const sidebarMicaSelectedClass = cn(
-  "!bg-foreground/[0.08] hover:!bg-foreground/[0.12] focus-visible:!bg-foreground/[0.12]",
-  "dark:!bg-white/[0.08] dark:hover:!bg-white/[0.12]",
-  sidebarItemActiveTextClass,
-);
-
 function sidebarItemHoverClass(_micaStyle?: boolean) {
   return sidebarMenuHoverClass;
 }
 
-function sidebarItemSelectedClass(micaStyle?: boolean) {
-  return micaStyle
-    ? sidebarMicaSelectedClass
-    : cn(sidebarItemActiveTextClass, sidebarSelectedHoverClass);
+function sidebarItemSelectedClass(_micaStyle?: boolean) {
+  return sidebarMenuSelectedClass;
 }
 
-function sidebarNavButtonVariant(micaStyle: boolean | undefined, selected: boolean) {
-  return micaStyle ? "ghost" : selected ? "secondary" : "ghost";
+function sidebarNavButtonVariant(_micaStyle?: boolean, _selected?: boolean): "ghost" {
+  return "ghost";
 }
 
-function sessionRowSelectedClass(micaStyle?: boolean) {
-  return micaStyle
-    ? cn(
-        "bg-foreground/[0.08] hover:!bg-foreground/[0.12] dark:bg-white/[0.08] dark:hover:!bg-white/[0.12]",
-        sidebarItemActiveTextClass,
-      )
-    : cn(
-        "bg-secondary hover:!bg-secondary",
-        sidebarItemActiveTextClass,
-      );
+function sessionRowSelectedClass(_micaStyle?: boolean) {
+  return sidebarMenuSelectedClass;
 }
 
 function sessionRowHoverClass(_micaStyle?: boolean) {
