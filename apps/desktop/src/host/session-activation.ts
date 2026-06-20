@@ -59,6 +59,7 @@ export interface SessionActivationContext {
     timelineSnapshot?: DesktopTimelineTurnSnapshot[],
   ): DesktopMessageTimeline;
   syncPlanStateForBundle(bundle: SessionBundle): Promise<void>;
+  syncHostWorkspaceRootToActiveBundle(bundle: SessionBundle): Promise<void>;
   tickSession(bundle: SessionBundle): Promise<void>;
   syncActiveRuntimePointer(): void;
   refreshTodoSnapshotForBundle(bundle: SessionBundle): Promise<void>;
@@ -250,6 +251,7 @@ export async function finishSessionActivationCommand(
   bundle: SessionBundle,
   options?: { sessionStartSource?: SessionStartHookInput['source'] },
 ): Promise<void> {
+  await ctx.syncHostWorkspaceRootToActiveBundle(bundle);
   await ctx.syncPlanStateForBundle(bundle);
   if (bundle.runtime?.isBusy()) {
     await ctx.tickSession(bundle);

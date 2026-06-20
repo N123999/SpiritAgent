@@ -812,6 +812,7 @@ class DesktopHostService {
       createMessageTimelineFromMessages: (messages, timelineSnapshot) =>
         this.createMessageTimelineFromMessages(messages, timelineSnapshot),
       syncPlanStateForBundle: (bundle) => this.syncPlanStateForBundle(bundle),
+      syncHostWorkspaceRootToActiveBundle: (bundle) => this.syncHostWorkspaceRootToActiveBundle(bundle),
       tickSession: (bundle) => this.tickSession(bundle),
       syncActiveRuntimePointer: () => this.syncActiveRuntimePointer(),
       refreshTodoSnapshotForBundle: (bundle) => this.refreshTodoSnapshotForBundle(bundle),
