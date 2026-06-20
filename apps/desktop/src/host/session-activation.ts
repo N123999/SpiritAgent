@@ -24,6 +24,7 @@ import { restoreMessagesFromArchive } from './message-ordering.js';
 import { currentApiBase, sameWorkspaceRoot } from './service-utils.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 import { cancelPendingWorktreeBootstrapOnBundle } from './worktree-bootstrap-orchestrator.js';
+import { resolveStoredSessionWorkspaceRoot } from './resolve-session-workspace-root.js';
 
 interface ActivationState {
   workspaceRoot: string;
@@ -180,7 +181,12 @@ export async function openSessionCommand(
     }
 
     const loaded = await loadStoredSession(filePath);
-    const workspaceRoot = loaded.workspaceRoot ?? ctx.requireState().workspaceRoot;
+    const workspaceRoot = loaded.workspaceRoot
+      ? await resolveStoredSessionWorkspaceRoot({
+          workspaceRoot: loaded.workspaceRoot,
+          gitBranch: loaded.gitBranch,
+        })
+      : ctx.requireState().workspaceRoot;
     const sameWorkspace =
       ctx.isInitialized()
       && Boolean(ctx.currentWorkspaceRoot())
