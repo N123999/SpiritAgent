@@ -267,7 +267,6 @@ const sidebarSectionChevronClass =
 
 type SidebarSectionContextMenuConfig = {
   ariaLabel: string;
-  deleteLabel: string;
   disabled?: boolean;
   disabledTitle?: string;
   onRequestDelete(): void;
@@ -292,6 +291,7 @@ function SidebarSectionCollapsible({
   contextMenu,
   children,
 }: SidebarSectionCollapsibleProps) {
+  const { t } = useTranslation();
   const headerTrigger = (
     <AnimatedCollapseTrigger
       disabled={disabled}
@@ -331,7 +331,7 @@ function SidebarSectionCollapsible({
               }}
             >
               <Trash2 aria-hidden />
-              {contextMenu.deleteLabel}
+              {t("common.delete")}
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
@@ -666,7 +666,7 @@ function SessionListNav({
           }}
         >
           <Trash2 aria-hidden />
-          {t("sidebar.deleteSession")}
+          {t("common.delete")}
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -741,7 +741,7 @@ function WorkspaceListNav({
             }}
           >
             <Trash2 aria-hidden />
-            {t("sidebar.deleteWorkspace")}
+            {t("common.delete")}
           </ContextMenuItem>
         ) : null}
         {!isWorkspaceTarget && canDeleteSession ? (
@@ -757,7 +757,7 @@ function WorkspaceListNav({
             }}
           >
             <Trash2 aria-hidden />
-            {t("sidebar.deleteSession")}
+            {t("common.delete")}
           </ContextMenuItem>
         ) : null}
       </ContextMenuContent>
@@ -1427,7 +1427,6 @@ function SessionSidebarInner({
                     canDeleteWorkspace
                       ? {
                           ariaLabel: t("sidebar.sectionActions"),
-                          deleteLabel: t("sidebar.deleteAllWorkspaces"),
                           disabled: sectionDeleteBusy || workspaceSectionHasBusySession,
                           disabledTitle: workspaceSectionHasBusySession
                             ? t("sidebar.cannotDeleteBusyInSection")
@@ -1509,7 +1508,6 @@ function SessionSidebarInner({
                       canDeleteSession
                         ? {
                             ariaLabel: t("sidebar.sectionActions"),
-                            deleteLabel: t("sidebar.deleteAllNoWorkspaceSessions"),
                             disabled: sectionDeleteBusy || noWorkspaceSectionHasBusySession,
                             disabledTitle: noWorkspaceSectionHasBusySession
                               ? t("sidebar.cannotDeleteBusyInSection")
