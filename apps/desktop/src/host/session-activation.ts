@@ -24,6 +24,7 @@ import { restoreMessagesFromArchive } from './message-ordering.js';
 import { currentApiBase, sameWorkspaceRoot } from './service-utils.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 import { cancelPendingWorktreeBootstrapOnBundle } from './worktree-bootstrap-orchestrator.js';
+import { resolveStoredSessionWorkspaceRoot } from './resolve-session-workspace-root.js';
 
 interface ActivationState {
   workspaceRoot: string;
@@ -59,6 +60,7 @@ export interface SessionActivationContext {
     timelineSnapshot?: DesktopTimelineTurnSnapshot[],
   ): DesktopMessageTimeline;
   syncPlanStateForBundle(bundle: SessionBundle): Promise<void>;
+  syncHostWorkspaceRootToActiveBundle(bundle: SessionBundle): Promise<boolean>;
   tickSession(bundle: SessionBundle): Promise<void>;
   syncActiveRuntimePointer(): void;
   refreshTodoSnapshotForBundle(bundle: SessionBundle): Promise<void>;
@@ -179,7 +181,12 @@ export async function openSessionCommand(
     }
 
     const loaded = await loadStoredSession(filePath);
-    const workspaceRoot = loaded.workspaceRoot ?? ctx.requireState().workspaceRoot;
+    const workspaceRoot = loaded.workspaceRoot
+      ? await resolveStoredSessionWorkspaceRoot({
+          workspaceRoot: loaded.workspaceRoot,
+          gitBranch: loaded.gitBranch,
+        })
+      : ctx.requireState().workspaceRoot;
     const sameWorkspace =
       ctx.isInitialized()
       && Boolean(ctx.currentWorkspaceRoot())
@@ -250,7 +257,10 @@ export async function finishSessionActivationCommand(
   bundle: SessionBundle,
   options?: { sessionStartSource?: SessionStartHookInput['source'] },
 ): Promise<void> {
-  await ctx.syncPlanStateForBundle(bundle);
+  const adoptedWorkspaceRoot = await ctx.syncHostWorkspaceRootToActiveBundle(bundle);
+  if (!adoptedWorkspaceRoot) {
+    await ctx.syncPlanStateForBundle(bundle);
+  }
   if (bundle.runtime?.isBusy()) {
     await ctx.tickSession(bundle);
     ctx.syncActiveRuntimePointer();

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { DesktopMessageTimeline } from '../../dist-electron/src/host/message-timeline.js';
 import {
+  advancePendingWorktreeBootstrapCommand,
   cancelPendingWorktreeBootstrapOnBundle,
   shouldAdvanceWorktreeBootstrap,
   startWorktreeBootstrapTurnCommand,
@@ -97,4 +98,84 @@ test('startWorktreeBootstrapTurnCommand inserts user message and running worktre
   assert.equal(bundle.pendingWorktreeBootstrap?.phase, 'running');
   assert.equal(shouldAdvanceWorktreeBootstrap(bundle), true);
   assert.ok(snapshot);
+});
+
+test('advancePendingWorktreeBootstrapCommand emits snapshot after bootstrap before streaming', async () => {
+  const { timeline } = createTimelineHarness();
+  const bundle = {
+    id: 'draft-advance',
+    messages: [],
+    messageTimeline: timeline,
+    currentTurnSkills: [],
+    archiveHistory: [],
+    pendingWorktreeBootstrap: {
+      toolCallId: 'worktree-bootstrap:draft-advance',
+      phase: 'running',
+      userPrompt: 'hello',
+      displayText: 'hello',
+      userMessageId: 1,
+      beforeUserCheckpoint: {
+        archive: { llmHistory: [] },
+        desktopMessages: [],
+      },
+    },
+  };
+  timeline.beginUserTurn('hello', { messageId: 1 });
+
+  const callOrder = [];
+  await advancePendingWorktreeBootstrapCommand(
+    {
+      requireRuntime: () => ({
+        startUserTurnStreaming: async () => {
+          callOrder.push('startUserTurnStreaming');
+        },
+        poll: async () => {},
+        drainEvents: () => [],
+      }),
+      ensureToolExecutor: async () => {
+        callOrder.push('ensureToolExecutor');
+      },
+      refreshArchiveFromRuntime: () => {},
+      recordRewindCheckpoint: async () => {},
+      orchestrationFor: () => ({
+        assistantMessages: {
+          handleMessageRemoved: () => {},
+        },
+        runtimeEvents: {
+          consumeCompletedTurnResult: () => {},
+          syncPendingToolStates: () => {},
+          syncAssistantPrefixFromHistoryBeforeToolRow: () => {},
+        },
+      }),
+      flushDeferredRuntimeRefreshIfIdle: async () => {},
+      refreshTodoSnapshotForBundle: async () => {},
+      emitLiveSnapshotUpdate: () => {
+        callOrder.push('emitLiveSnapshotUpdate');
+      },
+      persistCurrentSessionIfNeeded: async () => {
+        callOrder.push('persistCurrentSessionIfNeeded');
+      },
+      drainQueuedUserTurnIfIdle: async () => {},
+    },
+    {
+      executeWorktreeBootstrap: async () => {
+        callOrder.push('executeWorktreeBootstrap');
+      },
+      setLastRuntimeError: () => {},
+    },
+    bundle,
+  );
+
+  assert.equal(bundle.pendingWorktreeBootstrap, undefined);
+  assert.ok(callOrder.includes('executeWorktreeBootstrap'));
+  assert.equal(callOrder.filter((entry) => entry === 'emitLiveSnapshotUpdate').length, 2);
+  assert.ok(
+    callOrder.indexOf('emitLiveSnapshotUpdate') > callOrder.indexOf('executeWorktreeBootstrap'),
+  );
+  assert.ok(
+    callOrder.indexOf('startUserTurnStreaming') > callOrder.indexOf('emitLiveSnapshotUpdate'),
+  );
+  assert.ok(
+    callOrder.lastIndexOf('emitLiveSnapshotUpdate') > callOrder.indexOf('persistCurrentSessionIfNeeded'),
+  );
 });

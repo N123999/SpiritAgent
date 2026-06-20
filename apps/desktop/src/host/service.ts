@@ -417,6 +417,10 @@ import {
   sameDreamCollectorSnapshot,
   sameWorkspaceRoot,
 } from './service-utils.js';
+import {
+  needsHostWorkspaceRootSync,
+  resolveEffectiveWorkspaceRoot,
+} from './workspace-root-sync.js';
 import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot, buildModelCatalogHints } from './snapshot.js';
 import {
@@ -808,6 +812,7 @@ class DesktopHostService {
       createMessageTimelineFromMessages: (messages, timelineSnapshot) =>
         this.createMessageTimelineFromMessages(messages, timelineSnapshot),
       syncPlanStateForBundle: (bundle) => this.syncPlanStateForBundle(bundle),
+      syncHostWorkspaceRootToActiveBundle: (bundle) => this.syncHostWorkspaceRootToActiveBundle(bundle),
       tickSession: (bundle) => this.tickSession(bundle),
       syncActiveRuntimePointer: () => this.syncActiveRuntimePointer(),
       refreshTodoSnapshotForBundle: (bundle) => this.refreshTodoSnapshotForBundle(bundle),
@@ -2868,6 +2873,17 @@ class DesktopHostService {
 
     await this.adoptWorkspaceRootForActiveBundle(created.worktreePath);
     this.startDreamCollectorIfNeeded();
+  }
+
+  private async syncHostWorkspaceRootToActiveBundle(
+    bundle: SessionBundle = this.activeBundle(),
+  ): Promise<boolean> {
+    const state = this.requireState();
+    if (!needsHostWorkspaceRootSync(bundle, state)) {
+      return false;
+    }
+    await this.adoptWorkspaceRootForActiveBundle(resolveEffectiveWorkspaceRoot(bundle, state));
+    return true;
   }
 
   private async adoptWorkspaceRootForActiveBundle(workspaceRoot: string): Promise<void> {

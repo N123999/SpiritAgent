@@ -206,9 +206,11 @@ export async function advancePendingWorktreeBootstrapCommand(
     await host.executeWorktreeBootstrap(pending!.userPrompt);
     upsertWorktreeBootstrapCard(bundle, pending!.toolCallId, 'succeeded');
     host.setLastRuntimeError('');
+    ctx.emitLiveSnapshotUpdate();
     await startStreamingAfterWorktreeBootstrap(ctx, bundle, pending!);
     bundle.pendingWorktreeBootstrap = undefined;
     await ctx.persistCurrentSessionIfNeeded();
+    ctx.emitLiveSnapshotUpdate();
     await drainQueuedUserTurnIfIdle(ctx, bundle);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
