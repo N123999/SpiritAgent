@@ -628,6 +628,51 @@ test("isComposerPlainEmpty treats lone newline as empty", () => {
   assert.equal(normalizeComposerPlain("\n"), "");
 });
 
+test("domToSegments keeps trailing newline after real text", async () => {
+  const { parseHTML } = await import("linkedom");
+  const { window, document } = parseHTML("<!doctype html><html><body></body></html>");
+  globalThis.Node = window.Node;
+  globalThis.HTMLElement = window.HTMLElement;
+  const { domToSegments, segmentsToPlainText } = await import("../src/lib/composer-segments.ts");
+  const container = document.createElement("div");
+  container.appendChild(document.createTextNode("你好"));
+  container.appendChild(document.createElement("br"));
+  const parsed = domToSegments(container);
+  assert.equal(segmentsToPlainText(parsed), "你好\n");
+});
+
+test("domToSegments strips lone bogus newline from empty editor br", async () => {
+  const { parseHTML } = await import("linkedom");
+  const { window, document } = parseHTML("<!doctype html><html><body></body></html>");
+  globalThis.Node = window.Node;
+  globalThis.HTMLElement = window.HTMLElement;
+  const { domToSegments, segmentsToPlainText } = await import("../src/lib/composer-segments.ts");
+  const container = document.createElement("div");
+  container.appendChild(document.createElement("br"));
+  const parsed = domToSegments(container);
+  assert.equal(segmentsToPlainText(parsed), "");
+});
+
+test("composerDomStructureMatchesSegments detects phantom br when plain empty", async () => {
+  const { parseHTML } = await import("linkedom");
+  const { window, document } = parseHTML("<!doctype html><html><body></body></html>");
+  globalThis.Node = window.Node;
+  globalThis.HTMLElement = window.HTMLElement;
+  const {
+    composerDomHasPhantomStructure,
+    composerDomStructureMatchesSegments,
+    emptySegments,
+  } = await import("../src/lib/composer-segments.ts");
+  const container = document.createElement("div");
+  container.appendChild(document.createElement("br"));
+  container.appendChild(document.createTextNode(""));
+  container.appendChild(document.createElement("br"));
+  container.appendChild(document.createTextNode(""));
+  const segs = emptySegments();
+  assert.equal(composerDomHasPhantomStructure(container, segs), true);
+  assert.equal(composerDomStructureMatchesSegments(container, segs), false);
+});
+
 test("applyAgentModeChipPolicy inserts ask when not dismissed", () => {
   const segs = applyAgentModeChipPolicy(emptySegments(), { hostMode: "ask", dismissed: false });
   assert.equal(segs.some((s) => s.kind === "ask"), true);

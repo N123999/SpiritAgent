@@ -39,6 +39,7 @@ import {
 import type { AgentModeChipKind } from "@/lib/composer-agent-mode-segments";
 import {
   domToSegments,
+  composerDomStructureMatchesSegments,
   emptySegments,
   caretAfterAgentModeChip,
   ensureLoopChipTypingTail,
@@ -815,8 +816,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         return;
       }
 
-      const domSegs = domToSegments(div);
-      const domEqual = segmentsEqual(domSegs, segments);
+      const domEqual = composerDomStructureMatchesSegments(div, segments);
 
       if (skipRenderRef.current) {
         skipRenderRef.current = false;
@@ -1278,7 +1278,6 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           className={cn(
             "spirit-scroll block max-h-[12rem] min-h-[3rem] w-full overflow-y-auto rounded-none border-0 bg-transparent px-3 pt-2.5 pb-1.5 text-sm leading-relaxed outline-none md:min-h-[3.5rem]",
             "whitespace-pre-wrap break-words",
-            "[&>br:last-child]:hidden",
             className,
           )}
         />

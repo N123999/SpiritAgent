@@ -8,6 +8,8 @@ import type { RichSegment } from "@/lib/composer-segment-model";
 import {
   emptySegments,
   isComposerPlainEmpty,
+  mergeAdjacentTextSegments,
+  segmentsEqual,
   segmentsToPlainText,
   syncSegmentsFromExternalValue,
 } from "@/lib/composer-segment-model";
@@ -87,7 +89,12 @@ export function domToSegments(root: HTMLElement): RichSegment[] {
   const segs: RichSegment[] = [];
   appendSegmentsFromChildren(root, segs);
   const last = segs[segs.length - 1];
-  if (last?.kind === "text" && last.value.endsWith("\n")) {
+  const plainBeforeStrip = segmentsToPlainText(segs);
+  if (
+    last?.kind === "text"
+    && last.value.endsWith("\n")
+    && isComposerPlainEmpty(plainBeforeStrip)
+  ) {
     last.value = last.value.slice(0, -1);
     if (!last.value) segs.pop();
   }
@@ -98,6 +105,43 @@ export function domToSegments(root: HTMLElement): RichSegment[] {
     return emptySegments();
   }
   return segs.length > 0 ? segs : emptySegments();
+}
+
+/** Plain empty but DOM still has bogus br/empty wrappers (segmentsEqual alone misses this). */
+export function composerDomHasPhantomStructure(
+  root: HTMLElement,
+  segs: RichSegment[],
+): boolean {
+  const plain = segmentsToPlainText(segs);
+  if (!isComposerPlainEmpty(plain)) {
+    return false;
+  }
+  if (segs.some((seg) => seg.kind !== "text")) {
+    return false;
+  }
+  const children = root.childNodes;
+  if (children.length === 0) {
+    return false;
+  }
+  if (
+    children.length === 1
+    && children[0].nodeType === Node.TEXT_NODE
+    && (children[0].textContent ?? "") === ""
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function composerDomStructureMatchesSegments(
+  root: HTMLElement,
+  segs: RichSegment[],
+): boolean {
+  if (composerDomHasPhantomStructure(root, segs)) {
+    return false;
+  }
+  const domSegs = mergeAdjacentTextSegments(domToSegments(root));
+  return segmentsEqual(domSegs, segs);
 }
 
 function appendSegmentsFromChildren(container: Node, segs: RichSegment[]): void {
