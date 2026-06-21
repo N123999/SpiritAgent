@@ -124,6 +124,16 @@ function AnimatedCollapseContent({
 
   useLayoutEffect(() => {
     const outer = outerRef.current;
+    if (!outer) {
+      return;
+    }
+    outer.style.removeProperty("height");
+    outer.style.removeProperty("opacity");
+    outer.style.removeProperty("animation");
+  }, [open]);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
     const inner = innerRef.current;
     if (!outer || !inner || !mounted) {
       return;
