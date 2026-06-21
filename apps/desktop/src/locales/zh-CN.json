@@ -485,7 +485,6 @@
       "repositorySearchPlaceholder": "搜索仓库…",
       "repositoryEmpty": "未找到仓库",
       "repositoryLoadFailed": "加载仓库失败，请稍后重试",
-      "connectGitHubHint": "请先在设置 → 集成 中连接 GitHub，才能使用仓库触发器。",
       "pullRequestCreated": "Pull Request 创建",
       "issueCreated": "Issue 创建"
     },

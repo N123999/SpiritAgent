@@ -488,7 +488,6 @@
       "repositorySearchPlaceholder": "Search repositories…",
       "repositoryEmpty": "No repositories found",
       "repositoryLoadFailed": "Failed to load repositories. Try again.",
-      "connectGitHubHint": "Connect GitHub in Settings → Integrations to use repository triggers.",
       "pullRequestCreated": "Pull request created",
       "issueCreated": "Issue created"
     },

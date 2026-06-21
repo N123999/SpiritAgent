@@ -28,6 +28,8 @@ type AutomationDetailViewProps = {
   onAddWorkspace?(): void | Promise<void>;
   settingsDisabled?: boolean;
   githubConnected: boolean;
+  githubAuthChecking?: boolean;
+  onOpenIntegrationsSettings?: () => void;
   listGitHubRepositories(page?: number): Promise<GitHubAutomationRepositoriesSnapshot>;
   searchGitHubRepositories(
     query: string,
@@ -93,6 +95,8 @@ export function AutomationDetailView({
   onAddWorkspace,
   settingsDisabled,
   githubConnected,
+  githubAuthChecking,
+  onOpenIntegrationsSettings,
   listGitHubRepositories,
   searchGitHubRepositories,
 }: AutomationDetailViewProps) {
@@ -166,6 +170,8 @@ export function AutomationDetailView({
                 snapshot={snapshot}
                 disabled={settingsDisabled}
                 githubConnected={githubConnected}
+                githubAuthChecking={githubAuthChecking}
+                onOpenIntegrationsSettings={onOpenIntegrationsSettings}
                 onAddWorkspace={onAddWorkspace}
                 listGitHubRepositories={listGitHubRepositories}
                 searchGitHubRepositories={searchGitHubRepositories}

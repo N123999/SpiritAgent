@@ -30,6 +30,8 @@ type AutomationSettingsPanelProps = {
   snapshot: DesktopSnapshot | null;
   disabled?: boolean;
   githubConnected: boolean;
+  githubAuthChecking?: boolean;
+  onOpenIntegrationsSettings?: () => void;
   onSave(patch: DesktopUpdateAutomationRequest): void | Promise<void>;
   onAddWorkspace?(): void | Promise<void>;
   listGitHubRepositories(page?: number): Promise<GitHubAutomationRepositoriesSnapshot>;
@@ -53,6 +55,8 @@ export function AutomationSettingsPanel({
   snapshot,
   disabled,
   githubConnected,
+  githubAuthChecking,
+  onOpenIntegrationsSettings,
   onSave,
   onAddWorkspace,
   listGitHubRepositories,
@@ -164,6 +168,8 @@ export function AutomationSettingsPanel({
               trigger={trigger}
               disabled={disabled}
               githubConnected={githubConnected}
+              githubAuthChecking={githubAuthChecking}
+              onOpenIntegrationsSettings={onOpenIntegrationsSettings}
               onTriggerChange={setTrigger}
               listGitHubRepositories={listGitHubRepositories}
               searchGitHubRepositories={searchGitHubRepositories}

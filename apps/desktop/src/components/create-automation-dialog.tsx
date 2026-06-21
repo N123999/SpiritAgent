@@ -36,6 +36,8 @@ type CreateAutomationDialogProps = {
   snapshot: DesktopSnapshot | null;
   disabled?: boolean;
   githubConnected: boolean;
+  githubAuthChecking?: boolean;
+  onOpenIntegrationsSettings?: () => void;
   onSubmit(request: DesktopCreateAutomationRequest): void | Promise<void>;
   onAddWorkspace?(): void | Promise<void>;
   listGitHubRepositories(page?: number): Promise<GitHubAutomationRepositoriesSnapshot>;
@@ -51,6 +53,8 @@ export function CreateAutomationDialog({
   snapshot,
   disabled,
   githubConnected,
+  githubAuthChecking,
+  onOpenIntegrationsSettings,
   onSubmit,
   onAddWorkspace,
   listGitHubRepositories,
@@ -126,6 +130,8 @@ export function CreateAutomationDialog({
               trigger={trigger}
               disabled={disabled}
               githubConnected={githubConnected}
+              githubAuthChecking={githubAuthChecking}
+              onOpenIntegrationsSettings={onOpenIntegrationsSettings}
               onTriggerChange={setTrigger}
               listGitHubRepositories={listGitHubRepositories}
               searchGitHubRepositories={searchGitHubRepositories}

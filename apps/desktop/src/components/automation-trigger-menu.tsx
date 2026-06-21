@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, Clock } from "lucide-react";
 
 import { AutomationTimeScheduleOptions } from "@/components/automation-schedule-menu";
+import { GitHubConnectTooltipContent } from "@/components/github-sign-in-prompt";
 import { GitHubMarkIcon } from "@/components/github-mark-icon";
 import { useGitHubAutomationRepositories } from "@/hooks/use-github-automation-repositories";
 import {
@@ -15,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DESKTOP_OVERLAY_LIST_CONTENT,
@@ -47,6 +49,8 @@ type AutomationTriggerMenuProps = {
   trigger: DesktopAutomationTrigger;
   disabled?: boolean;
   githubConnected: boolean;
+  githubAuthChecking?: boolean;
+  onOpenIntegrationsSettings?: () => void;
   onTriggerChange(trigger: DesktopAutomationTrigger): void;
   listGitHubRepositories(page?: number): Promise<GitHubAutomationRepositoriesSnapshot>;
   searchGitHubRepositories(
@@ -59,6 +63,8 @@ export function AutomationTriggerMenu({
   trigger,
   disabled,
   githubConnected,
+  githubAuthChecking,
+  onOpenIntegrationsSettings,
   onTriggerChange,
   listGitHubRepositories,
   searchGitHubRepositories,
@@ -105,28 +111,56 @@ export function AutomationTriggerMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className={cn(DESKTOP_OVERLAY_SHORT_MENU_MIN_WIDTH, "z-[120] p-0")}>
         <div className={DESKTOP_OVERLAY_SHORT_LIST_PADDING}>
-          <DropdownMenuSub open={githubSubOpen} onOpenChange={setGithubSubOpen}>
-            <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
-              <GitHubMarkIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
-              {t("automations.trigger.github")}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent
-              className={cn(DESKTOP_OVERLAY_LIST_CONTENT, DESKTOP_OVERLAY_LIST_SHELL, "z-[130] w-72")}
-            >
-              {!githubConnected ? (
-                <div className="max-w-56 px-3 py-2 text-xs text-muted-foreground">
-                  {t("automations.trigger.connectGitHubHint")}
-                </div>
-              ) : (
-                <AutomationGitHubRepositoryList
-                  open={githubSubOpen}
-                  disabled={disabled}
-                  listGitHubRepositories={listGitHubRepositories}
-                  searchGitHubRepositories={searchGitHubRepositories}
-                  onSelect={setGitHubTrigger}
-                />
-              )}
-            </DropdownMenuSubContent>
+          <DropdownMenuSub
+            open={githubConnected ? githubSubOpen : false}
+            onOpenChange={(open) => {
+              if (!githubConnected) {
+                return;
+              }
+              setGithubSubOpen(open);
+            }}
+          >
+            {!githubConnected ? (
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <span className="flex w-full min-w-0">
+                    <DropdownMenuSubTrigger disabled={disabled || !githubConnected} className="gap-2">
+                      <GitHubMarkIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+                      {t("automations.trigger.github")}
+                    </DropdownMenuSubTrigger>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {githubAuthChecking ? (
+                    t("workspace.prGitHubAuthChecking")
+                  ) : (
+                    <GitHubConnectTooltipContent
+                      onSignIn={() => {
+                        onOpenIntegrationsSettings?.();
+                      }}
+                    />
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <>
+                <DropdownMenuSubTrigger disabled={disabled} className="gap-2">
+                  <GitHubMarkIcon className="size-3.5 shrink-0 text-muted-foreground/80" />
+                  {t("automations.trigger.github")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent
+                  className={cn(DESKTOP_OVERLAY_LIST_CONTENT, DESKTOP_OVERLAY_LIST_SHELL, "z-[130] w-72")}
+                >
+                  <AutomationGitHubRepositoryList
+                    open={githubSubOpen}
+                    disabled={disabled}
+                    listGitHubRepositories={listGitHubRepositories}
+                    searchGitHubRepositories={searchGitHubRepositories}
+                    onSelect={setGitHubTrigger}
+                  />
+                </DropdownMenuSubContent>
+              </>
+            )}
           </DropdownMenuSub>
           <DropdownMenuSub>
             <DropdownMenuSubTrigger disabled={disabled} className="gap-2">

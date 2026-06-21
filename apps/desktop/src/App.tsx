@@ -122,6 +122,23 @@ export default function App() {
     workspaceTools.prTabEnabled,
   );
 
+  const openIntegrationsSettings = useCallback(() => {
+    surfaceNav.sessionSidebarChromeApiRef.current?.openSidebar();
+    if (surfaceNav.activeSurface !== "settings") {
+      surfaceNav.setLastNonSettingsSurface(
+        surfaceNav.activeSurface === "marketplace"
+          ? "marketplace"
+          : surfaceNav.activeSurface === "automations" ||
+              surfaceNav.activeSurface === "automation-detail"
+            ? "automations"
+            : "conversation",
+      );
+    }
+    surfaceNav.setExtensionSettingsId(null);
+    surfaceNav.setSettingsTab("integrations");
+    surfaceNav.setActiveSurface("settings");
+  }, [surfaceNav]);
+
   const composer = useComposerController({
     runtime,
     snapshot,
@@ -388,6 +405,8 @@ export default function App() {
                 updateAutomation={(id, patch) => void runtime.updateAutomation(id, patch)}
                 settingsDisabled={!runtime.apiReady || runtime.busyAction === "automation"}
                 githubConnected={gitHubAuthConnected === true}
+                githubAuthChecking={gitHubAuthConnected === null}
+                onOpenIntegrationsSettings={openIntegrationsSettings}
                 listGitHubRepositories={runtime.listGitHubAutomationRepositories}
                 searchGitHubRepositories={runtime.searchGitHubAutomationRepositories}
                 onAddWorkspace={() => void runtime.pickWorkspaceDirectory?.().then((path) => {
@@ -423,6 +442,8 @@ export default function App() {
               snapshot={snapshot}
               disabled={!runtime.apiReady || runtime.busyAction === "automation"}
               githubConnected={gitHubAuthConnected === true}
+              githubAuthChecking={gitHubAuthConnected === null}
+              onOpenIntegrationsSettings={openIntegrationsSettings}
               listGitHubRepositories={runtime.listGitHubAutomationRepositories}
               searchGitHubRepositories={runtime.searchGitHubAutomationRepositories}
               onSubmit={(request) => void runtime.createAutomation(request)}
@@ -573,22 +594,7 @@ export default function App() {
               onBrowserOpenInNewTab: workspaceTools.openBrowserUrlInNewTab,
               browserTabEnabled: workspaceTools.browserTabEnabled,
               prTabEnabled: workspaceTools.prTabEnabled,
-              onOpenIntegrationsSettings: () => {
-                surfaceNav.sessionSidebarChromeApiRef.current?.openSidebar();
-                if (surfaceNav.activeSurface !== "settings") {
-                  surfaceNav.setLastNonSettingsSurface(
-                    surfaceNav.activeSurface === "marketplace"
-                      ? "marketplace"
-                      : surfaceNav.activeSurface === "automations" ||
-                          surfaceNav.activeSurface === "automation-detail"
-                        ? "automations"
-                        : "conversation",
-                  );
-                }
-                surfaceNav.setExtensionSettingsId(null);
-                surfaceNav.setSettingsTab("integrations");
-                surfaceNav.setActiveSurface("settings");
-              },
+              onOpenIntegrationsSettings: openIntegrationsSettings,
               workspaceToolsWidthPx: workspaceTools.workspaceToolsWidthPx,
               onWorkspaceToolsWidthPxChange: workspaceTools.setWorkspaceToolsWidthPx,
               gitChipBusy: composer.gitChipBusy,
