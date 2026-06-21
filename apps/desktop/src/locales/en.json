@@ -453,7 +453,15 @@
     "minimize": "Minimize",
     "maximize": "Maximize",
     "close": "Close",
-    "about": "About Spirit Agent"
+    "zoom": "Zoom",
+    "bringAllToFront": "Bring All to Front",
+    "about": "About Spirit Agent",
+    "services": "Services",
+    "hideApp": "Hide {{appName}}",
+    "hideOthers": "Hide Others",
+    "showAll": "Show All",
+    "quitApp": "Quit {{appName}}",
+    "versionDetail": "Version {{version}}"
   },
   "automations": {
     "title": "Automations",

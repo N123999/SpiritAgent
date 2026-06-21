@@ -957,11 +957,16 @@ if (gotSpiritSingleInstanceLock) {
     },
   );
 
-  ipcMain.handle('desktop:sync-language', (_event, lang: string) => {
+  ipcMain.handle('desktop:sync-language', async (_event, lang: string) => {
     console.log('[spirit-desktop] language synced:', lang);
-    i18nHost.changeLanguage(lang).catch(() => {
+    try {
+      await i18nHost.changeLanguage(lang);
+    } catch {
       // ignore i18n errors
-    });
+    }
+    if (process.platform === 'darwin') {
+      setMacOSApplicationMenu();
+    }
   });
 
   ipcMain.handle(
