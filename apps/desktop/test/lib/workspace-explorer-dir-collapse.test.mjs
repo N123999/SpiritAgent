@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   collapseWorkspaceExplorerDirChain,
+  collectWorkspaceExplorerDirCollapsePrefetchRels,
   isWorkspaceExplorerCollapsedDirOpen,
 } from '../../src/lib/workspace-explorer-dir-collapse.ts';
 
@@ -24,7 +25,7 @@ test('collapseWorkspaceExplorerDirChain does not merge when current dir is not l
   });
 });
 
-test('collapseWorkspaceExplorerDirChain merges one level when child listing is unknown', () => {
+test('collapseWorkspaceExplorerDirChain does not merge when child listing is unknown', () => {
   const listings = {
     apps: [dir('desktop')],
   };
@@ -32,9 +33,73 @@ test('collapseWorkspaceExplorerDirChain merges one level when child listing is u
   const result = collapseWorkspaceExplorerDirChain('apps', 'apps', (rel) => listings[rel]);
 
   assert.deepEqual(result, {
-    leafRel: 'apps/desktop',
-    displayName: 'apps/desktop',
-    chainRels: ['apps', 'apps/desktop'],
+    leafRel: 'apps',
+    displayName: 'apps',
+    chainRels: ['apps'],
+  });
+});
+
+test('collapseWorkspaceExplorerDirChain merges through loaded empty passthrough dirs', () => {
+  const listings = {
+    'dir1': [dir('dir2')],
+    'dir1/dir2': [],
+  };
+
+  const result = collapseWorkspaceExplorerDirChain('dir1', 'dir1', (rel) => listings[rel]);
+
+  assert.deepEqual(result, {
+    leafRel: 'dir1/dir2',
+    displayName: 'dir1/dir2',
+    chainRels: ['dir1', 'dir1/dir2'],
+  });
+});
+
+test('collapseWorkspaceExplorerDirChain merges four-level empty chain when fully loaded', () => {
+  const listings = {
+    '.agents': [dir('skills')],
+    '.agents/skills': [dir('ai-sdk')],
+    '.agents/skills/ai-sdk': [dir('references')],
+    '.agents/skills/ai-sdk/references': [],
+  };
+
+  const result = collapseWorkspaceExplorerDirChain('.agents', '.agents', (rel) => listings[rel]);
+
+  assert.deepEqual(result, {
+    leafRel: '.agents/skills/ai-sdk/references',
+    displayName: '.agents/skills/ai-sdk/references',
+    chainRels: [
+      '.agents',
+      '.agents/skills',
+      '.agents/skills/ai-sdk',
+      '.agents/skills/ai-sdk/references',
+    ],
+  });
+});
+
+test('collectWorkspaceExplorerDirCollapsePrefetchRels returns first unloaded chain segment', () => {
+  const listings = {
+    '.agents': [dir('skills')],
+    '.agents/skills': [dir('ai-sdk')],
+  };
+
+  assert.deepEqual(
+    collectWorkspaceExplorerDirCollapsePrefetchRels('.agents', (rel) => listings[rel]),
+    ['.agents/skills/ai-sdk'],
+  );
+});
+
+test('collapseWorkspaceExplorerDirChain stops before file when intermediate dirs load', () => {
+  const listings = {
+    'dir1': [dir('dir2')],
+    'dir1/dir2': [file('file-1.txt')],
+  };
+
+  const result = collapseWorkspaceExplorerDirChain('dir1', 'dir1', (rel) => listings[rel]);
+
+  assert.deepEqual(result, {
+    leafRel: 'dir1',
+    displayName: 'dir1',
+    chainRels: ['dir1'],
   });
 });
 

@@ -17,6 +17,9 @@ function shouldMergeSingleChildExplorerDir(
   childEntries: WorkspaceExplorerEntry[] | undefined,
 ): boolean {
   if (childEntries === undefined) {
+    return false;
+  }
+  if (childEntries.length === 0) {
     return true;
   }
   if (childEntries.length !== 1) {
@@ -27,7 +30,7 @@ function shouldMergeSingleChildExplorerDir(
 
 /**
  * Collapse linear single-child directory chains for the lazy workspace explorer.
- * Stops when listing is unknown (not loaded) or when a loaded dir has a single file child.
+ * Merges through loaded empty dirs; stops on unknown listings or a single-file child.
  */
 export function collapseWorkspaceExplorerDirChain(
   startRel: string,
@@ -55,16 +58,51 @@ export function collapseWorkspaceExplorerDirChain(
       break;
     }
 
-    displayName = `${displayName}/${only.name}`;
-    leafRel = childRel;
-    chainRels.push(childRel);
-
     if (childEntries === undefined) {
       break;
     }
+
+    displayName = `${displayName}/${only.name}`;
+    leafRel = childRel;
+    chainRels.push(childRel);
   }
 
   return { leafRel, displayName, chainRels };
+}
+
+/**
+ * Next relative paths to load so dir-chain collapse can advance.
+ * Returns at most one segment per call—the first unloaded dir on a single-child chain.
+ */
+export function collectWorkspaceExplorerDirCollapsePrefetchRels(
+  startRel: string,
+  getEntries: (relativePath: string) => WorkspaceExplorerEntry[] | undefined,
+): string[] {
+  let leafRel = startRel;
+
+  while (true) {
+    const entries = getEntries(leafRel);
+    if (!entries || entries.length !== 1) {
+      return [];
+    }
+    const only = entries[0];
+    if (!only || only.kind !== "dir") {
+      return [];
+    }
+
+    const childRel = joinExplorerRel(leafRel, only.name);
+    const childEntries = getEntries(childRel);
+
+    if (childEntries !== undefined && !shouldMergeSingleChildExplorerDir(childEntries)) {
+      return [];
+    }
+
+    if (childEntries === undefined) {
+      return [childRel];
+    }
+
+    leafRel = childRel;
+  }
 }
 
 export function isWorkspaceExplorerCollapsedDirOpen(

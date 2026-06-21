@@ -27,6 +27,7 @@ import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 import {
   collapseWorkspaceExplorerDirChain,
+  collectWorkspaceExplorerDirCollapsePrefetchRels,
   isWorkspaceExplorerCollapsedDirOpen,
   joinExplorerRel,
 } from "@/lib/workspace-explorer-dir-collapse";
@@ -830,6 +831,17 @@ export function WorkspaceFilesPanel({
         {state.entries.map((entry) => {
           const childRel = joinExplorerRel(rel, entry.name);
           const isDir = entry.kind === "dir";
+          if (isDir) {
+            for (const prefetchRel of collectWorkspaceExplorerDirCollapsePrefetchRels(
+              childRel,
+              getExplorerDirEntries,
+            )) {
+              const prefetchState = cache[prefetchRel];
+              if (prefetchState === undefined || prefetchState.status === "error") {
+                void loadDir(prefetchRel);
+              }
+            }
+          }
           const collapsedDir = isDir
             ? collapseWorkspaceExplorerDirChain(childRel, entry.name, getExplorerDirEntries)
             : null;
