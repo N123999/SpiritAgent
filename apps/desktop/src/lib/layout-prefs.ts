@@ -439,3 +439,59 @@ export function readSidebarNoWorkspaceSectionExpanded(): boolean {
 export function writeSidebarNoWorkspaceSectionExpanded(expanded: boolean): void {
   writeStoredBoolean(SIDEBAR_NO_WORKSPACE_SECTION_EXPANDED_KEY, expanded);
 }
+
+const WORKSPACE_SIDEBAR_GROUP_ORDER_STORAGE_KEY =
+  "spirit-desktop-workspace-sidebar-group-order";
+
+const WORKSPACE_SIDEBAR_GROUP_ORDER_MAX_ENTRIES = 200;
+
+function sanitizeWorkspaceSidebarGroupOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const record: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string" || entry.length === 0 || entry.length > 512) {
+      continue;
+    }
+    if (seen.has(entry)) {
+      continue;
+    }
+    seen.add(entry);
+    record.push(entry);
+    if (record.length >= WORKSPACE_SIDEBAR_GROUP_ORDER_MAX_ENTRIES) {
+      break;
+    }
+  }
+  return record;
+}
+
+export function readWorkspaceSidebarGroupOrder(): string[] {
+  try {
+    if (typeof localStorage === "undefined") {
+      return [];
+    }
+    const raw = localStorage.getItem(WORKSPACE_SIDEBAR_GROUP_ORDER_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    return sanitizeWorkspaceSidebarGroupOrder(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+export function writeWorkspaceSidebarGroupOrder(ids: string[]): void {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    localStorage.setItem(
+      WORKSPACE_SIDEBAR_GROUP_ORDER_STORAGE_KEY,
+      JSON.stringify(sanitizeWorkspaceSidebarGroupOrder(ids)),
+    );
+  } catch {
+    // ignore
+  }
+}
