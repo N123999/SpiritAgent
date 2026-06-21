@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 const WORK_LOCATION_OPTIONS: WorkLocationKind[] = ["local", "worktree"];
 
-const WORK_LOCATION_ICONS: Record<WorkLocationKind, LucideIcon> = {
+export const WORK_LOCATION_ICONS: Record<WorkLocationKind, LucideIcon> = {
   local: Monitor,
   worktree: GitFork,
 };
