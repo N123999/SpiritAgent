@@ -154,4 +154,4 @@ export function shouldClearAssistantTurnHover(
 
 /** Hidden by default; revealed via forkMenuHoverRevealed or forkMenuAlwaysVisible. */
 export const MESSAGE_TURN_FORK_MENU_HIDDEN_CLASSES =
-  'opacity-0 transition-all duration-150 focus-visible:opacity-100 data-[state=open]:opacity-100';
+  'opacity-0 transition-all duration-150 focus-visible:opacity-100 data-[state=open]:opacity-100 disabled:opacity-0';

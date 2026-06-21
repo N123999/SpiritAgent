@@ -33,7 +33,7 @@ import type {
   PendingAssistantAux,
 } from "@/types";
 import type { PointerEvent, RefObject } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   CONVERSATION_GUTTER_X,
@@ -140,6 +140,13 @@ export function ConversationList({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!conversationIsBusy) {
+      return;
+    }
+    setHoveredAssistantTurnStart(null);
+  }, [conversationIsBusy]);
 
   return (
     <div
@@ -389,7 +396,9 @@ export function ConversationList({
                 conversationIsBusy={conversationIsBusy}
                 activeSessionReadOnly={activeSessionReadOnly}
                 forkBusy={runtime.busyAction === "fork"}
-                forkMenuAlwaysVisible={turnActionsToolbarHostIndex === index}
+                forkMenuAlwaysVisible={
+                  !conversationIsBusy && turnActionsToolbarHostIndex === index
+                }
                 forkMenuHoverRevealed={forkMenuHoverRevealed}
                 assistantTurnStartIndex={assistantTurnStart}
                 onAssistantTurnPointerEnter={handleAssistantTurnPointerEnter}
