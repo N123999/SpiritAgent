@@ -17,7 +17,7 @@ export function GitHubSignInPrompt({
 
   return (
     <p className={cn("text-sm text-muted-foreground", className)}>
-      {t("workspace.prGitHubSignInPromptBefore")}
+      {t("workspace.prGitHubConnectPromptBefore")}
       <button
         type="button"
         className={cn(
@@ -26,28 +26,28 @@ export function GitHubSignInPrompt({
         )}
         onClick={onSignIn}
       >
-        {t("workspace.prGitHubSignInLink")}
+        {t("workspace.prGitHubConnectLink")}
       </button>
     </p>
   );
 }
 
-export type GitHubSignInTooltipContentProps = {
+export type GitHubConnectTooltipContentProps = {
   onSignIn: () => void;
 };
 
-export function GitHubSignInTooltipContent({ onSignIn }: GitHubSignInTooltipContentProps) {
+export function GitHubConnectTooltipContent({ onSignIn }: GitHubConnectTooltipContentProps) {
   const { t } = useTranslation();
 
   return (
     <span className="inline-flex max-w-[16rem] flex-wrap items-center gap-0.5 text-left leading-snug">
-      {t("workspace.prGitHubSignInTooltipBefore")}
+      {t("workspace.prGitHubConnectTooltipBefore")}
       <button
         type="button"
         className="text-popover-foreground underline underline-offset-2 hover:text-popover-foreground/80"
         onClick={onSignIn}
       >
-        {t("workspace.prGitHubSignInLink")}
+        {t("workspace.prGitHubConnectLink")}
       </button>
     </span>
   );

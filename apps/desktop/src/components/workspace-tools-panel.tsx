@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { GitHubSignInTooltipContent } from "@/components/github-sign-in-prompt";
+import { GitHubConnectTooltipContent } from "@/components/github-sign-in-prompt";
 import { WorkspaceBrowserTab, type WorkspaceBrowserTabProps } from "@/components/workspace-browser-tab";
 import { WorkspaceFilesTab } from "@/components/workspace-files-tab";
 import { WorkspaceGitTab } from "@/components/workspace-git-tab";
@@ -691,7 +691,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                         {gitHubAuthConnected === null ? (
                           t("workspace.prGitHubAuthChecking")
                         ) : (
-                          <GitHubSignInTooltipContent
+                          <GitHubConnectTooltipContent
                             onSignIn={() => {
                               onOpenIntegrationsSettings?.();
                             }}
