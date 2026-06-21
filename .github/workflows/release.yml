@@ -36,6 +36,13 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org/
 
+      - name: Require Desktop GitHub OAuth Client ID secret
+        run: |
+          if [ -z "${{ secrets.SPIRIT_GITHUB_OAUTH_CLIENT_ID }}" ]; then
+            echo "::error::Repository secret SPIRIT_GITHUB_OAUTH_CLIENT_ID is required for Desktop release."
+            exit 1
+          fi
+
       - name: Verify versions
         run: npm run release:verify-version -- --version "$RELEASE_TAG"
 
@@ -125,6 +132,8 @@ jobs:
     name: Desktop ${{ matrix.package_target }}
     needs: verify
     runs-on: ${{ matrix.os }}
+    env:
+      SPIRIT_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.SPIRIT_GITHUB_OAUTH_CLIENT_ID }}
     strategy:
       fail-fast: false
       matrix:
