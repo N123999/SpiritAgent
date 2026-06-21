@@ -35,6 +35,14 @@ export function isPreviewableImagePath(value: string): boolean {
   return PREVIEWABLE_IMAGE_EXTENSIONS.has(lower.slice(dot));
 }
 
+export function canPreviewComposerLocalFileAttachment(
+  attachment: ComposerLocalFileAttachmentView,
+): boolean {
+  return attachment.isImage
+    && isPreviewableImagePath(attachment.path)
+    && Boolean(attachment.previewDataUrl);
+}
+
 const PREVIEWABLE_VIDEO_EXTENSIONS = new Set([
   '.mp4',
   '.webm',

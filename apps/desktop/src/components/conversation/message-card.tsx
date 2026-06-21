@@ -279,6 +279,7 @@ export function MessageCard({
             onPickLocalFile={onRewindPickLocalFile}
             onRemoveLocalFileAttachment={onRewindRemoveLocalFileAttachment}
             onPaste={onRewindPaste}
+            saveLocalImageAs={saveLocalImageAs}
           />
         ) : null}
         {showThinkingCollapsible ? (
@@ -317,6 +318,7 @@ export function MessageCard({
                 queued
                 onRewindStart={() => onRewindStart(message, listIndex)}
                 readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
+                saveLocalImageAs={saveLocalImageAs}
               />
             </QueuedUserMessageHoverActions>
           ) : (
@@ -327,6 +329,7 @@ export function MessageCard({
               queued={message.queued === true}
               onRewindStart={() => onRewindStart(message, listIndex)}
               readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
+              saveLocalImageAs={saveLocalImageAs}
             />
           )
         ) : null}

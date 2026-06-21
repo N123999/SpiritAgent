@@ -24,6 +24,7 @@ import {
 } from "@/components/composer-rich-input";
 import { ModelPickerMenu } from "@/components/model-picker-menu";
 import { Button } from "@/components/ui/button";
+import type { SaveLocalImageAs } from "@/components/tool-call/tool-call-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import type { BrowserElementAttachment } from "@/lib/browser-element-attachment";
@@ -70,6 +71,7 @@ export type ComposerSurfaceProps = {
   conversationBusy?: boolean;
   agentModeChipDismissed?: boolean;
   onAgentModeChipDismissChange?(dismissed: boolean): void;
+  saveLocalImageAs?: SaveLocalImageAs;
 };
 
 export function ComposerSurface({
@@ -108,6 +110,7 @@ export function ComposerSurface({
   conversationBusy = false,
   agentModeChipDismissed = false,
   onAgentModeChipDismissChange,
+  saveLocalImageAs,
 }: ComposerSurfaceProps) {
   const { t } = useTranslation();
   const activeModelProfile = useMemo(
@@ -126,6 +129,7 @@ export function ComposerSurface({
       <ComposerLocalFileStrip
         attachments={localFileAttachments}
         onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
+        saveLocalImageAs={saveLocalImageAs}
       />
       <ComposerRichInput
         ref={richInputRef}

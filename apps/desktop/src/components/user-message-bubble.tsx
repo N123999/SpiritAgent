@@ -187,6 +187,7 @@ function isInlineChipPart(
 }
 
 type ReadLocalImagePreview = (filePath: string) => Promise<string | null>;
+type SaveLocalImageAs = (filePath: string) => Promise<boolean>;
 
 type UserMessageBubbleProps = {
   message: ConversationMessageSnapshot;
@@ -195,6 +196,7 @@ type UserMessageBubbleProps = {
   queued?: boolean;
   onRewindStart(): void;
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
+  saveLocalImageAs?: SaveLocalImageAs;
 };
 
 export function UserMessageBubble({
@@ -204,6 +206,7 @@ export function UserMessageBubble({
   queued = false,
   onRewindStart,
   readLocalImagePreviewDataUrl,
+  saveLocalImageAs,
 }: UserMessageBubbleProps) {
   const attachmentSnapshotKey = localFileAttachmentsSnapshotKey(message.localFileAttachments);
   const initialViews = useMemo(
@@ -311,6 +314,7 @@ export function UserMessageBubble({
             readOnly
             attachments={attachmentViews}
             className="flex flex-wrap justify-end gap-1.5"
+            saveLocalImageAs={saveLocalImageAs}
           />
         </div>
       ) : null}
