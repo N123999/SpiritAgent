@@ -18,6 +18,11 @@ if (clientId) {
   process.exit(0);
 }
 
+if (ensureForPackaging) {
+  writeEnvFile('');
+  process.exit(0);
+}
+
 if (existsSync(envPath)) {
   process.exit(0);
 }
@@ -27,11 +32,6 @@ if (process.env.GITHUB_ACTIONS === 'true') {
     'SPIRIT_GITHUB_OAUTH_CLIENT_ID is not set. Configure the repository secret before releasing Desktop.',
   );
   process.exit(1);
-}
-
-if (ensureForPackaging) {
-  writeEnvFile('');
-  process.exit(0);
 }
 
 process.exit(0);
