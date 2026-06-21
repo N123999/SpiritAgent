@@ -95,6 +95,9 @@ export function useAppSurfaceNavigation({
   const marketplaceMode = activeSurface === "marketplace";
   const automationsMode = activeSurface === "automations" || activeSurface === "automation-detail";
   const automationDetailMode = activeSurface === "automation-detail";
+  const preserveConversationSurface =
+    activeSurface === "conversation"
+    || (settingsMode && lastNonSettingsSurface === "conversation");
 
   const suppressStaleConversation = shouldSuppressStaleConversation({
     conversationSnapshotStale,
@@ -195,6 +198,7 @@ export function useAppSurfaceNavigation({
     marketplaceMode,
     automationsMode,
     automationDetailMode,
+    preserveConversationSurface,
     suppressStaleConversation,
     hideStaleConversationMessages,
     isEmptySession,

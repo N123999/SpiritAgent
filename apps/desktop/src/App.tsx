@@ -474,7 +474,17 @@ export default function App() {
               onInstallMarketplaceExtension={runtime.installMarketplaceExtension}
             />
           </div>
-        ) : (
+        ) : null}
+
+        {surfaceNav.preserveConversationSurface ? (
+          <div
+            className={cn(
+              "flex min-h-0 min-w-0 flex-1 flex-col",
+              desktopMicaTintInnerClass(useMicaBackdrop),
+              surfaceNav.settingsMode && "hidden",
+            )}
+            aria-hidden={surfaceNav.settingsMode}
+          >
           <ConversationView
             useMicaBackdrop={useMicaBackdrop}
             isEmptySession={surfaceNav.isEmptySession}
@@ -600,7 +610,8 @@ export default function App() {
               gitChipBusy: composer.gitChipBusy,
             }}
           />
-        )}
+          </div>
+        ) : null}
         </div>
       </div>
 
