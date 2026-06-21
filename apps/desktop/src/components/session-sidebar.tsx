@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -63,10 +64,14 @@ import {
   readSidebarNoWorkspaceSectionExpanded,
   readSidebarWorkspaceSectionExpanded,
   readWorkspaceSidebarExpandedById,
+  readWorkspaceSidebarGroupOrder,
   writeSidebarNoWorkspaceSectionExpanded,
   writeSidebarWorkspaceSectionExpanded,
   writeWorkspaceSidebarExpandedById,
+  writeWorkspaceSidebarGroupOrder,
 } from "@/lib/layout-prefs";
+import { applyWorkspaceGroupOrder, workspaceGroupIdsInOrder } from "@/lib/workspace-sidebar-order";
+import { useWorkspaceGroupReorder } from "@/hooks/use-workspace-group-reorder";
 import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
 import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { isViteDev } from "@/lib/vite-dev";
@@ -261,6 +266,14 @@ type WorkspaceSessionGroupCollapsibleProps = {
   onLoadMore(): void;
   onNewSessionInWorkspace?: (workspaceRoot: string) => void;
   newSessionBusy?: boolean;
+  groupNodeRef?(node: HTMLElement | null): void;
+  headerPointerHandlers?: {
+    onPointerDown(event: PointerEvent<HTMLElement>): void;
+  };
+  onHeaderClickCapture?(event: MouseEvent<HTMLElement>): void;
+  isDragging?: boolean;
+  isPressing?: boolean;
+  workspaceReorderActive?: boolean;
 };
 
 const sidebarSectionHeaderTriggerClass =
@@ -361,27 +374,59 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
   onLoadMore,
   onNewSessionInWorkspace,
   newSessionBusy = false,
+  groupNodeRef,
+  headerPointerHandlers,
+  onHeaderClickCapture,
+  isDragging = false,
+  isPressing = false,
+  workspaceReorderActive = false,
 }: WorkspaceSessionGroupCollapsibleProps) {
   const { t } = useTranslation();
   const workspaceRoot = group.rootPath?.trim() ?? "";
   const [workspaceRowHovered, setWorkspaceRowHovered] = useState(false);
   const [plusTooltipAnchorLocked, setPlusTooltipAnchorLocked] = useState(false);
+  const showWorkspaceRowHoverChrome = workspaceRowHovered || isDragging || isPressing;
 
   return (
-    <AnimatedCollapse
-      open={expanded}
-      onOpenChange={onOpenChange}
-      className="min-w-0"
+    <div
+      ref={groupNodeRef}
+      data-workspace-group-id={group.id}
+      data-workspace-reorder-dragging={isDragging ? "" : undefined}
+      className={cn(
+        "min-w-0",
+        isDragging && "spirit-workspace-group-reorder-grabbing",
+        workspaceReorderActive && !isDragging && "pointer-events-none",
+      )}
+      aria-grabbed={isDragging ? true : undefined}
     >
-      <div
-        className={cn(
-          "group/workspace-row flex h-8 w-full min-w-0 items-center overflow-hidden rounded-md",
-          sidebarItemDefaultTextClass,
-          sessionRowHoverClass(micaStyle),
-        )}
-        onMouseEnter={() => setWorkspaceRowHovered(true)}
-        onMouseLeave={() => setWorkspaceRowHovered(false)}
+      <AnimatedCollapse
+        open={expanded}
+        onOpenChange={onOpenChange}
+        className="min-w-0"
       >
+        <div
+          className={cn(
+            "group/workspace-row flex h-8 w-full min-w-0 items-center overflow-hidden rounded-md",
+            sidebarItemDefaultTextClass,
+            isDragging ? sessionRowSelectedClass(micaStyle) : sessionRowHoverClass(micaStyle),
+            isPressing && !isDragging && "spirit-workspace-group-reorder-grab",
+            isDragging && "select-none touch-none",
+          )}
+          onMouseEnter={() => {
+            if (workspaceReorderActive && !isDragging) {
+              return;
+            }
+            setWorkspaceRowHovered(true);
+          }}
+          onMouseLeave={() => {
+            if (isDragging) {
+              return;
+            }
+            setWorkspaceRowHovered(false);
+          }}
+          onClickCapture={onHeaderClickCapture}
+          {...headerPointerHandlers}
+        >
         <AnimatedCollapseTrigger
           disabled={disabled}
           className={cn(
@@ -396,19 +441,31 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
           <span className="relative inline-flex size-3.5 shrink-0 items-center justify-center">
             {expanded ? (
               <FolderOpen
-                className="size-3.5 group-hover/workspace-row:hidden group-has-[button:focus-visible]/workspace-row:hidden"
+                className={cn(
+                  "size-3.5",
+                  showWorkspaceRowHoverChrome
+                    ? "hidden"
+                    : "group-hover/workspace-row:hidden group-has-[button:focus-visible]/workspace-row:hidden",
+                )}
                 aria-hidden
               />
             ) : (
               <FolderClosed
-                className="size-3.5 group-hover/workspace-row:hidden group-has-[button:focus-visible]/workspace-row:hidden"
+                className={cn(
+                  "size-3.5",
+                  showWorkspaceRowHoverChrome
+                    ? "hidden"
+                    : "group-hover/workspace-row:hidden group-has-[button:focus-visible]/workspace-row:hidden",
+                )}
                 aria-hidden
               />
             )}
             <ChevronRight
               className={cn(
-                "absolute size-3.5 hidden transition-transform duration-150",
-                "group-hover/workspace-row:inline-flex group-has-[button:focus-visible]/workspace-row:inline-flex",
+                "absolute size-3.5 transition-transform duration-150",
+                showWorkspaceRowHoverChrome
+                  ? "inline-flex"
+                  : "hidden group-hover/workspace-row:inline-flex group-has-[button:focus-visible]/workspace-row:inline-flex",
                 expanded && "rotate-90",
               )}
               aria-hidden
@@ -432,6 +489,7 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
                 type="button"
                 variant="ghost"
                 size="icon"
+                data-workspace-new-session=""
                 className={cn(
                   "mr-0.5 size-6 shrink-0",
                   workspaceRowHovered || plusTooltipAnchorLocked
@@ -494,6 +552,7 @@ const WorkspaceSessionGroupCollapsible = memo(function WorkspaceSessionGroupColl
         </div>
       </AnimatedCollapseContent>
     </AnimatedCollapse>
+    </div>
   );
 });
 
@@ -995,10 +1054,31 @@ function SessionSidebarInner({
     () => partitionSessionsForSidebar(sessions, userHomeDirectory),
     [sessions, userHomeDirectory],
   );
-  const workspaceGroups = useMemo(
+  const builtWorkspaceGroups = useMemo(
     () => buildWorkspaceGroups(bound, undefined),
     [bound, i18n.language],
   );
+  const [workspaceGroupOrder, setWorkspaceGroupOrder] = useState(readWorkspaceSidebarGroupOrder);
+  const workspaceGroups = useMemo(
+    () => applyWorkspaceGroupOrder(builtWorkspaceGroups, workspaceGroupOrder),
+    [builtWorkspaceGroups, workspaceGroupOrder],
+  );
+  const effectiveWorkspaceGroupOrder = useMemo(
+    () => workspaceGroupIdsInOrder(workspaceGroups),
+    [workspaceGroups],
+  );
+  const handleWorkspaceGroupOrderChange = useCallback((nextOrder: string[]) => {
+    setWorkspaceGroupOrder(nextOrder);
+  }, []);
+  const handleWorkspaceGroupOrderPersist = useCallback((nextOrder: string[]) => {
+    writeWorkspaceSidebarGroupOrder(nextOrder);
+  }, []);
+  const workspaceGroupReorder = useWorkspaceGroupReorder({
+    enabled: !disabled && !settingsMode && workspaceGroups.length > 1,
+    order: effectiveWorkspaceGroupOrder,
+    onOrderChange: handleWorkspaceGroupOrderChange,
+    onPersist: handleWorkspaceGroupOrderPersist,
+  });
   const unboundSessions = useMemo(() => sortSessionsByModified(unbound), [unbound]);
   const [collapsedWorkspaceIds, setCollapsedWorkspaceIds] = useState(
     readWorkspaceSidebarExpandedById,
@@ -1550,6 +1630,12 @@ function SessionSidebarInner({
                           onLoadMore={() => loadMoreWorkspaceGroupSessions(group.id, group.sessions.length)}
                           onNewSessionInWorkspace={onNewSessionInWorkspace}
                           newSessionBusy={newSessionBusy}
+                          groupNodeRef={(node) => workspaceGroupReorder.registerGroupNode(group.id, node)}
+                          headerPointerHandlers={workspaceGroupReorder.getHeaderPointerHandlers(group.id)}
+                          onHeaderClickCapture={workspaceGroupReorder.handleHeaderClickCapture}
+                          isDragging={workspaceGroupReorder.draggingGroupId === group.id}
+                          isPressing={workspaceGroupReorder.pressingGroupId === group.id}
+                          workspaceReorderActive={workspaceGroupReorder.draggingGroupId !== null}
                         />
                       );
                     })}
