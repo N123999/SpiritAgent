@@ -8,6 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DESKTOP_INSTANT_HOVER_OVERLAY } from "@/lib/desktop-chrome";
 import { MESSAGE_TURN_FORK_MENU_HIDDEN_CLASSES } from "@/lib/message-turn-actions-ui";
 import { cn } from "@/lib/utils";
 import type { ConversationMessageSnapshot } from "@/types";
@@ -44,6 +45,11 @@ export function MessageTurnActions({
     return null;
   }
 
+  const turnActionButtonClass = cn(
+    "size-7 shrink-0 text-muted-foreground hover:!text-muted-foreground focus-visible:!text-muted-foreground aria-expanded:!text-muted-foreground",
+    DESKTOP_INSTANT_HOVER_OVERLAY,
+  );
+
   return (
     <div className="ml-auto flex max-w-[min(72%,22rem)] items-center justify-end gap-1 pt-1">
       {showContinueButton && continueTarget ? (
@@ -51,7 +57,7 @@ export function MessageTurnActions({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-7 shrink-0 text-muted-foreground"
+          className={turnActionButtonClass}
           aria-label={t("app.continue")}
           onClick={() => onContinue(continueTarget)}
           disabled={continueBusy}
@@ -71,7 +77,7 @@ export function MessageTurnActions({
               variant="ghost"
               size="icon"
               className={cn(
-                "size-7 shrink-0 text-muted-foreground",
+                turnActionButtonClass,
                 forkMenuHidden && MESSAGE_TURN_FORK_MENU_HIDDEN_CLASSES,
               )}
               aria-label={t("app.messageActions")}

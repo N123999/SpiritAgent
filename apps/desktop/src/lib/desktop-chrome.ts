@@ -7,6 +7,21 @@ import { cn } from "@/lib/utils";
 export const instantHoverMotionClass =
   "!transition-[opacity,transform,box-shadow] duration-150";
 
+/** 半透明 hover 铺底，背景色不参与 transition（不含字色变化） */
+export const DESKTOP_INSTANT_HOVER_OVERLAY = cn(
+  "bg-transparent hover:!bg-foreground/[0.06] focus-visible:!bg-foreground/[0.06]",
+  "dark:hover:!bg-white/[0.06] dark:focus-visible:!bg-white/[0.06]",
+  "aria-expanded:!bg-foreground/[0.06] dark:aria-expanded:!bg-white/[0.06]",
+  instantHoverMotionClass,
+  "active:!translate-y-0",
+);
+
+/** ghost 图标/紧凑按钮：侧栏同源半透明 hover + 字色变亮 */
+export const DESKTOP_INSTANT_HOVER_GHOST_BTN = cn(
+  DESKTOP_INSTANT_HOVER_OVERLAY,
+  "hover:!text-foreground focus-visible:!text-foreground aria-expanded:!text-foreground",
+);
+
 /** 侧栏壳层 / 顶栏槽位宽度过渡，与 SessionSidebarShell 一致 */
 export const DESKTOP_SHELL_LAYOUT_TRANSITION =
   "transition-[width,margin,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none motion-reduce:duration-0";
