@@ -450,7 +450,15 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "close": "关闭",
-    "about": "关于 Spirit Agent"
+    "zoom": "缩放",
+    "bringAllToFront": "全部置于最前",
+    "about": "关于 Spirit Agent",
+    "services": "服务",
+    "hideApp": "隐藏 {{appName}}",
+    "hideOthers": "隐藏其他",
+    "showAll": "显示全部",
+    "quitApp": "退出 {{appName}}",
+    "versionDetail": "版本 {{version}}"
   },
   "automations": {
     "title": "自动化",

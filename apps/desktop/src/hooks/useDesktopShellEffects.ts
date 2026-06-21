@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import i18n from "@/lib/i18n";
 import {
   desktopNativeThemeForPreference,
   resolveDark,
@@ -115,4 +116,11 @@ export function useDesktopShellEffects({
     // Theme changes are synced by `applyThemeToDocument`; this effect tracks mica config only.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- windowsMica / native blur host only
   }, [isElectronShell, windowsMica]);
+
+  useEffect(() => {
+    if (!isElectronShell) {
+      return;
+    }
+    void window.spiritDesktop?.syncLanguage?.(i18n.language);
+  }, [isElectronShell]);
 }
