@@ -354,6 +354,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                 onInsertSkillTrigger={onInsertSkillTriggerFromPalette}
                 onRemoveLocalFileAttachment={onRemoveLocalFileAttachment}
                 onPaste={onComposerPaste}
+                saveLocalImageAs={runtime.saveLocalImageAs}
               />
             </div>
             {!isEmptySession ? (
