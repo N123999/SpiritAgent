@@ -187,7 +187,7 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
   const windowsToastPayload = {
     title: payload.title,
     body: payload.body,
-    tag: payload.tag,
+    tag,
     actions: buttonActions.map((action) => ({ type: 'button' as const, text: action.text })),
   };
   const useWindowsToastXml =
