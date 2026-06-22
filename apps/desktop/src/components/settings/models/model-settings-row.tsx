@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipItem, useTooltipContext } from "@/components/ui/tooltip";
+import { TooltipItem, useTooltipContext } from "@/components/ui/tooltip";
 import { modelSettingsRowAriaLabel } from "@/lib/model-catalog-detail";
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
 import { cn } from "@/lib/utils";

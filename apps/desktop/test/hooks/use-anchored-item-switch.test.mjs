@@ -76,7 +76,7 @@ test('beginClose keeps linger anchor id until cleared', () => {
   assert.equal(model.contentActiveItem, null);
 });
 
-test('open delay default matches hover-detail-tooltip precedent', () => {
+test('open delay default is 400ms', () => {
   assert.equal(DEFAULT_ANCHORED_ITEM_SWITCH_OPEN_DELAY_MS, 400);
 });
 
