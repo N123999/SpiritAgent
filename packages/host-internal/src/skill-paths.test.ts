@@ -2,22 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  SKILL_FILE_NAME,
   isSkillMarkdownPath,
   listDirectoryToolDisplayPath,
+  parseSkillNameFromMarkdown,
   readFileToolDisplayBase,
-  skillFolderBasename,
 } from './skill-paths.js';
 
 test('isSkillMarkdownPath matches SKILL_FILE_NAME case-sensitively', () => {
   assert.equal(isSkillMarkdownPath('skills/git-commit/SKILL.md'), true);
   assert.equal(isSkillMarkdownPath('skills/git-commit/skill.md'), false);
   assert.equal(isSkillMarkdownPath('App.tsx'), false);
-});
-
-test('skillFolderBasename returns parent directory of SKILL.md', () => {
-  assert.equal(skillFolderBasename('skills/git-commit/SKILL.md'), 'git-commit');
-  assert.equal(skillFolderBasename(SKILL_FILE_NAME), SKILL_FILE_NAME);
 });
 
 test('listDirectoryToolDisplayPath relativizes paths within workspace root', () => {
@@ -61,14 +55,31 @@ test('listDirectoryToolDisplayPath normalizes Windows-style paths', () => {
   );
 });
 
-test('readFileToolDisplayBase uses skill folder for SKILL.md paths', () => {
-  assert.equal(
-    readFileToolDisplayBase('skills/foo/SKILL.md', 'File'),
-    'foo',
-  );
+test('readFileToolDisplayBase returns empty string for SKILL.md without frontmatter content', () => {
+  assert.equal(readFileToolDisplayBase('skills/foo/SKILL.md', 'File'), '');
   assert.equal(
     readFileToolDisplayBase('/proj/src/App.tsx', 'File'),
     'App.tsx',
   );
   assert.equal(readFileToolDisplayBase('src/App.tsx', 'File'), 'src/App.tsx');
+});
+
+test('readFileToolDisplayBase uses SKILL.md frontmatter name', () => {
+  const markdown = `---
+name: llm-debug
+description: Developer debug access
+---
+# Body
+`;
+  assert.equal(
+    readFileToolDisplayBase('skills/wrong-folder/SKILL.md', 'File', { skillMarkdownContent: markdown }),
+    'llm-debug',
+  );
+});
+
+test('parseSkillNameFromMarkdown reads name before closing frontmatter delimiter', () => {
+  assert.equal(
+    parseSkillNameFromMarkdown('---\nname: llm-debug\ndescription: still streaming'),
+    'llm-debug',
+  );
 });

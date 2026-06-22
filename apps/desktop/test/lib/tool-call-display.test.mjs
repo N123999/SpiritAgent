@@ -151,7 +151,27 @@ test('getToolCallSummaryParts: run_shell_command default headline re-translates'
   }
 });
 
-test('getToolCallSummaryParts: read_file SKILL.md uses skill folder and use verb', async () => {
+test('getToolCallSummaryParts: read_file SKILL.md prefers frontmatter name from output', async () => {
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(
+      getToolCallSummaryParts({
+        toolName: 'read_file',
+        phase: 'succeeded',
+        headline: 'Used',
+        headlineDetail: 'wrong-folder',
+        argsExcerpt: '{"path":"skills/wrong-folder/SKILL.md"}',
+        outputExcerpt: '---\nname: llm-debug\ndescription: Developer debug access\n---\n# Body',
+        detailLines: [],
+      }),
+      { headline: 'Used', detail: 'llm-debug' },
+    );
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+});
+
+test('getToolCallSummaryParts: read_file SKILL.md omits detail until frontmatter output is available', async () => {
   await i18n.changeLanguage('en');
   try {
     assert.deepEqual(
@@ -163,7 +183,7 @@ test('getToolCallSummaryParts: read_file SKILL.md uses skill folder and use verb
         argsExcerpt: '{"path":"skills/foo/SKILL.md"}',
         detailLines: [],
       }),
-      { headline: 'Using', detail: 'foo' },
+      { headline: 'Using' },
     );
     assert.deepEqual(
       getToolCallSummaryParts({
@@ -174,7 +194,7 @@ test('getToolCallSummaryParts: read_file SKILL.md uses skill folder and use verb
         argsExcerpt: '{"path":"skills/git-commit/SKILL.md"}',
         detailLines: [],
       }),
-      { headline: 'Used', detail: 'git-commit' },
+      { headline: 'Used' },
     );
   } finally {
     await i18n.changeLanguage('zh-CN');

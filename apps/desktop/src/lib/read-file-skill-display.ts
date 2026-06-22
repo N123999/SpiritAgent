@@ -1,12 +1,11 @@
 import {
   isSkillMarkdownPath,
   readFileToolDisplayBase,
-  skillFolderBasename,
 } from '@spirit-agent/host-internal/skill-paths';
 
 import type { ToolBlockSnapshot } from '../types.js';
 
-export { isSkillMarkdownPath, skillFolderBasename } from '@spirit-agent/host-internal/skill-paths';
+export { isSkillMarkdownPath } from '@spirit-agent/host-internal/skill-paths';
 
 export const LEGACY_READ_FILE_HEADLINE =
   /^(?:查看|使用|View(?:ing|ed)?|Read(?:ing|ed)?|Us(?:ing|ed)?)\u002e?\s+(.+)$/u;
@@ -64,11 +63,14 @@ export function readFileHeadlineDetailForPath(
   options: {
     emptyFileLabel: string;
     lineRange?: string;
+    skillMarkdownContent?: string;
   },
 ): string {
   const lineRange = options.lineRange ?? '';
   const base = isSkillMarkdownPath(rawPath)
-    ? skillFolderBasename(rawPath)
+    ? readFileToolDisplayBase(rawPath, options.emptyFileLabel, {
+        skillMarkdownContent: options.skillMarkdownContent,
+      })
     : readFileToolDisplayBase(rawPath, options.emptyFileLabel);
   return `${base}${lineRange}`.trim();
 }

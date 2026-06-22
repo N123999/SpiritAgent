@@ -436,12 +436,27 @@ test('toolCallSummaryForPhase: get_diagnostics failed uses checking headline and
   );
 });
 
-test('toolCallSummaryForPhase: read_file SKILL.md uses skill folder name and use verb', async () => {
+test('toolCallSummaryForPhase: read_file SKILL.md uses frontmatter name when output is available', () => {
+  const skillMarkdown = `---
+name: llm-debug
+description: Developer debug access
+---
+# Body
+`;
+  assert.deepEqual(
+    toolCallSummaryForPhase('succeeded', 'read_file', {
+      path: 'skills/wrong-folder/SKILL.md',
+    }, { executionOutput: skillMarkdown }),
+    { headline: '使用', headlineDetail: 'llm-debug' },
+  );
+});
+
+test('toolCallSummaryForPhase: read_file SKILL.md omits detail without frontmatter output', async () => {
   assert.deepEqual(
     toolCallSummaryForPhase('succeeded', 'read_file', {
       path: 'skills/git-commit/SKILL.md',
     }),
-    { headline: '使用', headlineDetail: 'git-commit' },
+    { headline: '使用' },
   );
 
   await i18n.changeLanguage('en');
@@ -450,13 +465,13 @@ test('toolCallSummaryForPhase: read_file SKILL.md uses skill folder name and use
       toolCallSummaryForPhase('running', 'read_file', {
         path: 'skills/git-commit/SKILL.md',
       }),
-      { headline: 'Using', headlineDetail: 'git-commit' },
+      { headline: 'Using' },
     );
     assert.deepEqual(
       toolCallSummaryForPhase('succeeded', 'read_file', {
         path: 'skills/git-commit/SKILL.md',
       }),
-      { headline: 'Used', headlineDetail: 'git-commit' },
+      { headline: 'Used' },
     );
   } finally {
     await i18n.changeLanguage('zh-CN');

@@ -5,9 +5,13 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
-  AGENTS_DIR_NAME,
+  parseSkillFrontmatterFields,
   SKILL_FILE_NAME,
   SKILLS_DIR_NAME,
+  splitSkillFrontmatter,
+} from './skill-paths.js';
+import {
+  AGENTS_DIR_NAME,
   SPIRIT_DIR_NAME,
   USER_RULE_FILE_NAME,
   WORKSPACE_RULE_FILE_NAME,
@@ -146,11 +150,6 @@ interface ParsedSkillDocument {
   name: string;
   description: string;
   body: string;
-}
-
-interface ParsedSkillFrontmatter {
-  name?: string;
-  description?: string;
 }
 
 export async function loadHostInstructionMetadata(
@@ -456,7 +455,7 @@ async function parseSkillDocument(
     return undefined;
   }
 
-  const parsed = parseSkillFrontmatter(split.frontmatter);
+  const parsed = parseSkillFrontmatterFields(split.frontmatter);
   const name = parsed.name?.trim();
   if (!name) {
     log?.(`[skills] skipped missing name path=${filePath}`);
@@ -484,66 +483,6 @@ async function parseSkillDocument(
     description,
     body: split.body.trim(),
   };
-}
-
-function splitSkillFrontmatter(raw: string): { frontmatter: string; body: string } | undefined {
-  const content = raw.startsWith('\uFEFF') ? raw.slice(1) : raw;
-  const segments = content.split(/\r?\n/);
-  if (segments[0] !== '---') {
-    return undefined;
-  }
-
-  let closingIndex = -1;
-  for (let index = 1; index < segments.length; index += 1) {
-    if (segments[index] === '---') {
-      closingIndex = index;
-      break;
-    }
-  }
-
-  if (closingIndex < 0) {
-    return undefined;
-  }
-
-  return {
-    frontmatter: segments.slice(1, closingIndex).join('\n'),
-    body: segments.slice(closingIndex + 1).join('\n'),
-  };
-}
-
-function parseSkillFrontmatter(frontmatter: string): ParsedSkillFrontmatter {
-  const parsed: ParsedSkillFrontmatter = {};
-  for (const line of frontmatter.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue;
-    }
-    if (line.startsWith(' ') || line.startsWith('\t')) {
-      continue;
-    }
-
-    if (parsed.name === undefined && trimmed.startsWith('name:')) {
-      parsed.name = unquoteYamlScalar(trimmed.slice('name:'.length).trim());
-      continue;
-    }
-    if (parsed.description === undefined && trimmed.startsWith('description:')) {
-      parsed.description = unquoteYamlScalar(trimmed.slice('description:'.length).trim());
-    }
-  }
-
-  return parsed;
-}
-
-function unquoteYamlScalar(value: string): string {
-  if (value.length >= 2) {
-    const first = value[0];
-    const last = value[value.length - 1];
-    if ((first === '"' && last === '"') || (first === '\'' && last === '\'')) {
-      return value.slice(1, -1);
-    }
-  }
-
-  return value;
 }
 
 export function validateSkillName(name: string): string | undefined {
