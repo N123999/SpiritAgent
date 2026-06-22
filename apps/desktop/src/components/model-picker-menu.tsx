@@ -7,12 +7,14 @@ import {
   FilteredOverlayMenu,
   FilteredOverlayMenuTrigger,
 } from "@/components/ui/filtered-overlay-menu";
-import {
-  HoverDetailTooltip,
-  useHoverDetailTooltipContext,
-} from "@/components/ui/hover-detail-tooltip";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipItem,
+  TooltipTrigger,
+  useTooltipContext,
+} from "@/components/ui/tooltip";
 import {
   DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
   DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
@@ -70,11 +72,11 @@ function ModelPickerRow({
   isActive: boolean;
   onSelectModel: () => void;
 }) {
-  const { getTriggerProps } = useHoverDetailTooltipContext<ModelPickerItem>();
+  const { getTriggerProps } = useTooltipContext<ModelPickerItem>();
   const { onPointerEnter, isHighlighted } = getTriggerProps(model);
 
   return (
-    <HoverDetailTooltip.Anchor itemId={model.name}>
+    <TooltipItem item={model}>
       <div
         role="menuitem"
         tabIndex={-1}
@@ -96,7 +98,7 @@ function ModelPickerRow({
           {displayTitle}
         </span>
       </div>
-    </HoverDetailTooltip.Anchor>
+    </TooltipItem>
   );
 }
 
@@ -254,8 +256,8 @@ export function ModelPickerMenu({
         {filteredModelGroups.length === 0 ? (
           <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t("app.noMatches")}</p>
         ) : (
-          <HoverDetailTooltip<ModelPickerItem> getItemId={(model) => model.name} openDelayMs={0}>
-            <HoverDetailTooltip.TriggerZone>
+          <Tooltip<ModelPickerItem> getItemId={(model) => model.name} delayDuration={0}>
+            <Tooltip.Zone>
               {filteredModelGroups.map((group) => (
                 <div key={group.provider} className="mb-2 last:mb-0">
                   <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
@@ -279,8 +281,9 @@ export function ModelPickerMenu({
                   })}
                 </div>
               ))}
-            </HoverDetailTooltip.TriggerZone>
-            <HoverDetailTooltip.Content
+            </Tooltip.Zone>
+            <TooltipContent
+              appearance="detail"
               side="right"
               align="start"
               sideOffset={8}
@@ -319,8 +322,8 @@ export function ModelPickerMenu({
                   />
                 );
               }}
-            </HoverDetailTooltip.Content>
-          </HoverDetailTooltip>
+            </TooltipContent>
+          </Tooltip>
         )}
       </FilteredOverlayMenu>
     </div>

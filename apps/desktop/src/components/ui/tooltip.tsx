@@ -12,14 +12,25 @@ const TOOLTIP_ZONE_SLOT = "tooltip-zone"
 
 type TooltipSwitchItem = { id: string }
 
+type TooltipContentAppearance = "compact" | "detail"
+
 type TooltipContentRegistration = {
   side?: React.ComponentProps<typeof TooltipPrimitive.Content>["side"]
   sideOffset?: number
+  align?: React.ComponentProps<typeof TooltipPrimitive.Content>["align"]
+  collisionPadding?: React.ComponentProps<typeof TooltipPrimitive.Content>["collisionPadding"]
+  appearance?: TooltipContentAppearance
   className?: string
   onEscapeKeyDown?: React.ComponentProps<typeof TooltipPrimitive.Content>["onEscapeKeyDown"]
   onAnimationEnd?: React.ComponentProps<typeof TooltipPrimitive.Content>["onAnimationEnd"]
   render: (activeItem: unknown) => React.ReactNode
 }
+
+const TOOLTIP_CONTENT_COMPACT_CLASS =
+  "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-lg border border-border/80 bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-lg ring-1 ring-white/5 backdrop-blur-sm has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
+
+const TOOLTIP_CONTENT_DETAIL_CLASS =
+  "z-50 w-auto max-w-none origin-(--radix-tooltip-content-transform-origin) rounded-lg border border-border/80 bg-popover text-popover-foreground shadow-lg ring-1 ring-white/5 backdrop-blur-sm data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
 
 type TooltipGlobalContextValue = ReturnType<typeof useGlobalTooltipSwitch> & {
   registerContent: (registrationId: string, content: TooltipContentRegistration) => void
@@ -68,6 +79,26 @@ function useOptionalTooltipRegistrationContext<TItem = TooltipSwitchItem>():
   | TooltipRegistrationContextValue<TItem>
   | null {
   return React.useContext(TooltipRegistrationContext) as TooltipRegistrationContextValue<TItem> | null
+}
+
+export function useTooltipContext<TItem = TooltipSwitchItem>() {
+  const global = useTooltipGlobalContext()
+  const registration = useTooltipRegistrationContext<TItem>()
+  const { registrationId, getItemId, openDelayMs } = registration
+  const anchorSlot = global.anchorSlot
+
+  return {
+    getItemId,
+    anchorItemId: anchorSlot?.registrationId === registrationId ? anchorSlot.itemId : null,
+    activeItem: (global.contentActiveItem as TItem | null) ?? null,
+    getTriggerProps: (item: TItem) =>
+      global.getTriggerProps(registrationId, item, getItemId, openDelayMs),
+    onTriggerZonePointerLeave: (event: React.PointerEvent<HTMLDivElement>) =>
+      global.onTriggerZonePointerLeave(registrationId, event),
+    contentRef: global.contentRef,
+    dismissIfOpen: global.dismissIfOpen,
+    dismissActiveItem: global.dismissActiveItem,
+  }
 }
 
 export function useOptionalTooltipContext<TItem = TooltipSwitchItem>():
@@ -160,6 +191,7 @@ function GlobalTooltipContentHost() {
   }
 
   const renderedChildren = contentRegistration.render(global.contentActiveItem)
+  const appearance = contentRegistration.appearance ?? "compact"
 
   return (
     <TooltipPrimitive.Portal>
@@ -168,9 +200,11 @@ function GlobalTooltipContentHost() {
         data-slot="tooltip-content"
         data-state={dataState}
         side={contentRegistration.side}
+        align={contentRegistration.align}
         sideOffset={contentRegistration.sideOffset ?? 0}
+        collisionPadding={contentRegistration.collisionPadding}
         className={cn(
-          "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-lg border border-border/80 bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-lg ring-1 ring-white/5 backdrop-blur-sm has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+          appearance === "detail" ? TOOLTIP_CONTENT_DETAIL_CLASS : TOOLTIP_CONTENT_COMPACT_CLASS,
           contentRegistration.className,
         )}
         onEscapeKeyDown={(event) => {
@@ -189,6 +223,7 @@ function GlobalTooltipContentHost() {
 function TooltipProvider({
   delayDuration = 300,
   skipDelayDuration = 300,
+  disableHoverableContent = false,
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider> & {
@@ -277,6 +312,7 @@ function TooltipProvider({
       data-slot="tooltip-provider"
       delayDuration={0}
       skipDelayDuration={skipDelayDuration}
+      disableHoverableContent={disableHoverableContent}
       {...props}
     >
       <TooltipGlobalContext.Provider value={globalContextValue}>
@@ -596,6 +632,7 @@ type TooltipContentProps = Omit<
   React.ComponentProps<typeof TooltipPrimitive.Content>,
   "children"
 > & {
+  appearance?: TooltipContentAppearance
   children: React.ReactNode | ((activeItem: unknown) => React.ReactNode)
 }
 
@@ -604,13 +641,14 @@ function TooltipContent({
   className,
   sideOffset = 0,
   side,
+  align,
+  collisionPadding,
+  appearance = "compact",
   children,
   onEscapeKeyDown,
   onAnimationEnd,
-  ...props
 }: TooltipContentProps) {
   void ref;
-  void props;
 
   const global = useTooltipGlobalContext()
   const registration = useTooltipRegistrationContext()
@@ -627,6 +665,9 @@ function TooltipContent({
     global.registerContent(registrationId, {
       side,
       sideOffset,
+      align,
+      collisionPadding,
+      appearance,
       className,
       onEscapeKeyDown,
       onAnimationEnd,
@@ -637,8 +678,11 @@ function TooltipContent({
       global.unregisterContent(registrationId)
     }
   }, [
+    align,
+    appearance,
     children,
     className,
+    collisionPadding,
     global,
     onAnimationEnd,
     onEscapeKeyDown,

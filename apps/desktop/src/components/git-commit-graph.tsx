@@ -12,10 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Copy, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  HoverDetailTooltip,
-  useHoverDetailTooltipContext,
-} from "@/components/ui/hover-detail-tooltip";
+import { Tooltip, TooltipContent, TooltipItem, useTooltipContext } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkspaceGitCommitContextMenu } from "@/components/workspace-git-commit-context-menu";
 import { cn } from "@/lib/utils";
@@ -507,7 +504,7 @@ function CommitGraphRowWithHover({
   onAddCommitToSession?: (commit: GitCommitRecord) => void;
   addCommitToSessionDisabled?: boolean;
 }) {
-  const { getTriggerProps } = useHoverDetailTooltipContext<GitCommitGraphRow>();
+  const { getTriggerProps } = useTooltipContext<GitCommitGraphRow>();
   const { onPointerEnter, isHighlighted } = getTriggerProps(row);
 
   const rowButton = (
@@ -542,9 +539,7 @@ function CommitGraphRowWithHover({
       className="relative min-w-0"
       style={{ minHeight: ROW_HEIGHT_PX, paddingLeft: textInset }}
     >
-      <HoverDetailTooltip.Anchor itemId={row.commit.oid}>
-        {trigger}
-      </HoverDetailTooltip.Anchor>
+      <TooltipItem item={row}>{trigger}</TooltipItem>
     </div>
   );
 }
@@ -683,10 +678,10 @@ export function GitCommitGraph({
 
   return (
     <ScrollArea ref={scrollAreaRef} className={cn("min-h-0 flex-1", className)}>
-      <HoverDetailTooltip<GitCommitGraphRow> getItemId={(row) => row.commit.oid}>
+      <Tooltip<GitCommitGraphRow> getItemId={(row) => row.commit.oid}>
         <div className="relative min-w-0 pr-1">
           <CommitGraphGutter rows={rows} graphWidth={graphWidth} geometry={geometry} />
-          <HoverDetailTooltip.TriggerZone ref={rowsContainerRef} className="relative">
+          <Tooltip.Zone ref={rowsContainerRef} className="relative">
             {rows.map((row, rowIndex) => (
               <CommitGraphRowWithHover
                 key={row.commit.oid}
@@ -696,7 +691,7 @@ export function GitCommitGraph({
                 addCommitToSessionDisabled={addCommitToSessionDisabled}
               />
             ))}
-          </HoverDetailTooltip.TriggerZone>
+          </Tooltip.Zone>
           {showLoadMoreFooter ? (
             <div
               ref={loadMoreSentinelRef}
@@ -721,7 +716,8 @@ export function GitCommitGraph({
             </div>
           ) : null}
         </div>
-        <HoverDetailTooltip.Content
+        <TooltipContent
+          appearance="detail"
           side="right"
           align="start"
           sideOffset={6}
@@ -730,8 +726,8 @@ export function GitCommitGraph({
         >
           {(activeRow) =>
             activeRow ? <CommitGraphRowDetail row={activeRow as GitCommitGraphRow} /> : null}
-        </HoverDetailTooltip.Content>
-      </HoverDetailTooltip>
+        </TooltipContent>
+      </Tooltip>
     </ScrollArea>
   );
 }
