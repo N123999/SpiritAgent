@@ -1071,7 +1071,8 @@
     "askQuestions": {
       "title": "待回答问题",
       "nQuestions": "{{count}} 个问题待回答",
-      "fallback": "请返回应用回答问题。"
+      "fallback": "请返回应用回答问题。",
+      "reply": "在此回答"
     }
   },
   "tool": {
