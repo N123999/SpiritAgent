@@ -6,6 +6,13 @@ import { isAbsolute, join } from 'node:path';
 
 import type { JsonValue } from '../ports.js';
 import {
+  buildLazyToolGatewayDefinitions,
+  createMcpLazyToolGatewayBackend,
+  executeLazyToolGatewayCall,
+  isLazyToolGatewayToolName,
+  isLazyToolGatewayToolRequest as isLazyToolGatewayToolRequestValue,
+} from '../tool-gateway/index.js';
+import {
   parseMcpConfigFile,
   resolveEnvRecord,
   mcpUserConfigPath,
@@ -24,10 +31,12 @@ import type {
   McpConfigFile,
   McpServerConfig,
   McpServerRuntimeState,
+  McpToolIndexEntry,
   ResolvedMcpHttpTransportConfig,
   ResolvedMcpServerConfig,
   ResolvedMcpStdioTransportConfig,
   ResolvedMcpTransportConfig,
+  ToolAgentMcpToolCatalogSnapshot,
 } from './types.js';
 import {
   buildWindowsCommandCandidates,
@@ -42,6 +51,7 @@ const WINDOWS_MACHINE_ENV_REGISTRY_PATH =
 const MCP_FUNCTION_NAME_LIMIT = 64;
 const MCP_SERVER_FRAGMENT_LIMIT = 16;
 const MCP_TOOL_FRAGMENT_LIMIT = 24;
+const MCP_CATALOG_TOOL_LIMIT = 128;
 
 interface McpToolRoute {
   functionName: string;
@@ -51,7 +61,6 @@ interface McpToolRoute {
 }
 
 interface McpToolCatalog {
-  definitions: JsonValue[];
   routes: Map<string, McpToolRoute>;
 }
 
@@ -86,7 +95,7 @@ type EnvLookupStore = Map<string, string>;
 
 interface UserMcpToolingCacheEntry {
   digest: string;
-  definitions: JsonValue[];
+  indexEntries: McpToolIndexEntry[];
   routes: Map<string, McpToolRoute>;
   prompts: Map<string, McpPromptCatalogEntry[]>;
   serverStates: Map<string, { state: McpServerRuntimeState; cachedTools: number; lastError?: string }>;
@@ -108,9 +117,10 @@ export class McpService {
   };
   private configDigestStore = mcpConfigDigest({ servers: {} });
   private toolCatalogStore: McpToolCatalog = {
-    definitions: [],
     routes: new Map<string, McpToolRoute>(),
   };
+  private toolIndexStore: McpToolIndexEntry[] = [];
+  private catalogRevisionStore = 0;
   private promptCatalogStore = new Map<string, McpPromptCatalogEntry[]>();
   private loadErrorStore: string | undefined;
   private windowsEnvLookupPromise: Promise<EnvLookupStore> | undefined;
@@ -125,7 +135,70 @@ export class McpService {
   }
 
   toolDefinitionsJson(): JsonValue[] {
-    return [...this.toolCatalogStore.definitions];
+    if (this.toolIndexStore.length === 0) {
+      return [];
+    }
+
+    return buildLazyToolGatewayDefinitions();
+  }
+
+  catalogRevision(): number {
+    return this.catalogRevisionStore;
+  }
+
+  catalogSnapshot(): ToolAgentMcpToolCatalogSnapshot {
+    return buildMcpToolCatalogSnapshot(
+      this.toolIndexStore,
+      this.registry,
+      this.loadedConfigStore.resolved,
+    );
+  }
+
+  async describeTool(
+    serverName: string,
+    toolName: string,
+  ): Promise<{ description: string; inputSchema: JsonValue }> {
+    await this.ensureToolingCache();
+    const entry = findToolIndexEntry(this.toolIndexStore, serverName, toolName);
+    if (!entry) {
+      throw new McpConfigError(`Unknown MCP tool: ${serverName}/${toolName}`);
+    }
+
+    return {
+      description: entry.description,
+      inputSchema: entry.inputSchema,
+    };
+  }
+
+  isLazyToolGatewayToolRequest(value: JsonValue): value is import('../tool-gateway/types.js').LazyToolGatewayToolRequest {
+    return isLazyToolGatewayToolRequestValue(value);
+  }
+
+  async executeLazyToolGatewayToolRequest(
+    request: import('../tool-gateway/types.js').LazyToolGatewayToolRequest,
+  ): Promise<string> {
+    const backend = createMcpLazyToolGatewayBackend(this);
+    return executeLazyToolGatewayCall(request.name, request.argumentsJson, backend);
+  }
+
+  lazyToolGatewayBackgroundStatusText(value: JsonValue): string | undefined {
+    if (!isLazyToolGatewayToolRequestValue(value)) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(value.argumentsJson) as JsonValue;
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return `Lazy tool gateway: ${value.name}`;
+      }
+      const server = typeof parsed.server === 'string' ? parsed.server : 'unknown';
+      const tool = typeof parsed.tool === 'string' ? parsed.tool : 'unknown';
+      return value.name === 'tool_call'
+        ? `MCP 工具执行中: ${server} / ${tool}`
+        : `MCP 工具 schema 读取中: ${server} / ${tool}`;
+    } catch {
+      return `Lazy tool gateway: ${value.name}`;
+    }
   }
 
   isToolRequest(value: JsonValue): value is McpToolRequest {
@@ -217,9 +290,10 @@ export class McpService {
     } catch (error) {
       this.loadErrorStore = describeError(error);
       this.toolCatalogStore = {
-        definitions: [],
         routes: new Map<string, McpToolRoute>(),
       };
+      this.toolIndexStore = [];
+      this.catalogRevisionStore += 1;
       this.promptCatalogStore = new Map<string, McpPromptCatalogEntry[]>();
       throw error;
     }
@@ -236,7 +310,19 @@ export class McpService {
     this.launchBackgroundRefresh(force);
   }
 
-  async requestFromFunctionCall(name: string, argumentsJson: string): Promise<McpToolRequest | undefined> {
+  async requestFromFunctionCall(name: string, argumentsJson: string): Promise<McpToolRequest | {
+    kind: 'lazyToolGateway';
+    name: string;
+    argumentsJson: string;
+  } | undefined> {
+    if (isLazyToolGatewayToolName(name)) {
+      return {
+        kind: 'lazyToolGateway',
+        name,
+        argumentsJson,
+      };
+    }
+
     let route = this.toolCatalogStore.routes.get(name);
     if (!route) {
       await this.ensureToolingCache();
@@ -606,7 +692,7 @@ export class McpService {
       }
     }
 
-    const definitions: JsonValue[] = [];
+    const indexEntries: McpToolIndexEntry[] = [];
     const routes = new Map<string, McpToolRoute>();
     const prompts = new Map<string, McpPromptCatalogEntry[]>();
 
@@ -623,7 +709,7 @@ export class McpService {
       && sharedUserMcpToolingCache.digest === currentUserDigest
     ) {
       userCacheHit = true;
-      definitions.push(...sharedUserMcpToolingCache.definitions);
+      indexEntries.push(...sharedUserMcpToolingCache.indexEntries);
       for (const [functionName, route] of sharedUserMcpToolingCache.routes) {
         routes.set(functionName, route);
       }
@@ -637,7 +723,7 @@ export class McpService {
         });
       }
     } else if (userServers.length > 0) {
-      const userDefinitions: JsonValue[] = [];
+      const userIndexEntries: McpToolIndexEntry[] = [];
       const userRoutes = new Map<string, McpToolRoute>();
       const userPrompts = new Map<string, McpPromptCatalogEntry[]>();
       const userServerStates = new Map<
@@ -645,17 +731,17 @@ export class McpService {
         { state: McpServerRuntimeState; cachedTools: number; lastError?: string }
       >();
       for (const server of userServers) {
-        const status = await this.discoverServerTooling(server, userDefinitions, userRoutes, userPrompts);
+        const status = await this.discoverServerTooling(server, userIndexEntries, userRoutes, userPrompts);
         userServerStates.set(server.name, status);
       }
       sharedUserMcpToolingCache = {
         digest: currentUserDigest,
-        definitions: [...userDefinitions],
+        indexEntries: [...userIndexEntries],
         routes: new Map(userRoutes),
         prompts: new Map(userPrompts),
         serverStates: new Map(userServerStates),
       };
-      definitions.push(...userDefinitions);
+      indexEntries.push(...userIndexEntries);
       for (const [functionName, route] of userRoutes) {
         routes.set(functionName, route);
       }
@@ -672,17 +758,18 @@ export class McpService {
     });
 
     for (const server of workspaceServers) {
-      await this.discoverServerTooling(server, definitions, routes, prompts);
+      await this.discoverServerTooling(server, indexEntries, routes, prompts);
     }
 
     this.toolCatalogStore = {
-      definitions,
       routes,
     };
+    this.toolIndexStore = indexEntries;
+    this.catalogRevisionStore += 1;
     this.promptCatalogStore = prompts;
     this.toolingCacheInitialized = true;
     console.error('[mcp-service] refreshToolingCaches.done', {
-      definitions: definitions.length,
+      indexedTools: indexEntries.length,
       promptServers: prompts.size,
       userCacheHit,
     });
@@ -690,7 +777,7 @@ export class McpService {
 
   private async discoverServerTooling(
     server: ResolvedMcpServerConfig,
-    definitions: JsonValue[],
+    indexEntries: McpToolIndexEntry[],
     routes: Map<string, McpToolRoute>,
     prompts: Map<string, McpPromptCatalogEntry[]>,
   ): Promise<{ state: McpServerRuntimeState; cachedTools: number; lastError?: string }> {
@@ -711,20 +798,19 @@ export class McpService {
       for (const tool of discoveredTools) {
         const functionName = syntheticMcpFunctionName(server.name, tool.name);
         const description = tool.description ?? `MCP tool ${tool.name} from server ${server.displayName}.`;
-        const parameters = isJsonRecord(tool.inputSchema)
+        const inputSchema = isJsonRecord(tool.inputSchema)
           ? (tool.inputSchema as JsonValue)
           : {
               type: 'object',
               additionalProperties: true,
             };
 
-        definitions.push({
-          type: 'function',
-          function: {
-            name: functionName,
-            description: `[MCP ${server.displayName}] ${description}`,
-            parameters,
-          },
+        indexEntries.push({
+          server: server.name,
+          displayName: server.displayName,
+          toolName: tool.name,
+          description,
+          inputSchema,
         });
         routes.set(functionName, {
           functionName,
@@ -1314,4 +1400,55 @@ function sanitizeIdentifierFragment(input: string): string {
 
 function truncateIdentifierFragment(input: string, maxLength: number): string {
   return Array.from(input).slice(0, maxLength).join('');
+}
+
+function findToolIndexEntry(
+  entries: McpToolIndexEntry[],
+  serverName: string,
+  toolName: string,
+): McpToolIndexEntry | undefined {
+  return entries.find((entry) => entry.server === serverName && entry.toolName === toolName);
+}
+
+function buildMcpToolCatalogSnapshot(
+  indexEntries: McpToolIndexEntry[],
+  registry: McpRegistry,
+  resolvedServers: Record<string, ResolvedMcpServerConfig>,
+): ToolAgentMcpToolCatalogSnapshot {
+  const grouped = new Map<string, McpToolIndexEntry[]>();
+  for (const entry of indexEntries) {
+    const current = grouped.get(entry.server) ?? [];
+    current.push(entry);
+    grouped.set(entry.server, current);
+  }
+
+  const totalToolCount = indexEntries.length;
+  const truncated = totalToolCount > MCP_CATALOG_TOOL_LIMIT;
+  let remaining = MCP_CATALOG_TOOL_LIMIT;
+  const servers = Object.values(resolvedServers)
+    .filter((server) => server.enabled)
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((server) => {
+      const status = registry.get(server.name);
+      const toolsForServer = grouped.get(server.name) ?? [];
+      const visibleTools = remaining > 0 ? toolsForServer.slice(0, remaining) : [];
+      remaining -= visibleTools.length;
+      return {
+        name: server.name,
+        displayName: server.displayName,
+        state: status?.state ?? 'idle',
+        ...(status?.lastError === undefined ? {} : { lastError: status.lastError }),
+        tools: visibleTools.map((tool) => ({
+          name: tool.toolName,
+          description: tool.description,
+        })),
+      };
+    })
+    .filter((server) => server.tools.length > 0 || server.state === 'error');
+
+  return {
+    servers,
+    truncated,
+    totalToolCount,
+  };
 }

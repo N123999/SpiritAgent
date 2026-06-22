@@ -122,6 +122,57 @@ export function tryExtractPartialPlanName(argumentsJson: string): string | undef
   return decodePartialJsonString(match[1]);
 }
 
+function tryExtractPartialLazyToolGatewayFields(argumentsJson: string): {
+  provider?: string;
+  server?: string;
+  tool?: string;
+} {
+  const trimmed = argumentsJson.trim();
+  if (!trimmed) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as JsonValue;
+    if (!isJsonObject(parsed)) {
+      return {};
+    }
+    return {
+      ...(typeof parsed.provider === 'string' && parsed.provider.trim()
+        ? { provider: parsed.provider.trim() }
+        : {}),
+      ...(typeof parsed.server === 'string' && parsed.server.trim()
+        ? { server: parsed.server.trim() }
+        : {}),
+      ...(typeof parsed.tool === 'string' && parsed.tool.trim() ? { tool: parsed.tool.trim() } : {}),
+    };
+  } catch {
+    const providerMatch = trimmed.match(/"provider"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    const serverMatch = trimmed.match(/"server"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    const toolMatch = trimmed.match(/"tool"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    const fields: { provider?: string; server?: string; tool?: string } = {};
+    if (providerMatch?.[1]) {
+      const provider = decodePartialJsonString(providerMatch[1]);
+      if (provider) {
+        fields.provider = provider;
+      }
+    }
+    if (serverMatch?.[1]) {
+      const server = decodePartialJsonString(serverMatch[1]);
+      if (server) {
+        fields.server = server;
+      }
+    }
+    if (toolMatch?.[1]) {
+      const tool = decodePartialJsonString(toolMatch[1]);
+      if (tool) {
+        fields.tool = tool;
+      }
+    }
+    return fields;
+  }
+}
+
 export function hostToolArgumentsReadyForEarlyStreamingPreview(
   name: string,
   argumentsJson: string,
@@ -377,6 +428,10 @@ export function previewRequestFromStreamingArguments(
     if (toolName === 'create_plan') {
       const name = tryExtractPartialPlanName(argumentsJson);
       return name ? { name } : undefined;
+    }
+    if (toolName === 'tool_call' || toolName === 'tool_describe') {
+      const fields = tryExtractPartialLazyToolGatewayFields(argumentsJson);
+      return fields.provider || fields.server || fields.tool ? fields : undefined;
     }
     return undefined;
   }
