@@ -1,10 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
-import {
-  HoverDetailTooltip,
-  useHoverDetailTooltipContext,
-} from "@/components/ui/hover-detail-tooltip";
+import { Tooltip, TooltipItem, useTooltipContext } from "@/components/ui/tooltip";
 import { modelSettingsRowAriaLabel } from "@/lib/model-catalog-detail";
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
 import { cn } from "@/lib/utils";
@@ -31,7 +28,7 @@ export function ModelSettingsRowButton({
   defaultActionLabel: string;
   disabled: boolean;
   isHighlighted?: boolean;
-  /** 有 HoverDetailTooltip 时不显示浏览器 title，避免盖住详情 Popover。 */
+  /** 有 Tooltip 详情时不显示浏览器 title，避免盖住详情浮层。 */
   showNativeTitle?: boolean;
   onPointerEnter?: () => void;
   onDefaultAction: () => void;
@@ -100,11 +97,11 @@ export function ModelSettingsRowWithHover({
   disabled: boolean;
   onDefaultAction: () => void;
 }) {
-  const { getTriggerProps } = useHoverDetailTooltipContext<SettingsModelProfile>();
+  const { getTriggerProps } = useTooltipContext<SettingsModelProfile>();
   const { onPointerEnter, isHighlighted } = getTriggerProps(model);
 
   return (
-    <HoverDetailTooltip.Anchor itemId={model.name}>
+    <TooltipItem item={model}>
       <ModelSettingsRowButton
         model={model}
         displayTitle={displayTitle}
@@ -118,6 +115,6 @@ export function ModelSettingsRowWithHover({
         onPointerEnter={onPointerEnter}
         onDefaultAction={onDefaultAction}
       />
-    </HoverDetailTooltip.Anchor>
+    </TooltipItem>
   );
 }

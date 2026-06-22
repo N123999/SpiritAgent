@@ -47,7 +47,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { HoverDetailTooltip } from "@/components/ui/hover-detail-tooltip";
+import { Tooltip, TooltipContent } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   hasBedrockIamCredentials,
@@ -785,11 +785,11 @@ export function ModelsSettingsPanel({
                   </div>
                   {providerSupportsModelCatalogDetail(provider)
                   && groupModels.some((model) => catalogDetailByModelName.has(model.name)) ? (
-                    <HoverDetailTooltip<SettingsModelProfile>
+                    <Tooltip<SettingsModelProfile>
                       getItemId={(model) => model.name}
-                      openDelayMs={300}
+                      delayDuration={300}
                     >
-                      <HoverDetailTooltip.TriggerZone className="divide-y divide-border/35">
+                      <Tooltip.Zone className="divide-y divide-border/35">
                         {groupModels.map((model) => {
                           const isActive = model.name === activeModel;
                           const isImageDefault = model.name === imageGenerationModel;
@@ -839,8 +839,9 @@ export function ModelsSettingsPanel({
                             />
                           );
                         })}
-                      </HoverDetailTooltip.TriggerZone>
-                      <HoverDetailTooltip.Content
+                      </Tooltip.Zone>
+                      <TooltipContent
+                        appearance="detail"
                         side="right"
                         align="start"
                         sideOffset={8}
@@ -864,8 +865,8 @@ export function ModelsSettingsPanel({
                             />
                           );
                         }}
-                      </HoverDetailTooltip.Content>
-                    </HoverDetailTooltip>
+                      </TooltipContent>
+                    </Tooltip>
                   ) : (
                     <div className="divide-y divide-border/35">
                       {groupModels.map((model) => {
