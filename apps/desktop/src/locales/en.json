@@ -692,7 +692,7 @@
     "browser": "Browser",
     "browserPlaceholder": "Browser tab loading…",
     "browserElectronOnly": "Browser is only available in the Electron desktop version.",
-    "prTab": "Pull Requests",
+    "prTab": "Pull Request",
     "prElectronOnly": "Pull Requests are only available in the Electron desktop version.",
     "prGitHubAuthChecking": "Checking GitHub connection…",
     "prGitHubConnectLink": "Connect",
