@@ -185,7 +185,6 @@
     "mcpUrlExample": "e.g. https://example.com/mcp",
     "mcpCommandExample": "e.g. npx -y @modelcontextprotocol/server-filesystem D:/SpiritAgent",
     "mcpCountsSummary": "Found {{tools}} tools · {{resources}} resources · {{prompts}} prompts",
-    "mcpLazyExposureHint": "MCP tools are invoked on demand via tool_describe / tool_call instead of being injected into the model context in full.",
     "active": "Active",
     "failed": "Failed",
     "skillUserDir": "User Directory",
