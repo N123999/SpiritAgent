@@ -47,6 +47,11 @@ export type TooltipLingerAnchorScreenRect = {
   height: number;
 };
 
+export type TooltipLingerContentScreenRect = {
+  top: number;
+  left: number;
+};
+
 export type UseGlobalTooltipSwitchResult = {
   open: boolean;
   openKind: TooltipSwitchOpenKind;
@@ -78,6 +83,7 @@ export type UseGlobalTooltipSwitchResult = {
   isAnchorSlot: (registrationId: string, itemId: string) => boolean;
   onContentPointerEnter: () => void;
   lingerAnchorScreenRect: TooltipLingerAnchorScreenRect | null;
+  lingerContentScreenRect: TooltipLingerContentScreenRect | null;
 };
 
 export function useGlobalTooltipSwitch({
@@ -109,8 +115,11 @@ export function useGlobalTooltipSwitch({
   const openDelayByRegistrationRef = useRef<Map<string, number>>(new Map());
   const closeDelayByRegistrationRef = useRef<Map<string, number>>(new Map());
   const anchorLingerByRegistrationRef = useRef<Map<string, number>>(new Map());
+  const pointerDismissedRegistrationsRef = useRef<Set<string>>(new Set());
   const [lingerAnchorScreenRect, setLingerAnchorScreenRect] =
     useState<TooltipLingerAnchorScreenRect | null>(null);
+  const [lingerContentScreenRect, setLingerContentScreenRect] =
+    useState<TooltipLingerContentScreenRect | null>(null);
 
   activeItemRef.current = activeItem;
   activeSlotRef.current = activeSlot;
@@ -196,6 +205,15 @@ export function useGlobalTooltipSwitch({
           height: anchorRectSnapshot.height,
         });
       }
+      const contentRectSnapshot = contentRef.current?.isConnected
+        ? contentRef.current.getBoundingClientRect()
+        : null;
+      if (contentRectSnapshot) {
+        setLingerContentScreenRect({
+          top: contentRectSnapshot.top,
+          left: contentRectSnapshot.left,
+        });
+      }
       clearHoverOpenTimer();
       pointerSlotRef.current = null;
       setPointerSlot(null);
@@ -222,6 +240,7 @@ export function useGlobalTooltipSwitch({
       lingerContentClearTimerRef.current = setTimeout(() => {
         lingerContentClearTimerRef.current = undefined;
         setLingerActiveItem(null);
+        setLingerContentScreenRect(null);
       }, TOOLTIP_SWITCH_CONTENT_LINGER_MS);
     },
     [clearHoverOpenTimer, getAnchorLingerMs],
@@ -274,6 +293,7 @@ export function useGlobalTooltipSwitch({
         active.registrationId === registrationId &&
         active.itemId === itemId
       ) {
+        pointerDismissedRegistrationsRef.current.add(registrationId);
         commitClose(registrationId);
         return;
       }
@@ -368,6 +388,9 @@ export function useGlobalTooltipSwitch({
       openDelayMs: number,
     ) => {
       const itemId = getItemId(item);
+      if (pointerDismissedRegistrationsRef.current.has(registrationId)) {
+        return;
+      }
       openDelayByRegistrationRef.current.set(registrationId, openDelayMs);
       clearHoverCloseTimer();
       if (lingerClearTimerRef.current !== undefined) {
@@ -381,6 +404,7 @@ export function useGlobalTooltipSwitch({
       setLingerAnchorSlot(null);
       setLingerActiveItem(null);
       setLingerAnchorScreenRect(null);
+      setLingerContentScreenRect(null);
 
       const slot = tooltipSwitchSlotKey(registrationId, itemId);
       pointerSlotRef.current = slot;
@@ -472,6 +496,7 @@ export function useGlobalTooltipSwitch({
       }
       pointerSlotRef.current = null;
       setPointerSlot(null);
+      pointerDismissedRegistrationsRef.current.delete(registrationId);
     },
     [isRelatedTarget],
   );
@@ -571,5 +596,6 @@ export function useGlobalTooltipSwitch({
     isAnchorSlot,
     onContentPointerEnter,
     lingerAnchorScreenRect,
+    lingerContentScreenRect,
   };
 }

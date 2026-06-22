@@ -185,6 +185,8 @@ function GlobalTooltipContentHost() {
     hasContent,
     global.open,
   )
+  const lingerExitPosition =
+    !global.open && global.lingerContentScreenRect !== null ? global.lingerContentScreenRect : null
 
   if (!hasContent) {
     return null
@@ -192,6 +194,33 @@ function GlobalTooltipContentHost() {
 
   const renderedChildren = contentRegistration.render(global.contentActiveItem)
   const appearance = contentRegistration.appearance ?? "compact"
+  const contentClassName = cn(
+    appearance === "detail" ? TOOLTIP_CONTENT_DETAIL_CLASS : TOOLTIP_CONTENT_COMPACT_CLASS,
+    contentRegistration.className,
+  )
+
+  if (lingerExitPosition !== null) {
+    return (
+      <TooltipPrimitive.Portal>
+        <div
+          ref={global.contentRef}
+          data-slot="tooltip-content"
+          data-state={dataState}
+          style={{
+            position: "fixed",
+            top: lingerExitPosition.top,
+            left: lingerExitPosition.left,
+            transform: "none",
+          }}
+          className={contentClassName}
+          onAnimationEnd={contentRegistration.onAnimationEnd}
+          onPointerEnter={global.onContentPointerEnter}
+        >
+          {renderedChildren}
+        </div>
+      </TooltipPrimitive.Portal>
+    )
+  }
 
   return (
     <TooltipPrimitive.Portal>
@@ -203,10 +232,7 @@ function GlobalTooltipContentHost() {
         align={contentRegistration.align}
         sideOffset={contentRegistration.sideOffset ?? 0}
         collisionPadding={contentRegistration.collisionPadding}
-        className={cn(
-          appearance === "detail" ? TOOLTIP_CONTENT_DETAIL_CLASS : TOOLTIP_CONTENT_COMPACT_CLASS,
-          contentRegistration.className,
-        )}
+        className={contentClassName}
         onEscapeKeyDown={(event) => {
           contentRegistration.onEscapeKeyDown?.(event)
           global.dismissActiveItem()
@@ -231,6 +257,9 @@ function TooltipProvider({
 }) {
   const globalSwitch = useGlobalTooltipSwitch({ defaultOpenDelayMs: delayDuration })
   const contentRegistryRef = React.useRef(new Map<string, TooltipContentRegistration>())
+  const lingerContentRegistryRef = React.useRef(new Map<string, TooltipContentRegistration>())
+  const contentActiveItemRef = React.useRef(globalSwitch.contentActiveItem)
+  contentActiveItemRef.current = globalSwitch.contentActiveItem
   const onOpenChangeByRegistrationRef = React.useRef(
     new Map<string, ((open: boolean) => void) | undefined>(),
   )
@@ -239,17 +268,34 @@ function TooltipProvider({
   const registerContent = React.useCallback(
     (registrationId: string, content: TooltipContentRegistration) => {
       contentRegistryRef.current.set(registrationId, content)
+      lingerContentRegistryRef.current.delete(registrationId)
     },
     [],
   )
 
   const unregisterContent = React.useCallback((registrationId: string) => {
+    const content = contentRegistryRef.current.get(registrationId)
+    if (!content) {
+      return
+    }
     contentRegistryRef.current.delete(registrationId)
+    if (contentActiveItemRef.current !== null) {
+      lingerContentRegistryRef.current.set(registrationId, content)
+    }
   }, [])
 
   const getContentRegistration = React.useCallback((registrationId: string) => {
-    return contentRegistryRef.current.get(registrationId)
+    return (
+      contentRegistryRef.current.get(registrationId) ??
+      lingerContentRegistryRef.current.get(registrationId)
+    )
   }, [])
+
+  React.useEffect(() => {
+    if (globalSwitch.contentActiveItem === null) {
+      lingerContentRegistryRef.current.clear()
+    }
+  }, [globalSwitch.contentActiveItem])
 
   const registerOpenChange = React.useCallback(
     (registrationId: string, onOpenChange: ((open: boolean) => void) | undefined) => {
@@ -500,7 +546,16 @@ function TooltipItem<TItem>({ item, children, className }: TooltipItemProps<TIte
     openDelayMs,
   )
   const rowWrapper = (
-    <div ref={rowRef} className={rowClassName} onPointerEnter={onPointerEnter}>
+    <div
+      ref={rowRef}
+      className={rowClassName}
+      onPointerEnter={onPointerEnter}
+      onPointerDown={() => {
+        if (registration && resolvedItemId !== null) {
+          global.onTriggerPointerDown(registration.registrationId, resolvedItemId)
+        }
+      }}
+    >
       {children}
     </div>
   )

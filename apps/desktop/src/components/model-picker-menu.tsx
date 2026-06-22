@@ -17,7 +17,6 @@ import {
   useOptionalTooltipGlobalContext,
   useTooltipContext,
 } from "@/components/ui/tooltip";
-import type { TooltipLingerAnchorScreenRect } from "@/hooks/use-global-tooltip-switch";
 import {
   DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
   DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
@@ -101,30 +100,6 @@ function ModelPickerRow({
           {displayTitle}
         </span>
       </div>
-    </TooltipItem>
-  );
-}
-
-function ModelPickerLingerAnchor({
-  model,
-  screenRect,
-}: {
-  model: ModelPickerItem;
-  screenRect: TooltipLingerAnchorScreenRect;
-}) {
-  return (
-    <TooltipItem item={model}>
-      <div
-        aria-hidden
-        className="pointer-events-none opacity-0"
-        style={{
-          position: "fixed",
-          top: screenRect.top,
-          left: screenRect.left,
-          width: screenRect.width,
-          height: screenRect.height,
-        }}
-      />
     </TooltipItem>
   );
 }
@@ -215,19 +190,13 @@ export function ModelPickerMenu({
     setModelFilter(next);
   }, [globalTooltip, modelFilter]);
 
-  const lingerPickerModel =
-    globalTooltip?.contentActiveItem != null
-      ? (globalTooltip.contentActiveItem as ModelPickerItem)
-      : null;
-  const lingerPickerModelInFiltered =
-    lingerPickerModel != null &&
-    filteredModelGroups.some((group) =>
-      group.items.some((item) => item.name === lingerPickerModel.name),
-    );
-  const showLingerAnchor =
-    lingerPickerModel != null &&
-    globalTooltip?.lingerAnchorScreenRect != null &&
-    !lingerPickerModelInFiltered;
+  const dismissOpenListTooltip = useCallback(() => {
+    if (globalTooltip?.open) {
+      flushSync(() => {
+        globalTooltip.dismissActiveItem();
+      });
+    }
+  }, [globalTooltip]);
 
   const activeModelSummary = activeModelProfile
     ? formatModelPickerLabel(
@@ -265,6 +234,9 @@ export function ModelPickerMenu({
         variant="filtered-list"
         open={modelMenuOpen}
         onOpenChange={(open) => {
+          if (!open) {
+            dismissOpenListTooltip();
+          }
           setModelMenuOpen(open);
           if (!open) {
             setModelFilter("");
@@ -309,35 +281,32 @@ export function ModelPickerMenu({
         ) : null}
         <Tooltip<ModelPickerItem> getItemId={(model) => model.name} delayDuration={0}>
           <Tooltip.Zone>
-            {showLingerAnchor && lingerPickerModel && globalTooltip?.lingerAnchorScreenRect ? (
-              <ModelPickerLingerAnchor
-                model={lingerPickerModel}
-                screenRect={globalTooltip.lingerAnchorScreenRect}
-              />
-            ) : null}
-            {filteredModelGroups.length === 0 ? null : filteredModelGroups.map((group) => (
-              <div key={group.provider} className="mb-2 last:mb-0">
-                <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
-                  {t(group.labelKey, { defaultValue: group.fallbackLabel })}
-                </div>
-                {group.items.map((model) => {
-                  const displayTitle = modelDisplayTitleFromMap(model.name, displayTitleByModelName);
-                  return (
-                    <ModelPickerRow
-                      key={`${group.provider}:${model.name}`}
-                      model={model}
-                      displayTitle={displayTitle}
-                      isActive={activeModelProfile?.name === model.name}
-                      onSelectModel={() => {
-                        onModelSelect(model.name);
-                        setModelFilter("");
-                        setModelMenuOpen(false);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ))}
+            {filteredModelGroups.length === 0
+              ? null
+              : filteredModelGroups.map((group) => (
+                  <div key={group.provider} className="mb-2 last:mb-0">
+                    <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
+                      {t(group.labelKey, { defaultValue: group.fallbackLabel })}
+                    </div>
+                    {group.items.map((model) => {
+                      const displayTitle = modelDisplayTitleFromMap(model.name, displayTitleByModelName);
+                      return (
+                        <ModelPickerRow
+                          key={`${group.provider}:${model.name}`}
+                          model={model}
+                          displayTitle={displayTitle}
+                          isActive={activeModelProfile?.name === model.name}
+                          onSelectModel={() => {
+                            dismissOpenListTooltip();
+                            onModelSelect(model.name);
+                            setModelFilter("");
+                            setModelMenuOpen(false);
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
           </Tooltip.Zone>
           <TooltipContent
             appearance="detail"
@@ -372,6 +341,7 @@ export function ModelPickerMenu({
                   density="list"
                   onReasoningEffortChange={(modelName, effort) => {
                     onModelReasoningEffortSelect?.(modelName, effort);
+                    dismissOpenListTooltip();
                     onModelSelect(modelName);
                     setModelFilter("");
                     setModelMenuOpen(false);
