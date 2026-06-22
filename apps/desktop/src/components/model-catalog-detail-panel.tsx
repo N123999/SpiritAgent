@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ type ModelCatalogDetailPanelProps = {
   catalogEntry?: PreviewModelCatalogEntry;
   providerLabel: string;
   density?: 'default' | 'list';
+  children?: ReactNode;
 };
 
 function ModelCatalogDetailFieldSection({
@@ -33,11 +34,11 @@ function ModelCatalogDetailFieldSection({
   density?: 'default' | 'list';
 }) {
   return (
-    <section className={density === 'list' ? 'space-y-1' : 'space-y-1.5'}>
-      <p className={density === 'list' ? DESKTOP_OVERLAY_LIST_DETAIL_LABEL : 'text-[11px] text-muted-foreground'}>
+    <section className="flex items-baseline justify-between gap-2">
+      <span className={density === 'list' ? DESKTOP_OVERLAY_LIST_DETAIL_LABEL : 'text-[11px] text-muted-foreground'}>
         {label}
-      </p>
-      <p className="leading-5 text-foreground/90">{value}</p>
+      </span>
+      <span className="text-right leading-5 text-foreground/90">{value}</span>
     </section>
   );
 }
@@ -47,6 +48,7 @@ export function ModelCatalogDetailPanel({
   catalogEntry,
   providerLabel,
   density = 'default',
+  children,
 }: ModelCatalogDetailPanelProps) {
   const { t } = useTranslation();
   const isList = density === 'list';
@@ -65,8 +67,6 @@ export function ModelCatalogDetailPanel({
       }),
     [catalogEntry?.pricing, contextLength, t],
   );
-  const hasBody = Boolean(description || detailFields.length > 0);
-
   return (
     <div className={cn(isList ? 'flex flex-col' : '-mx-3 flex flex-col')}>
       <div
@@ -101,11 +101,18 @@ export function ModelCatalogDetailPanel({
           </div>
         ) : null}
       </div>
-      {hasBody ? (
-        <div className={cn(isList ? 'space-y-2 px-2 py-1.5 text-xs' : 'space-y-3 px-3 pt-3 text-xs')}>
-          {description ? (
-            <p className="whitespace-pre-wrap leading-5 text-foreground/90">{description}</p>
-          ) : null}
+      {description ? (
+        <div className={cn(isList ? 'px-2 py-1.5 text-xs' : 'px-3 pt-3 text-xs')}>
+          <p className="whitespace-pre-wrap leading-5 text-foreground/90">{description}</p>
+        </div>
+      ) : null}
+      {children ? (
+        <div className={cn(description ? 'border-y' : 'border-b', 'border-border/40', isList ? 'px-2 py-1.5' : 'px-3 py-2.5')}>
+          {children}
+        </div>
+      ) : null}
+      {detailFields.length > 0 ? (
+        <div className={cn(isList ? 'space-y-2 px-2 py-1.5 text-xs' : 'space-y-2 px-3 pt-3 text-xs')}>
           {detailFields.map((field) => (
             <ModelCatalogDetailFieldSection
               key={field.id}

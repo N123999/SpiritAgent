@@ -49,6 +49,37 @@ export function ModelPickerInspectorPanel({
     transportKind: model.transportKind,
   });
 
+  const reasoningEffortControl = effortOptions.length > 1 ? (
+    <div className="flex items-center justify-between gap-2">
+      <Label className={isList ? DESKTOP_OVERLAY_LIST_DETAIL_LABEL : 'text-xs text-muted-foreground'}>
+        {t('app.modelPickerReasoningEffort')}
+      </Label>
+      <Select
+        value={model.reasoningEffort}
+        onValueChange={(value) => {
+          onReasoningEffortChange(model.name, value as DesktopModelReasoningEffort);
+        }}
+      >
+        <SelectTrigger
+          className={
+            isList
+              ? 'h-7 w-auto border-0 bg-transparent px-0 text-xs shadow-none [&_span]:justify-end'
+              : 'h-8 w-auto border-0 bg-transparent px-0 text-xs shadow-none [&_span]:justify-end'
+          }
+        >
+          <SelectValue>{modelReasoningEffortLabel(model.reasoningEffort)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent className="z-[110]">
+          {effortOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  ) : null;
+
   return (
     <div className={isList ? 'flex flex-col' : 'space-y-4'}>
       <ModelCatalogDetailPanel
@@ -56,43 +87,9 @@ export function ModelPickerInspectorPanel({
         catalogEntry={catalogEntry}
         providerLabel={providerLabel}
         density={density}
-      />
-      {effortOptions.length > 1 ? (
-        <div
-          className={
-            isList
-              ? 'space-y-1 border-t border-border/40 px-2 py-1.5'
-              : 'space-y-1.5'
-          }
-        >
-          <Label className={isList ? DESKTOP_OVERLAY_LIST_DETAIL_LABEL : 'text-xs text-muted-foreground'}>
-            {t('app.modelPickerReasoningEffort')}
-          </Label>
-          <Select
-            value={model.reasoningEffort}
-            onValueChange={(value) => {
-              onReasoningEffortChange(model.name, value as DesktopModelReasoningEffort);
-            }}
-          >
-            <SelectTrigger
-              className={
-                isList
-                  ? 'h-7 w-full rounded-md border border-input/60 bg-transparent px-2.5 text-xs shadow-none'
-                  : 'h-8 w-full border-input/60 bg-transparent text-xs shadow-none'
-              }
-            >
-              <SelectValue>{modelReasoningEffortLabel(model.reasoningEffort)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent className="z-[110]">
-              {effortOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ) : null}
+      >
+        {reasoningEffortControl}
+      </ModelCatalogDetailPanel>
     </div>
   );
 }
