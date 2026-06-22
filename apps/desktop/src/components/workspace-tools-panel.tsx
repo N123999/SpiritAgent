@@ -10,7 +10,17 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { FileText, GitBranch, GitPullRequest, Globe, Plus, Terminal, X } from "lucide-react";
+import {
+  FileText,
+  GitBranch,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+  Globe,
+  Plus,
+  Terminal,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -43,6 +53,7 @@ import {
   computeWorkspaceToolsMaxWidthPx,
   writeWorkspaceToolsWidthPx,
 } from "@/lib/layout-prefs";
+import type { PullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { cn } from "@/lib/utils";
 import { useWorkspaceToolsChromeOpen } from "@/contexts/workspace-tools-chrome-context";
 import { useGitHubAuthConnected } from "@/hooks/use-github-auth-connected";
@@ -197,6 +208,19 @@ type WorkspaceToolsDockShellProps = Pick<
 > & {
   contentProps: WorkspaceToolsDockContentProps;
 };
+
+function resolvePrTabStatusIcon(status: PullRequestChipStatus) {
+  switch (status) {
+    case "draft":
+      return GitPullRequestDraft;
+    case "closed":
+      return GitPullRequestClosed;
+    case "open":
+    case "merged":
+    default:
+      return GitPullRequest;
+  }
+}
 
 function WorkspaceToolsDockInner(props: WorkspaceToolsDockProps) {
   const {
@@ -545,7 +569,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   );
 
   const handleTabPrStatusChange = useCallback(
-    (tabId: string, status: import("@/lib/pr-diff-attachment").PullRequestChipStatus | undefined) => {
+    (tabId: string, status: PullRequestChipStatus | undefined) => {
       onTabsChange((prev) =>
         prev.map((item) => (item.id === tabId ? { ...item, prStatus: status } : item)),
       );
@@ -569,7 +593,10 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               >
               {tabs.map((item) => {
                 const meta = TAB_KIND_META[item.kind];
-                const Icon = meta.icon;
+                const Icon =
+                  item.kind === "pr" && item.prStatus
+                    ? resolvePrTabStatusIcon(item.prStatus)
+                    : meta.icon;
                 const selected = item.id === activeTabId;
                 const label = workspaceToolTabLabel(item.kind, tabs, item.id, t);
                 const displayTitle = item.tabTitle;
