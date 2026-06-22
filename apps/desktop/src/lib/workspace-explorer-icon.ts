@@ -7,6 +7,7 @@ import {
   FileText,
   Folder,
   Image as ImageIcon,
+  ListTodo,
   Settings2,
   Terminal,
   type LucideIcon,
@@ -96,4 +97,18 @@ export function workspaceExplorerIconForPath(
   kind: WorkspaceExplorerEntryKind = 'file',
 ): LucideIcon {
   return workspaceExplorerIcon(workspaceFileBasename(path), kind);
+}
+
+/** 文件工具选项卡有 tabTitle 时解析图标；无标题时返回 undefined。 */
+export function resolveWorkspaceFilesTabIcon(
+  tabTitle: string | undefined,
+): LucideIcon | undefined {
+  const title = tabTitle?.trim();
+  if (!title) {
+    return undefined;
+  }
+  if (title === 'Plan') {
+    return ListTodo;
+  }
+  return workspaceExplorerIcon(title, 'file');
 }

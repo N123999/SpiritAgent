@@ -61,6 +61,7 @@ import type {
   EditorFileTarget,
   WorkspaceEditorViewMode,
 } from "@/lib/workspace-editor-navigation";
+import { resolveWorkspaceFilesTabIcon } from "@/lib/workspace-explorer-icon";
 import {
   addWorkspaceToolTab,
   closeWorkspaceToolTab,
@@ -593,13 +594,15 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               >
               {tabs.map((item) => {
                 const meta = TAB_KIND_META[item.kind];
+                const displayTitle = item.tabTitle;
+                const filesTabIcon =
+                  item.kind === "files" ? resolveWorkspaceFilesTabIcon(displayTitle) : undefined;
                 const Icon =
                   item.kind === "pr" && item.prStatus
                     ? resolvePrTabStatusIcon(item.prStatus)
-                    : meta.icon;
+                    : filesTabIcon ?? meta.icon;
                 const selected = item.id === activeTabId;
                 const label = workspaceToolTabLabel(item.kind, tabs, item.id, t);
-                const displayTitle = item.tabTitle;
                 return (
                   <div
                     key={item.id}
