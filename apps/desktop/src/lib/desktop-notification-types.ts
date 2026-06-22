@@ -1,8 +1,22 @@
 export type DesktopNotificationKind = 'task-complete' | 'approval' | 'ask-questions' | 'generic';
 
-export type DesktopNotificationAction = {
-  type: 'button';
-  text: string;
+export type DesktopNotificationAction =
+  | {
+      type: 'button';
+      text: string;
+      action?: 'allow' | 'deny' | 'focus';
+    }
+  | {
+      type: 'text';
+      text: string;
+      placeholder?: string;
+      action: 'reply';
+    };
+
+export type DesktopNotificationContext = {
+  approvalId?: string;
+  questionToolCallId?: string;
+  questionId?: string;
 };
 
 export type DesktopShowNotificationRequest = {
@@ -12,4 +26,5 @@ export type DesktopShowNotificationRequest = {
   silent?: boolean;
   actions?: DesktopNotificationAction[];
   kind?: DesktopNotificationKind;
+  context?: DesktopNotificationContext;
 };

@@ -54,11 +54,14 @@ function approvalNotificationPayload(
     tag: 'spirit-approval',
     title: formatSessionPrefixedTitle(sessionName, i18n.t('notification.approval.title')),
     body: isWindows ? body : `${body}\n${i18n.t('notification.approval.returnToApp')}`,
-    ...(isWindows
+    ...(isWindows || window.spiritDesktop?.platform === 'darwin'
       ? {
           actions: [
-            { type: 'button' as const, text: i18n.t('app.allow') },
-            { type: 'button' as const, text: i18n.t('app.deny') },
+            { type: 'button' as const, text: i18n.t('app.allow'), action: 'allow' as const },
+            { type: 'button' as const, text: i18n.t('app.deny'), action: 'deny' as const },
+            ...(window.spiritDesktop?.platform === 'darwin'
+              ? [{ type: 'text' as const, text: i18n.t('notification.approval.reply'), action: 'reply' as const }]
+              : []),
           ],
         }
       : {}),
@@ -76,11 +79,32 @@ function askQuestionsNotificationPayload(
       ? i18n.t('notification.askQuestions.nQuestions', { count: questionCount })
       : i18n.t('notification.askQuestions.fallback'));
 
+  const singleTextQuestion =
+    pending.request.questions.length === 1 && pending.request.questions[0]?.kind === 'text'
+      ? pending.request.questions[0]
+      : undefined;
+
   return {
     kind: 'ask-questions',
     tag: `spirit-ask-${pending.toolCallId}`,
     title: formatSessionPrefixedTitle(sessionName, i18n.t('notification.askQuestions.title')),
     body: detail,
+    ...(singleTextQuestion && window.spiritDesktop?.platform === 'darwin'
+      ? {
+          actions: [
+            {
+              type: 'text' as const,
+              text: i18n.t('notification.askQuestions.reply'),
+              placeholder: singleTextQuestion.title,
+              action: 'reply' as const,
+            },
+          ],
+          context: {
+            questionToolCallId: pending.toolCallId,
+            questionId: singleTextQuestion.id,
+          },
+        }
+      : {}),
   };
 }
 

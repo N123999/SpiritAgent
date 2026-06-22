@@ -1,10 +1,11 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
 
 let mainWindowRef: BrowserWindow | undefined;
 let pendingApproval = false;
 let pendingQuestions = false;
 let pendingTaskComplete = false;
 let flashFrameActive = false;
+let dockBounceId: number | undefined;
 
 function shouldRequestAttention(away: boolean): boolean {
   return away && (pendingApproval || pendingQuestions || pendingTaskComplete);
@@ -49,5 +50,16 @@ export function refreshDesktopAttention(away: boolean): void {
 
   if (process.platform === 'win32' || process.platform === 'linux') {
     window.flashFrame(active);
+    return;
+  }
+
+  if (process.platform === 'darwin' && app.dock) {
+    if (dockBounceId !== undefined) {
+      app.dock.cancelBounce(dockBounceId);
+      dockBounceId = undefined;
+    }
+    if (active) {
+      dockBounceId = app.dock.bounce('informational');
+    }
   }
 }

@@ -643,6 +643,11 @@ async function createMainWindow(): Promise<BrowserWindow> {
 
   registerDesktopNotifications(window, {
     onApprovalAction: handleApprovalNotificationAction,
+    onNotificationReply: (payload) => {
+      if (!window.webContents.isDestroyed()) {
+        window.webContents.send('desktop:notification-reply', payload);
+      }
+    },
   });
   registerDesktopAttention(window);
   registerWindowPresence(window);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import i18n from '@/lib/i18n';
+import { buildSingleTextQuestionNotificationReplyResult } from "@/lib/ask-questions-notification-reply";
+import i18n from "@/lib/i18n";
 
 import type { SettingsFormState } from "@/components/settings/types";
 import { useHostApi } from "@/hooks/useHostApi";
@@ -2368,6 +2369,56 @@ export function useDesktopRuntime() {
       void submitApproval({ kind: decision });
     });
   }, [submitApproval]);
+
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeNotificationReply) {
+      return;
+    }
+    return bridge.subscribeNotificationReply((payload) => {
+      if (payload.kind !== 'approval') {
+        return;
+      }
+      const current = snapshotRef.current?.conversation.pendingToolApproval;
+      const userMessage = payload.text.trim();
+      if (!current || !userMessage) {
+        return;
+      }
+      void submitApproval({ kind: 'guidance', userMessage });
+    });
+  }, [submitApproval]);
+
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!api || !bridge?.subscribeNotificationReply) {
+      return;
+    }
+    return bridge.subscribeNotificationReply((payload) => {
+      if (payload.kind !== 'ask-questions') {
+        return;
+      }
+      const result = buildSingleTextQuestionNotificationReplyResult(
+        snapshotRef.current?.conversation.pendingQuestions,
+        payload,
+      );
+      if (!result) {
+        return;
+      }
+      void (async () => {
+        setBusyAction('questions');
+        try {
+          const next = await api.replyPendingQuestions(result);
+          applySnapshot(next);
+          setQuestionError('');
+          setRuntimeError('');
+        } catch (error) {
+          setRuntimeError(describeError(error));
+        } finally {
+          setBusyAction('');
+        }
+      })();
+    });
+  }, [api, applySnapshot]);
 
   const submitQuestions = useCallback(async () => {
     if (!api || !pendingQuestions) {
