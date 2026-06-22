@@ -1074,7 +1074,8 @@
     "askQuestions": {
       "title": "Questions pending",
       "nQuestions": "{{count}} questions to answer",
-      "fallback": "Return to the app to answer questions."
+      "fallback": "Return to the app to answer questions.",
+      "reply": "Answer here"
     }
   },
   "tool": {

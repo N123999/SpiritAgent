@@ -2386,6 +2386,57 @@ export function useDesktopRuntime() {
     });
   }, [submitApproval]);
 
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!api || !bridge?.subscribeNotificationReply) {
+      return;
+    }
+    return bridge.subscribeNotificationReply((payload) => {
+      if (payload.kind !== 'ask-questions') {
+        return;
+      }
+      const current = snapshotRef.current?.conversation.pendingQuestions;
+      if (!current || payload.context?.questionToolCallId !== current.toolCallId) {
+        return;
+      }
+      const question = current.request.questions[0];
+      const text = payload.text.trim();
+      if (
+        current.request.questions.length !== 1 ||
+        !question ||
+        question.kind !== 'text' ||
+        payload.context?.questionId !== question.id ||
+        !text
+      ) {
+        return;
+      }
+      void (async () => {
+        setBusyAction('questions');
+        try {
+          const next = await api.replyPendingQuestions({
+            status: 'answered',
+            answers: [
+              {
+                questionId: question.id,
+                title: question.title,
+                kind: question.kind,
+                answered: true,
+                text,
+              },
+            ],
+          });
+          applySnapshot(next);
+          setQuestionError('');
+          setRuntimeError('');
+        } catch (error) {
+          setRuntimeError(describeError(error));
+        } finally {
+          setBusyAction('');
+        }
+      })();
+    });
+  }, [api, applySnapshot]);
+
   const submitQuestions = useCallback(async () => {
     if (!api || !pendingQuestions) {
       return;

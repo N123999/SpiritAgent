@@ -79,11 +79,32 @@ function askQuestionsNotificationPayload(
       ? i18n.t('notification.askQuestions.nQuestions', { count: questionCount })
       : i18n.t('notification.askQuestions.fallback'));
 
+  const singleTextQuestion =
+    pending.request.questions.length === 1 && pending.request.questions[0]?.kind === 'text'
+      ? pending.request.questions[0]
+      : undefined;
+
   return {
     kind: 'ask-questions',
     tag: `spirit-ask-${pending.toolCallId}`,
     title: formatSessionPrefixedTitle(sessionName, i18n.t('notification.askQuestions.title')),
     body: detail,
+    ...(singleTextQuestion && window.spiritDesktop?.platform === 'darwin'
+      ? {
+          actions: [
+            {
+              type: 'text' as const,
+              text: i18n.t('notification.askQuestions.reply'),
+              placeholder: singleTextQuestion.title,
+              action: 'reply' as const,
+            },
+          ],
+          context: {
+            questionToolCallId: pending.toolCallId,
+            questionId: singleTextQuestion.id,
+          },
+        }
+      : {}),
   };
 }
 
