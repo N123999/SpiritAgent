@@ -184,6 +184,7 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
 
   const textAction = payload.actions?.find((action) => action.type === 'text');
   const buttonActions = payload.actions?.filter((action) => action.type === 'button') ?? [];
+  const canHandleReply = payload.kind === 'approval' || payload.kind === 'ask-questions';
   const windowsToastPayload = {
     title: payload.title,
     body: payload.body,
@@ -207,7 +208,7 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
         ...(buttonActions.length > 0
           ? { actions: buttonActions.map((action) => ({ type: 'button' as const, text: action.text })) }
           : {}),
-        ...(textAction && process.platform === 'darwin'
+        ...(textAction && canHandleReply && process.platform === 'darwin'
           ? { hasReply: true, replyPlaceholder: textAction.placeholder ?? textAction.text }
           : {}),
       });
@@ -222,7 +223,7 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
     });
   }
 
-  if ((payload.kind === 'approval' || payload.kind === 'ask-questions') && textAction) {
+  if (canHandleReply && textAction) {
     notification.on('reply', (_event, reply) => {
       void replyHandler?.({
         kind: payload.kind as 'approval' | 'ask-questions',
