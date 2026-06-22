@@ -656,22 +656,28 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               </div>
             </ScrollArea>
             <DropdownMenu modal>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('workspace.newToolTab')}
-                  title={t('common.new')}
-                  className={cn(
-                    'mb-1 size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground',
-                    'aria-expanded:bg-muted/35 aria-expanded:text-foreground aria-expanded:hover:bg-muted/50',
-                    instantHoverMotionClass,
-                  )}
-                >
-                  <Plus className="size-3.5" aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('workspace.newToolTab')}
+                      className={cn(
+                        'mb-1 size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground',
+                        'aria-expanded:bg-muted/35 aria-expanded:text-foreground aria-expanded:hover:bg-muted/50',
+                        instantHoverMotionClass,
+                      )}
+                    >
+                      <Plus className="size-3.5" aria-hidden />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}>
+                  {t('common.new')}
+                </TooltipContent>
+              </Tooltip>
               <DropdownMenuContent
                 align="start"
                 side="top"
