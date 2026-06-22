@@ -12,12 +12,14 @@ import {
   type ToolCallRequest,
   normalizeSpiritAgentMode,
 } from './ports.js';
+import type { ToolAgentMcpToolCatalogSnapshot } from './mcp/types.js';
 
 const TOOL_OUTPUT_RETRY_MAX_CHARS = 12_000;
 const TOOL_TRUNCATION_HEAD_RATIO_NUM = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
 const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
 const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
+const MCP_CATALOG_SECTION_PREFIX = '[SPIRIT_MCP_CATALOG]';
 const PLAN_SECTION_PREFIX = '[SPIRIT_PLAN]';
 const AGENT_MODE_SECTION_PREFIX = '[SPIRIT_AGENT_MODE]';
 const LOOP_MODE_SECTION_PREFIX = '[SPIRIT_LOOP_MODE]';
@@ -167,6 +169,12 @@ export interface ToolAgentEnabledSkillCatalogEntry {
   path: string;
 }
 
+export type {
+  ToolAgentMcpToolCatalogServerEntry,
+  ToolAgentMcpToolCatalogSnapshot,
+  ToolAgentMcpToolCatalogToolEntry,
+} from './mcp/types.js';
+
 export interface ToolAgentActiveSkillResourceEntry {
   kind: string;
   path: string;
@@ -259,6 +267,7 @@ export function buildToolAgentMessages(input: {
   historyMessages: JsonValue[];
   enabledRules?: ToolAgentEnabledRule[];
   enabledSkillCatalog?: ToolAgentEnabledSkillCatalogEntry[];
+  mcpToolCatalog?: ToolAgentMcpToolCatalogSnapshot;
   activeSkills?: ToolAgentActiveSkill[];
   model: string;
   planMetadata?: ToolAgentPlanMetadata;
@@ -271,6 +280,7 @@ export function buildToolAgentMessages(input: {
 }): JsonValue[] {
   const rulesSystemMessage = buildRulesSystemMessage(input.enabledRules ?? []);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(input.enabledSkillCatalog ?? []);
+  const mcpCatalogSystemMessage = buildMcpCatalogSystemMessage(input.mcpToolCatalog);
   const planSystemMessage = buildPlanSystemMessage(input.planMetadata);
   const agentModeSystemMessage = buildAgentModeSystemMessage(input.planMetadata);
   const loopModeSystemMessage = buildLoopModeSystemMessage(input.loopEnabled);
@@ -286,6 +296,7 @@ export function buildToolAgentMessages(input: {
         input.model,
         rulesSystemMessage,
         skillsCatalogSystemMessage,
+        mcpCatalogSystemMessage,
         agentModeSystemMessage,
         loopModeSystemMessage,
         planSystemMessage,
@@ -581,6 +592,49 @@ export function buildSkillsCatalogSystemMessage(
   return lines.join('\n').trimEnd();
 }
 
+export function buildMcpCatalogSystemMessage(
+  catalog?: ToolAgentMcpToolCatalogSnapshot,
+): string | undefined {
+  if (!catalog || catalog.servers.length === 0) {
+    return undefined;
+  }
+
+  const lines = [
+    MCP_CATALOG_SECTION_PREFIX,
+    'The host lists enabled MCP tools as metadata only.',
+    'Use tool_describe to fetch a tool input schema before tool_call.',
+    '',
+  ];
+
+  if (catalog.truncated) {
+    lines.push(
+      `<catalog truncated="true" totalTools="${catalog.totalToolCount}">`,
+      'Some tools were omitted from this catalog. Use tool_describe with the server and tool name to fetch schemas for tools not listed here.',
+      '</catalog>',
+      '',
+    );
+  }
+
+  for (const server of catalog.servers) {
+    const lastErrorAttribute =
+      server.lastError === undefined
+        ? ''
+        : ` lastError="${escapeRuleAttribute(server.lastError)}"`;
+    lines.push(
+      `<mcp-server name="${escapeRuleAttribute(server.name)}" displayName="${escapeRuleAttribute(server.displayName)}" state="${escapeRuleAttribute(server.state)}"${lastErrorAttribute}>`,
+    );
+    for (const tool of server.tools) {
+      lines.push(`<tool name="${escapeRuleAttribute(tool.name)}">`);
+      lines.push(tool.description.trimEnd());
+      lines.push('</tool>');
+    }
+    lines.push('</mcp-server>');
+    lines.push('');
+  }
+
+  return lines.join('\n').trimEnd();
+}
+
 export function buildPlanSystemMessage(
   _planMetadata?: ToolAgentPlanMetadata,
 ): string | undefined {
@@ -868,6 +922,7 @@ export function findSpiritSystemMessageContent(messages: JsonValue[]): string | 
       const sectionStart = [
         RULES_SECTION_PREFIX,
         SKILLS_CATALOG_SECTION_PREFIX,
+        MCP_CATALOG_SECTION_PREFIX,
         PLAN_SECTION_PREFIX,
         AGENT_MODE_SECTION_PREFIX,
         LOOP_MODE_SECTION_PREFIX,

@@ -90,3 +90,30 @@ export interface McpClientInfo {
   name: string;
   version: string;
 }
+
+export interface McpToolIndexEntry {
+  server: string;
+  displayName: string;
+  toolName: string;
+  description: string;
+  inputSchema: import('../ports.js').JsonValue;
+}
+
+export interface ToolAgentMcpToolCatalogToolEntry {
+  name: string;
+  description: string;
+}
+
+export interface ToolAgentMcpToolCatalogServerEntry {
+  name: string;
+  displayName: string;
+  state: McpServerRuntimeState;
+  lastError?: string;
+  tools: ToolAgentMcpToolCatalogToolEntry[];
+}
+
+export interface ToolAgentMcpToolCatalogSnapshot {
+  servers: ToolAgentMcpToolCatalogServerEntry[];
+  truncated: boolean;
+  totalToolCount: number;
+}
