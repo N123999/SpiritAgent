@@ -48,21 +48,7 @@ import {
 const WINDOWS_USER_ENV_REGISTRY_PATH = 'HKCU\\Environment';
 const WINDOWS_MACHINE_ENV_REGISTRY_PATH =
   'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment';
-const MCP_FUNCTION_NAME_LIMIT = 64;
-const MCP_SERVER_FRAGMENT_LIMIT = 16;
-const MCP_TOOL_FRAGMENT_LIMIT = 24;
 const MCP_CATALOG_TOOL_LIMIT = 128;
-
-interface McpToolRoute {
-  functionName: string;
-  server: string;
-  displayName: string;
-  toolName: string;
-}
-
-interface McpToolCatalog {
-  routes: Map<string, McpToolRoute>;
-}
 
 interface McpPromptCatalogEntry {
   name: string;
@@ -96,7 +82,6 @@ type EnvLookupStore = Map<string, string>;
 interface UserMcpToolingCacheEntry {
   digest: string;
   indexEntries: McpToolIndexEntry[];
-  routes: Map<string, McpToolRoute>;
   prompts: Map<string, McpPromptCatalogEntry[]>;
   serverStates: Map<string, { state: McpServerRuntimeState; cachedTools: number; lastError?: string }>;
 }
@@ -116,9 +101,6 @@ export class McpService {
     serverScopes: {},
   };
   private configDigestStore = mcpConfigDigest({ servers: {} });
-  private toolCatalogStore: McpToolCatalog = {
-    routes: new Map<string, McpToolRoute>(),
-  };
   private toolIndexStore: McpToolIndexEntry[] = [];
   private catalogRevisionStore = 0;
   private promptCatalogStore = new Map<string, McpPromptCatalogEntry[]>();
@@ -289,9 +271,6 @@ export class McpService {
       this.loadErrorStore = undefined;
     } catch (error) {
       this.loadErrorStore = describeError(error);
-      this.toolCatalogStore = {
-        routes: new Map<string, McpToolRoute>(),
-      };
       this.toolIndexStore = [];
       this.catalogRevisionStore += 1;
       this.promptCatalogStore = new Map<string, McpPromptCatalogEntry[]>();
@@ -310,37 +289,26 @@ export class McpService {
     this.launchBackgroundRefresh(force);
   }
 
-  async requestFromFunctionCall(name: string, argumentsJson: string): Promise<McpToolRequest | {
+  async requestFromFunctionCall(name: string, argumentsJson: string): Promise<{
     kind: 'lazyToolGateway';
     name: string;
     argumentsJson: string;
   } | undefined> {
-    if (isLazyToolGatewayToolName(name)) {
-      return {
-        kind: 'lazyToolGateway',
-        name,
-        argumentsJson,
-      };
-    }
-
-    let route = this.toolCatalogStore.routes.get(name);
-    if (!route) {
-      await this.ensureToolingCache();
-      route = this.toolCatalogStore.routes.get(name);
-    }
-
-    if (!route) {
+    if (!isLazyToolGatewayToolName(name)) {
       return undefined;
     }
 
-    return this.createToolRequest(route.server, route.toolName, argumentsJson, route.functionName);
+    return {
+      kind: 'lazyToolGateway',
+      name,
+      argumentsJson,
+    };
   }
 
   async createToolRequest(
     serverName: string,
     toolName: string,
     argsJson?: string,
-    functionName?: string,
   ): Promise<McpToolRequest> {
     await this.refreshConfig();
 
@@ -351,7 +319,7 @@ export class McpService {
 
     return {
       kind: 'mcpTool',
-      name: functionName ?? syntheticMcpFunctionName(server.name, toolName),
+      name: `${server.name}/${toolName}`,
       server: server.name,
       displayName: server.displayName,
       toolName,
@@ -693,7 +661,6 @@ export class McpService {
     }
 
     const indexEntries: McpToolIndexEntry[] = [];
-    const routes = new Map<string, McpToolRoute>();
     const prompts = new Map<string, McpPromptCatalogEntry[]>();
 
     const { user: userConfigFile } = await loadMergedMcpConfigForWorkspace(
@@ -710,9 +677,6 @@ export class McpService {
     ) {
       userCacheHit = true;
       indexEntries.push(...sharedUserMcpToolingCache.indexEntries);
-      for (const [functionName, route] of sharedUserMcpToolingCache.routes) {
-        routes.set(functionName, route);
-      }
       for (const [serverName, entries] of sharedUserMcpToolingCache.prompts) {
         prompts.set(serverName, entries);
       }
@@ -724,27 +688,22 @@ export class McpService {
       }
     } else if (userServers.length > 0) {
       const userIndexEntries: McpToolIndexEntry[] = [];
-      const userRoutes = new Map<string, McpToolRoute>();
       const userPrompts = new Map<string, McpPromptCatalogEntry[]>();
       const userServerStates = new Map<
         string,
         { state: McpServerRuntimeState; cachedTools: number; lastError?: string }
       >();
       for (const server of userServers) {
-        const status = await this.discoverServerTooling(server, userIndexEntries, userRoutes, userPrompts);
+        const status = await this.discoverServerTooling(server, userIndexEntries, userPrompts);
         userServerStates.set(server.name, status);
       }
       sharedUserMcpToolingCache = {
         digest: currentUserDigest,
         indexEntries: [...userIndexEntries],
-        routes: new Map(userRoutes),
         prompts: new Map(userPrompts),
         serverStates: new Map(userServerStates),
       };
       indexEntries.push(...userIndexEntries);
-      for (const [functionName, route] of userRoutes) {
-        routes.set(functionName, route);
-      }
       for (const [serverName, entries] of userPrompts) {
         prompts.set(serverName, entries);
       }
@@ -758,12 +717,9 @@ export class McpService {
     });
 
     for (const server of workspaceServers) {
-      await this.discoverServerTooling(server, indexEntries, routes, prompts);
+      await this.discoverServerTooling(server, indexEntries, prompts);
     }
 
-    this.toolCatalogStore = {
-      routes,
-    };
     this.toolIndexStore = indexEntries;
     this.catalogRevisionStore += 1;
     this.promptCatalogStore = prompts;
@@ -778,7 +734,6 @@ export class McpService {
   private async discoverServerTooling(
     server: ResolvedMcpServerConfig,
     indexEntries: McpToolIndexEntry[],
-    routes: Map<string, McpToolRoute>,
     prompts: Map<string, McpPromptCatalogEntry[]>,
   ): Promise<{ state: McpServerRuntimeState; cachedTools: number; lastError?: string }> {
     this.registry.setServerState(server.name, 'loading', { cachedTools: 0 });
@@ -796,7 +751,6 @@ export class McpService {
           : [];
 
       for (const tool of discoveredTools) {
-        const functionName = syntheticMcpFunctionName(server.name, tool.name);
         const description = tool.description ?? `MCP tool ${tool.name} from server ${server.displayName}.`;
         const inputSchema = isJsonRecord(tool.inputSchema)
           ? (tool.inputSchema as JsonValue)
@@ -811,12 +765,6 @@ export class McpService {
           toolName: tool.name,
           description,
           inputSchema,
-        });
-        routes.set(functionName, {
-          functionName,
-          server: server.name,
-          displayName: server.displayName,
-          toolName: tool.name,
         });
       }
 
@@ -1361,45 +1309,6 @@ function isMcpToolRequest(value: JsonValue): value is McpToolRequest {
     && typeof value.displayName === 'string'
     && typeof value.toolName === 'string'
     && 'arguments' in value;
-}
-
-function syntheticMcpFunctionName(server: string, tool: string): string {
-  const serverFragment = truncateIdentifierFragment(
-    sanitizeIdentifierFragment(server),
-    MCP_SERVER_FRAGMENT_LIMIT,
-  );
-  const toolFragment = truncateIdentifierFragment(
-    sanitizeIdentifierFragment(tool),
-    MCP_TOOL_FRAGMENT_LIMIT,
-  );
-  const digest = createHash('sha1')
-    .update(`${serverFragment}\0${toolFragment}`)
-    .digest('hex')
-    .slice(0, 8);
-
-  const base = `mcp__${serverFragment}__${toolFragment}__${digest}`;
-  return base.length > MCP_FUNCTION_NAME_LIMIT ? base.slice(0, MCP_FUNCTION_NAME_LIMIT) : base;
-}
-
-function sanitizeIdentifierFragment(input: string): string {
-  let out = '';
-  for (const char of input) {
-    if ((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9')) {
-      out += char.toLowerCase();
-      continue;
-    }
-
-    if (!out.endsWith('_')) {
-      out += '_';
-    }
-  }
-
-  const trimmed = out.replace(/^_+|_+$/gu, '');
-  return trimmed || 'tool';
-}
-
-function truncateIdentifierFragment(input: string, maxLength: number): string {
-  return Array.from(input).slice(0, maxLength).join('');
 }
 
 function findToolIndexEntry(

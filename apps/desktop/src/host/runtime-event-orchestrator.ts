@@ -106,11 +106,7 @@ export interface DesktopRuntimeEventOrchestratorOptions {
 }
 
 function isMcpLikeToolName(toolName: string): boolean {
-  return (
-    toolName === 'tool_call'
-    || toolName.startsWith('mcp__')
-    || toolName.includes('microsoft_docs')
-  );
+  return toolName === 'tool_call' || toolName === 'tool_describe';
 }
 
 export class DesktopRuntimeEventOrchestrator {
