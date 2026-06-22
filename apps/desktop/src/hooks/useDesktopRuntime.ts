@@ -2369,6 +2369,23 @@ export function useDesktopRuntime() {
     });
   }, [submitApproval]);
 
+  useEffect(() => {
+    const bridge = window.spiritDesktop;
+    if (!bridge?.subscribeNotificationReply) {
+      return;
+    }
+    return bridge.subscribeNotificationReply((payload) => {
+      if (payload.kind !== 'approval') {
+        return;
+      }
+      const userMessage = payload.text.trim();
+      if (!userMessage) {
+        return;
+      }
+      void submitApproval({ kind: 'guidance', userMessage });
+    });
+  }, [submitApproval]);
+
   const submitQuestions = useCallback(async () => {
     if (!api || !pendingQuestions) {
       return;

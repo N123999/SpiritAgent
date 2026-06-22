@@ -646,6 +646,40 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       ipcRenderer.removeListener('desktop:approval-from-notification', onApproval);
     };
   },
+  subscribeNotificationReply(callback: (payload: {
+    kind: 'approval' | 'ask-questions';
+    text: string;
+    context?: {
+      approvalId?: string;
+      questionToolCallId?: string;
+      questionId?: string;
+    };
+  }) => void) {
+    const onReply = (
+      _event: Electron.IpcRendererEvent,
+      payload: {
+        kind?: string;
+        text?: string;
+        context?: {
+          approvalId?: string;
+          questionToolCallId?: string;
+          questionId?: string;
+        };
+      },
+    ) => {
+      if ((payload?.kind === 'approval' || payload?.kind === 'ask-questions') && typeof payload.text === 'string') {
+        callback({
+          kind: payload.kind,
+          text: payload.text,
+          context: payload.context,
+        });
+      }
+    };
+    ipcRenderer.on('desktop:notification-reply', onReply);
+    return () => {
+      ipcRenderer.removeListener('desktop:notification-reply', onReply);
+    };
+  },
   subscribeNewSession(callback: () => void) {
     const onNewSession = () => {
       callback();

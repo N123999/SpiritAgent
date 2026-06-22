@@ -1065,7 +1065,8 @@
     },
     "approval": {
       "title": "待审批",
-      "returnToApp": "返回应用以处理审批。"
+      "returnToApp": "返回应用以处理审批。",
+      "reply": "回复指引"
     },
     "askQuestions": {
       "title": "待回答问题",

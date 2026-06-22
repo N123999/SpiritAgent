@@ -1068,7 +1068,8 @@
     },
     "approval": {
       "title": "Approval required",
-      "returnToApp": "Return to the app to handle approval."
+      "returnToApp": "Return to the app to handle approval.",
+      "reply": "Reply with guidance"
     },
     "askQuestions": {
       "title": "Questions pending",
