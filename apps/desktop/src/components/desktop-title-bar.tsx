@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
+import { useRef } from "react";
 import { useSessionSidebarChrome } from "@/contexts/session-sidebar-chrome-context";
 import { useTheme } from "@/hooks/useTheme";
+import { useSessionSidebarShellRightInsetPx } from "@/hooks/useSessionSidebarShellRightInsetPx";
 import { spiritAgentTitleBarIconSrc } from "@/lib/brand-icon";
 import { sessionSidebarShellWidth } from "@/lib/desktop-chrome";
 import { desktopMicaTitleBarTintClass } from "@/lib/desktop-mica-surface";
@@ -191,15 +193,15 @@ function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) 
  * Windows：自绘顶栏（LOGO + 菜单文案），窗口控制键仍由 `titleBarOverlay` 绘制。
  */
 export function DesktopTitleBar({ useMicaBackdrop }: DesktopTitleBarProps) {
+  const headerRef = useRef<HTMLElement>(null);
   const { open: sessionSidebarOpen, widthPx: sessionSidebarWidthPx } = useSessionSidebarChrome();
-  /** Blur 开启且侧边栏展开：横向分割线锚定在侧栏 shell 右缘，而非菜单列 flex 分界。 */
-  const partialBorder = useMicaBackdrop && sessionSidebarOpen;
-  const shellWidthCss = sessionSidebarOpen
-    ? sessionSidebarShellWidth(true, sessionSidebarWidthPx)
-    : null;
+  /** Blur 下横向分割线锚定侧栏 shell 右缘；收起/展开时随 shell 实际宽度同步移动。 */
+  const partialBorder = useMicaBackdrop;
+  const sidebarShellRightInsetPx = useSessionSidebarShellRightInsetPx(headerRef, partialBorder);
 
   return (
     <header
+      ref={headerRef}
       data-spirit-surface="desktop-title-bar"
       className={cn(
         "relative electron-drag flex h-8 w-full shrink-0 overflow-hidden border-b",
@@ -207,10 +209,10 @@ export function DesktopTitleBar({ useMicaBackdrop }: DesktopTitleBarProps) {
         titleBarSurfaceClass(useMicaBackdrop, !partialBorder),
       )}
     >
-      {partialBorder && shellWidthCss ? (
+      {partialBorder ? (
         <div
           className="pointer-events-none absolute bottom-0 right-0 h-px bg-black/5 dark:bg-white/10"
-          style={{ left: shellWidthCss }}
+          style={{ left: sidebarShellRightInsetPx }}
           aria-hidden
         />
       ) : null}
