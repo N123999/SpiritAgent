@@ -294,6 +294,13 @@ declare global {
     subscribeApprovalFromNotification(
       callback: (payload: { decision: 'allow' | 'deny' }) => void,
     ): () => void;
+    subscribeNotificationReply(
+      callback: (payload: {
+        kind: 'approval' | 'ask-questions';
+        text: string;
+        context?: import('./lib/desktop-notification-types.js').DesktopNotificationContext;
+      }) => void,
+    ): () => void;
     subscribeNewSession(callback: () => void): () => void;
   }
 

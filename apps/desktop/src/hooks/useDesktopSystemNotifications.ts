@@ -54,11 +54,14 @@ function approvalNotificationPayload(
     tag: 'spirit-approval',
     title: formatSessionPrefixedTitle(sessionName, i18n.t('notification.approval.title')),
     body: isWindows ? body : `${body}\n${i18n.t('notification.approval.returnToApp')}`,
-    ...(isWindows
+    ...(isWindows || window.spiritDesktop?.platform === 'darwin'
       ? {
           actions: [
-            { type: 'button' as const, text: i18n.t('app.allow') },
-            { type: 'button' as const, text: i18n.t('app.deny') },
+            { type: 'button' as const, text: i18n.t('app.allow'), action: 'allow' as const },
+            { type: 'button' as const, text: i18n.t('app.deny'), action: 'deny' as const },
+            ...(window.spiritDesktop?.platform === 'darwin'
+              ? [{ type: 'text' as const, text: i18n.t('notification.approval.reply'), action: 'reply' as const }]
+              : []),
           ],
         }
       : {}),
