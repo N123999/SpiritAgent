@@ -8,9 +8,11 @@ import {
 import type { LspWriteDiagnosticsUi } from "@spirit-agent/core";
 
 import {
-  HoverDetailTooltip,
-  useHoverDetailTooltipContext,
-} from "@/components/ui/hover-detail-tooltip";
+  Tooltip,
+  TooltipContent,
+  TooltipItem,
+  useTooltipContext,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 function LspDiagnosticsDetailPanel({ diagnostics }: { diagnostics: LspWriteDiagnosticsUi }) {
@@ -46,7 +48,6 @@ function LspDiagnosticsDetailPanel({ diagnostics }: { diagnostics: LspWriteDiagn
 }
 
 export function FileToolLspDiagnosticsHoverTrigger({
-  itemId,
   diagnostics,
   children,
 }: {
@@ -54,7 +55,7 @@ export function FileToolLspDiagnosticsHoverTrigger({
   diagnostics: LspWriteDiagnosticsUi;
   children: ReactElement<{ className?: string; onPointerEnter?: () => void }>;
 }) {
-  const { getTriggerProps } = useHoverDetailTooltipContext<LspWriteDiagnosticsUi>();
+  const { getTriggerProps } = useTooltipContext<LspWriteDiagnosticsUi>();
   const { onPointerEnter } = getTriggerProps(diagnostics);
 
   if (!isValidElement(children)) {
@@ -62,13 +63,13 @@ export function FileToolLspDiagnosticsHoverTrigger({
   }
 
   return (
-    <HoverDetailTooltip.Anchor itemId={itemId}>
+    <Tooltip.Item item={diagnostics}>
       {cloneElement(children, {
         onPointerEnter: () => {
           onPointerEnter();
         },
       })}
-    </HoverDetailTooltip.Anchor>
+    </Tooltip.Item>
   );
 }
 
@@ -82,9 +83,10 @@ export function FileToolLspDiagnosticsHover({
   children: ReactNode;
 }) {
   return (
-    <HoverDetailTooltip<LspWriteDiagnosticsUi> getItemId={() => itemId} openDelayMs={300}>
-      <HoverDetailTooltip.TriggerZone className="min-w-0">{children}</HoverDetailTooltip.TriggerZone>
-      <HoverDetailTooltip.Content
+    <Tooltip<LspWriteDiagnosticsUi> getItemId={() => itemId} delayDuration={300}>
+      <Tooltip.Zone className="min-w-0">{children}</Tooltip.Zone>
+      <TooltipContent
+        appearance="detail"
         side="right"
         align="start"
         sideOffset={8}
@@ -95,7 +97,7 @@ export function FileToolLspDiagnosticsHover({
           const active = activeItem as LspWriteDiagnosticsUi | null;
           return active ? <LspDiagnosticsDetailPanel diagnostics={active} /> : null;
         }}
-      </HoverDetailTooltip.Content>
-    </HoverDetailTooltip>
+      </TooltipContent>
+    </Tooltip>
   );
 }
