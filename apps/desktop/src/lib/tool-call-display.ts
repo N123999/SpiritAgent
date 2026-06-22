@@ -6,6 +6,7 @@ import {
   shellHasExpandableContent,
 } from '@/lib/shell-tool-display';
 import {
+  isSkillMarkdownPath,
   LEGACY_READ_FILE_HEADLINE,
   lineRangeForReadFile,
   parseReadFilePathFromToolSnapshot,
@@ -145,14 +146,19 @@ function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts
     const lineRange = argsRecord
       ? lineRangeForReadFile(argsRecord.start_line, argsRecord.end_line)
       : '';
+    const skillMarkdownContent = isSkillMarkdownPath(rawPath) ? tool.outputExcerpt : undefined;
     const computedDetail = readFileToolHeadlineDetail(rawPath, {
       emptyFileLabel: i18n.t('tool.file'),
       toolOutputLabel: i18n.t('tool.toolOutput'),
       lineRange,
-    });
+      skillMarkdownContent,
+    }).trim();
+    const detail = isSkillMarkdownPath(rawPath)
+      ? (computedDetail || undefined)
+      : (computedDetail || snapshotDetail || undefined);
     return {
       headline: i18n.t(readFileVerbKey(rawPath), tOpts),
-      ...((computedDetail || snapshotDetail) ? { detail: computedDetail || snapshotDetail } : {}),
+      ...(detail ? { detail } : {}),
     };
   }
 
@@ -163,10 +169,10 @@ function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts
       const legacyDetail = readFileToolHeadlineDetail(legacyPath, {
         emptyFileLabel: i18n.t('tool.file'),
         toolOutputLabel: i18n.t('tool.toolOutput'),
-      });
+      }).trim();
       return {
         headline: i18n.t(readFileVerbKey(legacyPath), tOpts),
-        detail: legacyDetail,
+        ...(legacyDetail ? { detail: legacyDetail } : {}),
       };
     }
   }

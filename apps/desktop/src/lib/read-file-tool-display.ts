@@ -13,6 +13,7 @@ export function readFileToolHeadlineDetail(
     emptyFileLabel: string;
     toolOutputLabel: string;
     lineRange?: string;
+    skillMarkdownContent?: string;
   },
 ): string {
   const lineRange = options.lineRange ?? '';
@@ -22,6 +23,7 @@ export function readFileToolHeadlineDetail(
   return readFileHeadlineDetailForPath(rawPath, {
     emptyFileLabel: options.emptyFileLabel,
     lineRange,
+    skillMarkdownContent: options.skillMarkdownContent,
   });
 }
 

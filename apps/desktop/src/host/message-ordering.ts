@@ -17,6 +17,7 @@ import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js'
 import { listDirectoryToolDisplayPath } from '@spirit-agent/host-internal/skill-paths';
 
 import {
+  isSkillMarkdownPath,
   parseReadFilePathFromRequest,
   lineRangeForReadFile,
 } from '../lib/read-file-skill-display.js';
@@ -468,7 +469,7 @@ export function toolCallSummaryForPhase(
   options?: ToolCallSummaryOptions,
 ): ToolCallSummaryCopy {
   if (toolName === 'read_file') {
-    return readFileSummaryCopy(request, phase);
+    return readFileSummaryCopy(request, phase, options);
   }
 
   const summaryRequest = resolveToolSummaryRequest(toolName, request);
@@ -1121,7 +1122,11 @@ export function headlineForStreamingToolPreview(
   return toolCallSummaryForStreamingPreview(messages, toolCallId, toolName, request, options).headline;
 }
 
-function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase']): ToolCallSummaryCopy {
+function readFileSummaryCopy(
+  request: unknown,
+  phase?: ToolBlockSnapshot['phase'],
+  options?: ToolCallSummaryOptions,
+): ToolCallSummaryCopy {
   const ctx = phase ? phaseToVerbContext(phase) : undefined;
   const tOpts = ctx ? { context: ctx } : {};
   if (!request || typeof request !== 'object') {
@@ -1131,10 +1136,15 @@ function readFileSummaryCopy(request: unknown, phase?: ToolBlockSnapshot['phase'
   const record = request as Record<string, unknown>;
   const rawPath = parseReadFilePathFromRequest(request);
   const lineRange = lineRangeForReadFile(record.start_line, record.end_line);
+  const skillMarkdownContent =
+    isSkillMarkdownPath(rawPath) && typeof options?.executionOutput === 'string'
+      ? options.executionOutput
+      : undefined;
   const detail = readFileToolHeadlineDetail(rawPath, {
     emptyFileLabel: i18n.t('tool.file'),
     toolOutputLabel: i18n.t('tool.toolOutput'),
     lineRange,
+    skillMarkdownContent,
   });
 
   return {
