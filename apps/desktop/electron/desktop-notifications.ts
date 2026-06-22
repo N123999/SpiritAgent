@@ -184,7 +184,7 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
 
   const textAction = payload.actions?.find((action) => action.type === 'text');
   const buttonActions = payload.actions?.filter((action) => action.type === 'button') ?? [];
-  const canHandleReply = payload.kind === 'approval' || payload.kind === 'ask-questions';
+  const replyKind = payload.kind === 'approval' || payload.kind === 'ask-questions' ? payload.kind : undefined;
   const windowsToastPayload = {
     title: payload.title,
     body: payload.body,
@@ -208,7 +208,7 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
         ...(buttonActions.length > 0
           ? { actions: buttonActions.map((action) => ({ type: 'button' as const, text: action.text })) }
           : {}),
-        ...(textAction && canHandleReply && process.platform === 'darwin'
+        ...(textAction && replyKind && process.platform === 'darwin'
           ? { hasReply: true, replyPlaceholder: textAction.placeholder ?? textAction.text }
           : {}),
       });
@@ -223,13 +223,15 @@ export async function showDesktopNotification(payload: DesktopNotificationPayloa
     });
   }
 
-  if (canHandleReply && textAction) {
+  if (replyKind && textAction) {
     notification.on('reply', (_event, reply) => {
-      void replyHandler?.({
-        kind: payload.kind as 'approval' | 'ask-questions',
-        text: reply,
-        context: payload.context,
-      });
+      void Promise.resolve(
+        replyHandler?.({
+          kind: replyKind,
+          text: reply,
+          context: payload.context,
+        }),
+      ).catch(() => undefined);
     });
   }
 
