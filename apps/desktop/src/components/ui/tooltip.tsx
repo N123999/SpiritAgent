@@ -568,7 +568,7 @@ function TooltipTrigger({
     }
   }, [global, isAnchor, registrationId, global.open])
 
-  const attachPointerEnter = (child: React.ReactElement<Record<string, unknown>>) =>
+  const attachTriggerPointerHandlers = (child: React.ReactElement<Record<string, unknown>>) =>
     React.cloneElement(child, {
       ref: (node: HTMLElement | null) => {
         triggerElementRef.current = node;
@@ -587,19 +587,26 @@ function TooltipTrigger({
           prior(event)
         }
       },
+      onPointerDown: (event: React.PointerEvent) => {
+        global.onTriggerPointerDown(registrationId, itemId)
+        const prior = child.props.onPointerDown
+        if (typeof prior === "function") {
+          prior(event)
+        }
+      },
     })
 
   if (asChild) {
     const child = React.Children.only(children) as React.ReactElement<Record<string, unknown>>
-    const childWithEnter = attachPointerEnter(child)
+    const childWithHandlers = attachTriggerPointerHandlers(child)
     if (isAnchor) {
       return (
         <TooltipPrimitive.Trigger data-slot="tooltip-trigger" asChild {...props}>
-          {childWithEnter}
+          {childWithHandlers}
         </TooltipPrimitive.Trigger>
       )
     }
-    return childWithEnter
+    return childWithHandlers
   }
 
   const rowWrapper = (
@@ -612,6 +619,7 @@ function TooltipTrigger({
         }
       }}
       onPointerEnter={onPointerEnter}
+      onPointerDown={() => global.onTriggerPointerDown(registrationId, itemId)}
     >
       {children}
     </span>
@@ -707,4 +715,5 @@ export {
   TooltipProvider,
   TooltipTrigger,
   TooltipZone,
+  useOptionalTooltipGlobalContext,
 }

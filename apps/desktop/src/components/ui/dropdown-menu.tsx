@@ -5,6 +5,7 @@ import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import {
   DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
 } from "@/lib/desktop-chrome";
+import { isEventTargetWithinTooltipCompanionOverlays } from "@/hooks/tooltip-switch-registry";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
@@ -79,9 +80,21 @@ type DropdownMenuContentProps = React.ComponentProps<
   onEntryFocus?: (event: Event) => void;
 };
 
+function preventDropdownDismissForTooltipCompanion(
+  event: { target: EventTarget | null; preventDefault(): void },
+): void {
+  if (!isEventTargetWithinTooltipCompanionOverlays(event.target)) {
+    return;
+  }
+  event.preventDefault();
+}
+
 function DropdownMenuContent({
   className,
   sideOffset = 4,
+  onPointerDownOutside,
+  onInteractOutside,
+  onFocusOutside,
   ...props
 }: DropdownMenuContentProps) {
   return (
@@ -95,6 +108,18 @@ function DropdownMenuContent({
           DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
           className,
         )}
+        onPointerDownOutside={(event) => {
+          preventDropdownDismissForTooltipCompanion(event);
+          onPointerDownOutside?.(event);
+        }}
+        onInteractOutside={(event) => {
+          preventDropdownDismissForTooltipCompanion(event);
+          onInteractOutside?.(event);
+        }}
+        onFocusOutside={(event) => {
+          preventDropdownDismissForTooltipCompanion(event);
+          onFocusOutside?.(event);
+        }}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>

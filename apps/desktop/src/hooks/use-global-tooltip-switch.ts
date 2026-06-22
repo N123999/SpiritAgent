@@ -18,6 +18,7 @@ import {
   GlobalTooltipSwitchStateModel,
   TOOLTIP_SWITCH_CONTENT_LINGER_MS,
   isActiveTooltipAnchorSlot,
+  isPointerOverTooltipCompanionOverlays,
   isWithinGlobalTooltipRelatedTarget,
   tooltipSwitchSlotKey,
   tooltipSwitchSlotsEqual,
@@ -37,6 +38,13 @@ export type UseGlobalTooltipSwitchOptions = {
   defaultOpenDelayMs?: number;
   defaultCloseDelayMs?: number;
   defaultAnchorLingerMs?: number;
+};
+
+export type TooltipLingerAnchorScreenRect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
 };
 
 export type UseGlobalTooltipSwitchResult = {
@@ -66,8 +74,10 @@ export type UseGlobalTooltipSwitchResult = {
   ) => void;
   dismissActiveItem: () => void;
   dismissIfOpen: () => void;
+  onTriggerPointerDown: (registrationId: string, itemId: string) => void;
   isAnchorSlot: (registrationId: string, itemId: string) => boolean;
   onContentPointerEnter: () => void;
+  lingerAnchorScreenRect: TooltipLingerAnchorScreenRect | null;
 };
 
 export function useGlobalTooltipSwitch({
@@ -99,6 +109,8 @@ export function useGlobalTooltipSwitch({
   const openDelayByRegistrationRef = useRef<Map<string, number>>(new Map());
   const closeDelayByRegistrationRef = useRef<Map<string, number>>(new Map());
   const anchorLingerByRegistrationRef = useRef<Map<string, number>>(new Map());
+  const [lingerAnchorScreenRect, setLingerAnchorScreenRect] =
+    useState<TooltipLingerAnchorScreenRect | null>(null);
 
   activeItemRef.current = activeItem;
   activeSlotRef.current = activeSlot;
@@ -172,6 +184,18 @@ export function useGlobalTooltipSwitch({
     (closingRegistrationId: string | null) => {
       const closingItem = activeItemRef.current;
       const closingSlot = activeSlotRef.current;
+      const anchorEl = activeAnchorElementRef.current;
+      const anchorRectSnapshot = anchorEl?.isConnected
+        ? anchorEl.getBoundingClientRect()
+        : null;
+      if (anchorRectSnapshot) {
+        setLingerAnchorScreenRect({
+          top: anchorRectSnapshot.top,
+          left: anchorRectSnapshot.left,
+          width: anchorRectSnapshot.width,
+          height: anchorRectSnapshot.height,
+        });
+      }
       clearHoverOpenTimer();
       pointerSlotRef.current = null;
       setPointerSlot(null);
@@ -180,8 +204,7 @@ export function useGlobalTooltipSwitch({
       setActiveSlot(null);
       setActiveItem(null);
       setOpenKind("closed");
-      activeAnchorElementRef.current = null;
-
+      // 锚点保留到 linger 结束，避免 Popper 在退出动画期间漂到 (0,0)
       const anchorLingerMs = getAnchorLingerMs(closingRegistrationId);
       if (lingerClearTimerRef.current !== undefined) {
         clearTimeout(lingerClearTimerRef.current);
@@ -189,6 +212,8 @@ export function useGlobalTooltipSwitch({
       lingerClearTimerRef.current = setTimeout(() => {
         lingerClearTimerRef.current = undefined;
         setLingerAnchorSlot(null);
+        setLingerAnchorScreenRect(null);
+        activeAnchorElementRef.current = null;
       }, anchorLingerMs);
 
       if (lingerContentClearTimerRef.current !== undefined) {
@@ -237,6 +262,33 @@ export function useGlobalTooltipSwitch({
       dismissActiveItem();
     }
   }, [dismissActiveItem]);
+
+  const onTriggerPointerDown = useCallback(
+    (registrationId: string, itemId: string) => {
+      clearHoverOpenTimer();
+      clearHoverCloseTimer();
+      const active = activeSlotRef.current;
+      if (
+        activeItemRef.current !== null &&
+        active !== null &&
+        active.registrationId === registrationId &&
+        active.itemId === itemId
+      ) {
+        commitClose(registrationId);
+        return;
+      }
+      const pointer = pointerSlotRef.current;
+      if (
+        pointer !== null &&
+        pointer.registrationId === registrationId &&
+        pointer.itemId === itemId
+      ) {
+        pointerSlotRef.current = null;
+        setPointerSlot(null);
+      }
+    },
+    [clearHoverCloseTimer, clearHoverOpenTimer, commitClose],
+  );
 
   const isRelatedTarget = useCallback((target: EventTarget | null) => {
     if (isDomNode(target) && activeAnchorElementRef.current?.contains(target)) {
@@ -328,6 +380,7 @@ export function useGlobalTooltipSwitch({
       }
       setLingerAnchorSlot(null);
       setLingerActiveItem(null);
+      setLingerAnchorScreenRect(null);
 
       const slot = tooltipSwitchSlotKey(registrationId, itemId);
       pointerSlotRef.current = slot;
@@ -463,10 +516,11 @@ export function useGlobalTooltipSwitch({
         (isDomNode(event.target) &&
           activeAnchorElementRef.current?.contains(event.target)) ||
         isWithinGlobalTooltipRelatedTarget(event.target, {
-        triggerZones: triggerZonesRef.current.values(),
-        triggerElements: triggerElementsRef.current.values(),
-        content: contentRef.current,
-      });
+          triggerZones: triggerZonesRef.current.values(),
+          triggerElements: triggerElementsRef.current.values(),
+          content: contentRef.current,
+        }) ||
+        isPointerOverTooltipCompanionOverlays(event.clientX, event.clientY);
       if (isRelated) {
         clearHoverCloseTimer();
         return;
@@ -513,7 +567,9 @@ export function useGlobalTooltipSwitch({
     onTriggerZonePointerLeave,
     dismissActiveItem,
     dismissIfOpen,
+    onTriggerPointerDown,
     isAnchorSlot,
     onContentPointerEnter,
+    lingerAnchorScreenRect,
   };
 }

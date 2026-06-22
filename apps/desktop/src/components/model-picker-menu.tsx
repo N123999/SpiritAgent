@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 
@@ -13,8 +14,10 @@ import {
   TooltipContent,
   TooltipItem,
   TooltipTrigger,
+  useOptionalTooltipGlobalContext,
   useTooltipContext,
 } from "@/components/ui/tooltip";
+import type { TooltipLingerAnchorScreenRect } from "@/hooks/use-global-tooltip-switch";
 import {
   DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
   DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
@@ -102,6 +105,30 @@ function ModelPickerRow({
   );
 }
 
+function ModelPickerLingerAnchor({
+  model,
+  screenRect,
+}: {
+  model: ModelPickerItem;
+  screenRect: TooltipLingerAnchorScreenRect;
+}) {
+  return (
+    <TooltipItem item={model}>
+      <div
+        aria-hidden
+        className="pointer-events-none opacity-0"
+        style={{
+          position: "fixed",
+          top: screenRect.top,
+          left: screenRect.left,
+          width: screenRect.width,
+          height: screenRect.height,
+        }}
+      />
+    </TooltipItem>
+  );
+}
+
 export type ModelPickerMenuProps = {
   models: DesktopSnapshot["config"]["models"];
   catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
@@ -130,6 +157,7 @@ export function ModelPickerMenu({
   menuContentClassName,
 }: ModelPickerMenuProps) {
   const { t } = useTranslation();
+  const globalTooltip = useOptionalTooltipGlobalContext();
   const [internalOpen, setInternalOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -178,6 +206,29 @@ export function ModelPickerMenu({
       .filter((group) => group.items.length > 0);
   }, [displayTitleByModelName, modelFilter, modelGroups]);
 
+  const handleModelFilterChange = useCallback((next: string) => {
+    if (globalTooltip?.contentActiveItem != null && next !== modelFilter) {
+      flushSync(() => {
+        globalTooltip.dismissActiveItem();
+      });
+    }
+    setModelFilter(next);
+  }, [globalTooltip, modelFilter]);
+
+  const lingerPickerModel =
+    globalTooltip?.contentActiveItem != null
+      ? (globalTooltip.contentActiveItem as ModelPickerItem)
+      : null;
+  const lingerPickerModelInFiltered =
+    lingerPickerModel != null &&
+    filteredModelGroups.some((group) =>
+      group.items.some((item) => item.name === lingerPickerModel.name),
+    );
+  const showLingerAnchor =
+    lingerPickerModel != null &&
+    globalTooltip?.lingerAnchorScreenRect != null &&
+    !lingerPickerModelInFiltered;
+
   const activeModelSummary = activeModelProfile
     ? formatModelPickerLabel(
         modelDisplayTitleFromMap(activeModelProfile.name, displayTitleByModelName),
@@ -220,7 +271,7 @@ export function ModelPickerMenu({
           }
         }}
         filterValue={modelFilter}
-        onFilterChange={setModelFilter}
+        onFilterChange={handleModelFilterChange}
         filterPlaceholder={t("app.filterModels")}
         trigger={
           <Tooltip
@@ -255,76 +306,81 @@ export function ModelPickerMenu({
       >
         {filteredModelGroups.length === 0 ? (
           <p className="px-2 py-4 text-center text-xs text-muted-foreground">{t("app.noMatches")}</p>
-        ) : (
-          <Tooltip<ModelPickerItem> getItemId={(model) => model.name} delayDuration={0}>
-            <Tooltip.Zone>
-              {filteredModelGroups.map((group) => (
-                <div key={group.provider} className="mb-2 last:mb-0">
-                  <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
-                    {t(group.labelKey, { defaultValue: group.fallbackLabel })}
-                  </div>
-                  {group.items.map((model) => {
-                    const displayTitle = modelDisplayTitleFromMap(model.name, displayTitleByModelName);
-                    return (
-                      <ModelPickerRow
-                        key={`${group.provider}:${model.name}`}
-                        model={model}
-                        displayTitle={displayTitle}
-                        isActive={activeModelProfile?.name === model.name}
-                        onSelectModel={() => {
-                          onModelSelect(model.name);
-                          setModelFilter("");
-                          setModelMenuOpen(false);
-                        }}
-                      />
-                    );
-                  })}
+        ) : null}
+        <Tooltip<ModelPickerItem> getItemId={(model) => model.name} delayDuration={0}>
+          <Tooltip.Zone>
+            {showLingerAnchor && lingerPickerModel && globalTooltip?.lingerAnchorScreenRect ? (
+              <ModelPickerLingerAnchor
+                model={lingerPickerModel}
+                screenRect={globalTooltip.lingerAnchorScreenRect}
+              />
+            ) : null}
+            {filteredModelGroups.length === 0 ? null : filteredModelGroups.map((group) => (
+              <div key={group.provider} className="mb-2 last:mb-0">
+                <div className={DESKTOP_OVERLAY_LIST_GROUP_LABEL}>
+                  {t(group.labelKey, { defaultValue: group.fallbackLabel })}
                 </div>
-              ))}
-            </Tooltip.Zone>
-            <TooltipContent
-              appearance="detail"
-              side="right"
-              align="start"
-              sideOffset={8}
-              collisionPadding={16}
-              className={cn(
-                "z-[200]",
-                DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
-                DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
-                menuContentClassName,
-              )}
-            >
-              {(activeItem) => {
-                const model = activeItem as ModelPickerItem | null;
-                if (!model) {
-                  return null;
-                }
-                const group = filteredModelGroups.find((entry) =>
-                  entry.items.some((item) => item.name === model.name),
-                );
-                const providerLabel = group
-                  ? t(group.labelKey, { defaultValue: group.fallbackLabel })
-                  : model.provider ?? model.name;
+                {group.items.map((model) => {
+                  const displayTitle = modelDisplayTitleFromMap(model.name, displayTitleByModelName);
+                  return (
+                    <ModelPickerRow
+                      key={`${group.provider}:${model.name}`}
+                      model={model}
+                      displayTitle={displayTitle}
+                      isActive={activeModelProfile?.name === model.name}
+                      onSelectModel={() => {
+                        onModelSelect(model.name);
+                        setModelFilter("");
+                        setModelMenuOpen(false);
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </Tooltip.Zone>
+          <TooltipContent
+            appearance="detail"
+            side="right"
+            align="start"
+            sideOffset={8}
+            collisionPadding={16}
+            className={cn(
+              "z-[200]",
+              DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
+              DESKTOP_OVERLAY_LIST_DETAIL_WIDTH,
+              menuContentClassName,
+            )}
+          >
+            {(activeItem) => {
+              const model = activeItem as ModelPickerItem | null;
+              if (!model) {
+                return null;
+              }
+              const group = filteredModelGroups.find((entry) =>
+                entry.items.some((item) => item.name === model.name),
+              );
+              const providerLabel = group
+                ? t(group.labelKey, { defaultValue: group.fallbackLabel })
+                : model.provider ?? model.name;
 
-                return (
-                  <ModelPickerInspectorPanel
-                    model={model}
-                    catalogEntry={catalogDetailByModelName.get(model.name)}
-                    providerLabel={providerLabel}
-                    density="list"
-                    onReasoningEffortChange={(modelName, effort) => {
-                      onModelReasoningEffortSelect?.(modelName, effort);
-                      onModelSelect(modelName);
-                      setModelFilter("");
-                      setModelMenuOpen(false);
-                    }}
-                  />
-                );
-              }}
-            </TooltipContent>
-          </Tooltip>
-        )}
+              return (
+                <ModelPickerInspectorPanel
+                  model={model}
+                  catalogEntry={catalogDetailByModelName.get(model.name)}
+                  providerLabel={providerLabel}
+                  density="list"
+                  onReasoningEffortChange={(modelName, effort) => {
+                    onModelReasoningEffortSelect?.(modelName, effort);
+                    onModelSelect(modelName);
+                    setModelFilter("");
+                    setModelMenuOpen(false);
+                  }}
+                />
+              );
+            }}
+          </TooltipContent>
+        </Tooltip>
       </FilteredOverlayMenu>
     </div>
   );

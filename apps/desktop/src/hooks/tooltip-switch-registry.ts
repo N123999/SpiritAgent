@@ -163,6 +163,9 @@ export function isWithinGlobalTooltipRelatedTarget(
     content: HTMLDivElement | null;
   },
 ): boolean {
+  if (isEventTargetWithinTooltipCompanionOverlays(target)) {
+    return true;
+  }
   if (target !== null && typeof target === "object" && "nodeType" in target) {
     const node = target as Node;
     for (const element of refs.triggerElements) {
@@ -180,6 +183,41 @@ export function isWithinGlobalTooltipRelatedTarget(
     triggerZone: null,
     content: refs.content,
   });
+}
+
+const TOOLTIP_COMPANION_OVERLAY_SELECTORS = [
+  '[data-slot="tooltip-content"]',
+  '[data-slot="select-content"]',
+] as const;
+
+/** Detail tooltip / nested Select portals sit outside DropdownMenuContent but belong to the picker. */
+export function isEventTargetWithinTooltipCompanionOverlays(
+  target: EventTarget | null,
+): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return TOOLTIP_COMPANION_OVERLAY_SELECTORS.some(
+    (selector) => target.closest(selector) !== null,
+  );
+}
+
+export function isPointerOverTooltipCompanionOverlays(
+  clientX: number,
+  clientY: number,
+): boolean {
+  const nodes =
+    typeof document.elementsFromPoint === "function"
+      ? document.elementsFromPoint(clientX, clientY)
+      : [document.elementFromPoint(clientX, clientY)].filter(
+          (node): node is Element => node instanceof Element,
+        );
+  for (const node of nodes) {
+    if (isEventTargetWithinTooltipCompanionOverlays(node)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function isActiveTooltipAnchorSlot(
