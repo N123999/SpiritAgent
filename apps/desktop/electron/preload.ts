@@ -576,8 +576,16 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
     body?: string;
     tag?: string;
     silent?: boolean;
-    actions?: Array<{ type: 'button'; text: string }>;
+    actions?: Array<
+      | { type: 'button'; text: string; action?: 'allow' | 'deny' | 'focus' }
+      | { type: 'text'; text: string; placeholder?: string; action: 'reply' }
+    >;
     kind?: 'task-complete' | 'approval' | 'ask-questions' | 'generic';
+    context?: {
+      approvalId?: string;
+      questionToolCallId?: string;
+      questionId?: string;
+    };
   }) {
     return ipcRenderer.invoke('desktop:show-notification', request);
   },
