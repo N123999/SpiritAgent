@@ -1207,10 +1207,12 @@ function SessionSidebarInner({
   );
 
   const handleWorkspaceContextMenuDelete = useCallback((group: SessionWorkspaceGroup) => {
-    contextMenuWorkspaceGroupRef.current = null;
-    setContextMenuWorkspaceGroup(null);
     setDeleteWorkspaceTarget(group);
     setDeleteWorkspaceDialogOpen(true);
+    runAfterRadixOverlayClose(() => {
+      contextMenuWorkspaceGroupRef.current = null;
+      setContextMenuWorkspaceGroup(null);
+    });
   }, []);
 
   const handleSessionContextMenuCapture = useCallback(
