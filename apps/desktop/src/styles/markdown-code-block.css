@@ -1,0 +1,64 @@
+/* Streamdown 代码块：单层细边框对齐旧 pre */
+
+[data-streamdown="code-block"] {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+  margin-block: 0.5rem;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--border) 40%, transparent) !important;
+  background: color-mix(in oklab, var(--muted) 30%, transparent) !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
+}
+
+.text-muted-foreground [data-streamdown="code-block"] {
+  border-color: color-mix(in oklab, var(--border) 30%, transparent) !important;
+  background: color-mix(in oklab, var(--muted) 20%, transparent) !important;
+}
+
+[data-streamdown="code-block"]:last-child {
+  margin-bottom: 0;
+}
+
+[data-streamdown="code-block"].rounded-xl {
+  border-radius: var(--radius-md) !important;
+}
+
+[data-streamdown="code-block-header"] {
+  display: none !important;
+}
+
+/* copy/download 均关时 Streamdown 仍渲染空 actions 壳（带 border/padding），呈右侧黑点 */
+[data-streamdown="code-block"] > div:has(> [data-streamdown="code-block-actions"]:empty) {
+  display: none !important;
+}
+
+/* 去掉 Streamdown 内层第二道边框，对齐旧 pre 单层容器 */
+[data-streamdown="code-block-body"] {
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0.75rem !important;
+  font-size: 0.75rem !important;
+  line-height: 1.625 !important;
+}
+
+[data-streamdown="code-block-body"] > pre {
+  margin: 0;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  white-space: pre;
+}
+
+/* lineNumbers=false 时 Streamdown 行 span 无 block 类，须强制每行独占一行 */
+[data-streamdown="code-block-body"] pre code > span {
+  display: block;
+}

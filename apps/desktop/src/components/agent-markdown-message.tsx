@@ -175,10 +175,11 @@ export function AgentMarkdownMessage({
         urlTransform={streamdownUrlTransform}
         rehypePlugins={streamdownRehypePlugins}
         controls={{
-          code: { copy: true, download: true },
+          code: { copy: false, download: false },
           mermaid: { copy: true, download: true, fullscreen: true, panZoom: true },
           table: { copy: true, download: true, fullscreen: true },
         }}
+        lineNumbers={false}
         parseIncompleteMarkdown={streaming}
         isAnimating={motionActive}
         animated={motionActive ? streamingAnimateOptions : false}
