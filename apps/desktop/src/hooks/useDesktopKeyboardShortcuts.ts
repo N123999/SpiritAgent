@@ -13,9 +13,16 @@ import {
   resolveModPShortcutAction,
   shouldTriggerConversationAbortShortcut,
 } from "@/lib/desktop-keyboard-shortcut-eligibility";
+import { resolveUiLayoutZoomShortcutAction } from "@/lib/ui-layout-scale";
 import type { AppSurface } from "@/hooks/useAppSurfaceNavigation";
 
 type DesktopRuntime = ReturnType<typeof useDesktopRuntime>;
+
+export type UiLayoutScaleShortcutApi = {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetScale: () => void;
+};
 
 export type UseDesktopKeyboardShortcutsOptions = {
   runtime: DesktopRuntime;
@@ -25,6 +32,7 @@ export type UseDesktopKeyboardShortcutsOptions = {
   handleNewSession: () => void;
   setActionPickerOpen: (open: boolean) => void;
   setFilePickerOpen: (open: boolean) => void;
+  uiLayoutScaleApi: UiLayoutScaleShortcutApi;
 };
 
 export function useDesktopKeyboardShortcuts({
@@ -35,6 +43,7 @@ export function useDesktopKeyboardShortcuts({
   handleNewSession,
   setActionPickerOpen,
   setFilePickerOpen,
+  uiLayoutScaleApi,
 }: UseDesktopKeyboardShortcutsOptions) {
   const { setOpen: setWorkspaceToolsOpen } = useWorkspaceToolsChromeActions();
   useEffect(() => {
@@ -168,4 +177,31 @@ export function useDesktopKeyboardShortcuts({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [setActionPickerOpen, setFilePickerOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = resolveUiLayoutZoomShortcutAction({
+        defaultPrevented: event.defaultPrevented,
+        modPressed: isModShortcutPressed(event),
+        altKey: event.altKey,
+        key: event.key,
+      });
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === "in") {
+        uiLayoutScaleApi.zoomIn();
+        return;
+      }
+      if (action === "out") {
+        uiLayoutScaleApi.zoomOut();
+        return;
+      }
+      uiLayoutScaleApi.resetScale();
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, [uiLayoutScaleApi.zoomIn, uiLayoutScaleApi.zoomOut, uiLayoutScaleApi.resetScale]);
 }

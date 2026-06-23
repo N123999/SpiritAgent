@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SessionSidebarChromeProvider } from "@/contexts/session-sidebar-chrome-context";
@@ -23,6 +23,7 @@ import { useClickablePointerCursor } from "@/hooks/useClickablePointerCursor";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useComposerController } from "@/hooks/useComposerController";
 import { useConversationViewState } from "@/hooks/useConversationViewState";
+import { useUiLayoutScale } from "@/hooks/useUiLayoutScale";
 import { useDesktopKeyboardShortcuts } from "@/hooks/useDesktopKeyboardShortcuts";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useDesktopShellEffects } from "@/hooks/useDesktopShellEffects";
@@ -42,6 +43,10 @@ import {
 import { isMarkdownPath } from "@/lib/file-picker-path";
 import { isWorkspaceReferenceDirectoryPath, normalizeWorkspaceReferenceDirectoryPath } from "@spirit-agent/host-internal/workspace-file-reference-query";
 import { tryHandleDesktopWorkspaceLink } from "@/lib/workspace-navigation-link";
+import {
+  applyUiLayoutScaleToDocument,
+  UI_LAYOUT_SCALE_ROOT_ID,
+} from "@/lib/ui-layout-scale";
 import { resolveDark } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +55,7 @@ export default function App() {
   const { theme, setTheme } = useTheme();
   const { font, setFont } = useFont();
   const { clickablePointerCursor, setClickablePointerCursor } = useClickablePointerCursor();
+  const uiLayoutScale = useUiLayoutScale();
   const runtime = useDesktopRuntime();
   const snapshot = runtime.snapshot;
   /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
@@ -178,12 +184,17 @@ export default function App() {
     handleNewSession: surfaceNav.handleNewSession,
     setActionPickerOpen: composer.setActionPickerOpen,
     setFilePickerOpen: composer.setFilePickerOpen,
+    uiLayoutScaleApi: uiLayoutScale,
   });
 
   const launchSplashActive =
     snapshot === null &&
     !runtime.hostConnectionError.trim() &&
     !runtime.runtimeError.trim();
+
+  useLayoutEffect(() => {
+    applyUiLayoutScaleToDocument(uiLayoutScale.scale);
+  }, [uiLayoutScale.scale]);
 
   const handleWorkspaceMarkdownLinkClick = useCallback(
     (href: string) =>
@@ -221,19 +232,32 @@ export default function App() {
     <WorkspaceMarkdownLinkProvider onLinkClick={handleWorkspaceMarkdownLinkClick}>
     <SessionSidebarChromeProvider apiRef={surfaceNav.sessionSidebarChromeApiRef}>
     <div
+      data-spirit-surface="desktop-chrome-root"
+      className="flex h-full min-h-0 flex-col text-foreground"
+    >
+      {winElectronChrome ? (
+        <DesktopTitleBar
+          useMicaBackdrop={useMicaBackdrop}
+          onZoomIn={uiLayoutScale.zoomIn}
+          onZoomOut={uiLayoutScale.zoomOut}
+          onZoomReset={uiLayoutScale.resetScale}
+        />
+      ) : null}
+      <div
+        id={UI_LAYOUT_SCALE_ROOT_ID}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+    <div
       data-spirit-surface="app-shell"
       data-spirit-shell-kind={isElectronShell ? "electron" : "web"}
       data-spirit-theme={resolveDark(theme) ? "dark" : "light"}
       data-spirit-mica={useMicaBackdrop ? "true" : "false"}
       className={cn(
-        "flex h-[100dvh] min-h-0 flex-col text-foreground",
+        "flex h-full min-h-0 flex-col",
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
       <LaunchSplash active={launchSplashActive} useMicaBackdrop={useMicaBackdrop} />
-      {winElectronChrome ? (
-        <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} />
-      ) : null}
       <div data-spirit-surface="app-body" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {!desktopTitleBarChrome ? (
           <div
@@ -662,6 +686,8 @@ export default function App() {
         onDiscardAndCheckout={composer.discardBranchChangesAndCheckoutSend}
       />
 
+    </div>
+      </div>
     </div>
     </SessionSidebarChromeProvider>
     </WorkspaceMarkdownLinkProvider>

@@ -21,6 +21,15 @@ import {
 type DesktopTitleBarProps = {
   /** 与根布局云母透明策略一致 */
   useMicaBackdrop: boolean;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
+};
+
+type TitleBarZoomMenuProps = {
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
 };
 
 function titleBarSurfaceClass(useMicaBackdrop: boolean, withBorder: boolean) {
@@ -69,7 +78,14 @@ function TitleBarAppIcon({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
   );
 }
 
-function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) {
+function TitleBarMenuCluster({
+  useMicaBackdrop,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
+}: {
+  useMicaBackdrop: boolean;
+} & TitleBarZoomMenuProps) {
   const { t } = useTranslation();
   const isDevChrome = isViteDev;
   return (
@@ -151,6 +167,19 @@ function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) 
                 <MenubarSeparator />
               </>
             )}
+            <MenubarItem onSelect={onZoomIn}>
+              {t('titleBar.zoomIn')}
+              <MenubarShortcut>Ctrl+=</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={onZoomOut}>
+              {t('titleBar.zoomOut')}
+              <MenubarShortcut>Ctrl+-</MenubarShortcut>
+            </MenubarItem>
+            <MenubarItem onSelect={onZoomReset}>
+              {t('titleBar.zoomReset')}
+              <MenubarShortcut>Ctrl+0</MenubarShortcut>
+            </MenubarItem>
+            <MenubarSeparator />
             <MenubarItem onSelect={() => execWindowAction('toggleFullscreen')}>
               {t('titleBar.toggleFullscreen')}
               <MenubarShortcut>F11</MenubarShortcut>
@@ -196,7 +225,12 @@ function TitleBarMenuCluster({ useMicaBackdrop }: { useMicaBackdrop: boolean }) 
 /**
  * Windows：自绘顶栏（LOGO + 菜单文案），窗口控制键仍由 `titleBarOverlay` 绘制。
  */
-export function DesktopTitleBar({ useMicaBackdrop }: DesktopTitleBarProps) {
+export function DesktopTitleBar({
+  useMicaBackdrop,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
+}: DesktopTitleBarProps) {
   const headerRef = useRef<HTMLElement>(null);
   const { open: sessionSidebarOpen, widthPx: sessionSidebarWidthPx } = useSessionSidebarChrome();
   /** Blur 下横向分割线锚定侧栏 shell 右缘；收起/展开时随 shell 实际宽度同步移动。 */
@@ -228,7 +262,12 @@ export function DesktopTitleBar({ useMicaBackdrop }: DesktopTitleBarProps) {
             : undefined
         }
       >
-        <TitleBarMenuCluster useMicaBackdrop={useMicaBackdrop} />
+        <TitleBarMenuCluster
+          useMicaBackdrop={useMicaBackdrop}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onZoomReset={onZoomReset}
+        />
       </div>
       <div
         className="electron-drag relative h-full min-w-0 flex-1"

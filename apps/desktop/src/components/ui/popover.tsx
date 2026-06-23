@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Popover as PopoverPrimitive } from "radix-ui";
 
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,7 @@ function PopoverContent({
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
-    <PopoverPrimitive.Portal>
+    <PopoverPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <PopoverPrimitive.Content
         ref={ref}
         data-slot="popover-content"

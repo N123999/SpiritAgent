@@ -7,6 +7,7 @@ import {
   DESKTOP_OVERLAY_LIST_DROPDOWN_ITEM,
 } from "@/lib/desktop-chrome";
 import { isEventTargetWithinTooltipCompanionOverlays } from "@/hooks/tooltip-switch-registry";
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
@@ -56,7 +57,7 @@ function DropdownMenuSubContent({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <DropdownMenuPrimitive.SubContent
         data-slot="dropdown-menu-sub-content"
         sideOffset={sideOffset}
@@ -99,7 +100,7 @@ function DropdownMenuContent({
   ...props
 }: DropdownMenuContentProps) {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}

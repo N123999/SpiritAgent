@@ -2,6 +2,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -18,9 +19,16 @@ function DialogTrigger({
 }
 
 function DialogPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Portal>) {
-  return <DialogPrimitive.Portal data-slot="dialog-portal" {...props} />
+  return (
+    <DialogPrimitive.Portal
+      data-slot="dialog-portal"
+      container={container ?? getUiLayoutPortalContainer()}
+      {...props}
+    />
+  )
 }
 
 function DialogClose({
