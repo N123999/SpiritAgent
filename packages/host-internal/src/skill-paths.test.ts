@@ -64,6 +64,25 @@ test('readFileToolDisplayBase returns empty string for SKILL.md without frontmat
   assert.equal(readFileToolDisplayBase('src/App.tsx', 'File'), 'src/App.tsx');
 });
 
+test('readFileToolDisplayBase uses SKILL.md frontmatter name from read_file tool output', () => {
+  const formattedOutput = `[read]
+path: skills/create-rule/SKILL.md
+range: 1-6
+
+     1 | ---
+     2 | name: create-rule
+     3 | description: Author rules
+     4 | ---
+     5 | ## Goal
+`;
+  assert.equal(
+    readFileToolDisplayBase('skills/create-rule/SKILL.md', 'File', {
+      skillMarkdownContent: formattedOutput,
+    }),
+    'create-rule',
+  );
+});
+
 test('readFileToolDisplayBase uses SKILL.md frontmatter name', () => {
   const markdown = `---
 name: llm-debug

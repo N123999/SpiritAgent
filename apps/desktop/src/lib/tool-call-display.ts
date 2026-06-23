@@ -146,14 +146,15 @@ function readFileToolSummaryParts(tool: ToolBlockSnapshot): ToolCallSummaryParts
     const lineRange = argsRecord
       ? lineRangeForReadFile(argsRecord.start_line, argsRecord.end_line)
       : '';
-    const skillMarkdownContent = isSkillMarkdownPath(rawPath) ? tool.outputExcerpt : undefined;
+    const isSkillPath = isSkillMarkdownPath(rawPath);
+    const skillMarkdownContent = isSkillPath ? tool.outputExcerpt : undefined;
     const computedDetail = readFileToolHeadlineDetail(rawPath, {
       emptyFileLabel: i18n.t('tool.file'),
       toolOutputLabel: i18n.t('tool.toolOutput'),
       lineRange,
       skillMarkdownContent,
     }).trim();
-    const detail = isSkillMarkdownPath(rawPath)
+    const detail = isSkillPath
       ? (computedDetail || undefined)
       : (computedDetail || snapshotDetail || undefined);
     return {

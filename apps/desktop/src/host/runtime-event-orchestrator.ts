@@ -909,7 +909,12 @@ export class DesktopRuntimeEventOrchestrator {
                     executionOutput: execution.output,
                     todosBeforeWrite,
                   }
-                : this.toolSummaryOptions(),
+                : execution.toolName === 'read_file'
+                  ? {
+                      ...this.toolSummaryOptions(),
+                      executionOutput: execution.output,
+                    }
+                  : this.toolSummaryOptions(),
             );
       const argsExcerpt = truncateJson(execution.request);
       const fileToolDiffArgumentsJson = FILE_DIFF_TOOL_NAMES.has(execution.toolName)

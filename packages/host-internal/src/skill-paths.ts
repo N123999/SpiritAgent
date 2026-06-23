@@ -114,11 +114,37 @@ export function parseSkillNameFromMarkdown(raw: string): string | undefined {
   return undefined;
 }
 
+/** Line prefix from host read_file tool output: `     1 | content` */
+const READ_FILE_TOOL_OUTPUT_LINE = /^\s*\d+\s*\|\s?(.*)$/u;
+
+function stripReadFileToolOutputWrapper(output: string): string | undefined {
+  if (!output.trimStart().startsWith('[read]')) {
+    return undefined;
+  }
+
+  const bodyLines: string[] = [];
+  for (const line of output.split(/\r?\n/u)) {
+    const match = READ_FILE_TOOL_OUTPUT_LINE.exec(line);
+    if (match) {
+      bodyLines.push(match[1] ?? '');
+    }
+  }
+  return bodyLines.length > 0 ? bodyLines.join('\n') : undefined;
+}
+
 function readFileSkillDisplayName(skillMarkdownContent?: string): string | undefined {
   if (!skillMarkdownContent?.trim()) {
     return undefined;
   }
-  return parseSkillNameFromMarkdown(skillMarkdownContent);
+  const fromRaw = parseSkillNameFromMarkdown(skillMarkdownContent);
+  if (fromRaw) {
+    return fromRaw;
+  }
+  const stripped = stripReadFileToolOutputWrapper(skillMarkdownContent);
+  if (stripped) {
+    return parseSkillNameFromMarkdown(stripped);
+  }
+  return undefined;
 }
 
 function workspaceRelativeDirectoryPath(path: string, workspaceRoot: string): string | undefined {
