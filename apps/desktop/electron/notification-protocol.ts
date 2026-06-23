@@ -4,16 +4,12 @@ import { app } from 'electron';
 
 import {
   SPIRIT_NOTIFICATION_PROTOCOL,
-  findSpiritNotificationProtocolUrl,
-  parseSpiritNotificationProtocolUrl,
+  dispatchSpiritNotificationProtocolUrl,
+  handleSpiritNotificationProtocolArgv as dispatchSpiritNotificationProtocolArgv,
+  type SpiritNotificationProtocolHandlers,
 } from '../src/lib/spirit-notification-protocol.js';
 
-export type SpiritNotificationProtocolHandlers = {
-  onApproval: (decision: 'allow' | 'deny') => void | Promise<void>;
-  onFocus?: () => void;
-  onNewSession?: () => void;
-  onOpenSession?: (sessionPath: string) => void | Promise<void>;
-};
+export type { SpiritNotificationProtocolHandlers };
 
 let handlers: SpiritNotificationProtocolHandlers | undefined;
 
@@ -38,41 +34,20 @@ export function bindSpiritNotificationProtocolHandlers(
   handlers = next;
 }
 
-/** Returns true when argv contains a handled spirit:// URL. */
+/** Returns true when argv contains a spirit:// URL that was dispatched successfully. */
 export function handleSpiritNotificationProtocolArgv(argv: readonly string[]): boolean {
-  const rawUrl = findSpiritNotificationProtocolUrl(argv);
-  if (!rawUrl) {
-    return false;
-  }
-  dispatchSpiritNotificationProtocolUrl(rawUrl);
-  return true;
+  return dispatchSpiritNotificationProtocolArgv(argv, handlers);
 }
 
-function dispatchSpiritNotificationProtocolUrl(rawUrl: string): void {
-  const parsed = parseSpiritNotificationProtocolUrl(rawUrl);
-  if (!parsed || !handlers) {
-    return;
-  }
-  if (parsed.kind === 'approval') {
-    void handlers.onApproval(parsed.decision);
-    return;
-  }
-  if (parsed.kind === 'new-session') {
-    handlers.onNewSession?.();
-    return;
-  }
-  if (parsed.kind === 'open-session') {
-    void handlers.onOpenSession?.(parsed.path);
-    return;
-  }
-  handlers.onFocus?.();
+function dispatchSpiritNotificationProtocolUrlFromOpenUrl(rawUrl: string): void {
+  dispatchSpiritNotificationProtocolUrl(rawUrl, handlers);
 }
 
 export function installSpiritNotificationProtocolRouting(): void {
   if (process.platform === 'darwin') {
     app.on('open-url', (event, url) => {
       event.preventDefault();
-      dispatchSpiritNotificationProtocolUrl(url);
+      dispatchSpiritNotificationProtocolUrlFromOpenUrl(url);
     });
   }
 }

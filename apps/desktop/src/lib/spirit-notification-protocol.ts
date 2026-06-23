@@ -75,3 +75,46 @@ export function parseSpiritNotificationProtocolUrl(
 export function findSpiritNotificationProtocolUrl(argv: readonly string[]): string | undefined {
   return argv.find((entry) => entry.startsWith(`${SPIRIT_NOTIFICATION_PROTOCOL}://`));
 }
+
+export type SpiritNotificationProtocolHandlers = {
+  onApproval: (decision: 'allow' | 'deny') => void | Promise<void>;
+  onFocus?: () => void;
+  onNewSession?: () => void;
+  onOpenSession?: (sessionPath: string) => void | Promise<void>;
+};
+
+/** Returns false when the URL is missing, unparseable, or handlers are not bound. */
+export function dispatchSpiritNotificationProtocolUrl(
+  rawUrl: string,
+  handlers: SpiritNotificationProtocolHandlers | undefined,
+): boolean {
+  const parsed = parseSpiritNotificationProtocolUrl(rawUrl);
+  if (!parsed || !handlers) {
+    return false;
+  }
+  if (parsed.kind === 'approval') {
+    void handlers.onApproval(parsed.decision);
+    return true;
+  }
+  if (parsed.kind === 'new-session') {
+    handlers.onNewSession?.();
+    return true;
+  }
+  if (parsed.kind === 'open-session') {
+    void handlers.onOpenSession?.(parsed.path);
+    return true;
+  }
+  handlers.onFocus?.();
+  return true;
+}
+
+export function handleSpiritNotificationProtocolArgv(
+  argv: readonly string[],
+  handlers: SpiritNotificationProtocolHandlers | undefined,
+): boolean {
+  const rawUrl = findSpiritNotificationProtocolUrl(argv);
+  if (!rawUrl) {
+    return false;
+  }
+  return dispatchSpiritNotificationProtocolUrl(rawUrl, handlers);
+}

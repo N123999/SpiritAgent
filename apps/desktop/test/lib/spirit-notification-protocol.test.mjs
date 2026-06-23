@@ -5,7 +5,9 @@ import {
   buildNewSessionProtocolUrl,
   buildNotificationApprovalProtocolUrl,
   buildOpenSessionProtocolUrl,
+  dispatchSpiritNotificationProtocolUrl,
   findSpiritNotificationProtocolUrl,
+  handleSpiritNotificationProtocolArgv,
   parseSpiritNotificationProtocolUrl,
 } from '../../src/lib/spirit-notification-protocol.ts';
 
@@ -62,4 +64,38 @@ test('parseSpiritNotificationProtocolUrl reads open-session path', () => {
 test('parseSpiritNotificationProtocolUrl rejects open-session without path', () => {
   assert.equal(parseSpiritNotificationProtocolUrl('spirit://open-session'), null);
   assert.equal(parseSpiritNotificationProtocolUrl('spirit://open-session?path='), null);
+});
+
+test('handleSpiritNotificationProtocolArgv returns false when open-session path is missing', () => {
+  let focusCount = 0;
+  const handlers = {
+    onApproval: () => {},
+    onFocus: () => {
+      focusCount += 1;
+    },
+  };
+  assert.equal(
+    handleSpiritNotificationProtocolArgv(['spirit.exe', 'spirit://open-session'], handlers),
+    false,
+  );
+  assert.equal(focusCount, 0);
+});
+
+test('handleSpiritNotificationProtocolArgv returns true when new-session dispatches', () => {
+  let newSessionCount = 0;
+  const handlers = {
+    onApproval: () => {},
+    onNewSession: () => {
+      newSessionCount += 1;
+    },
+  };
+  assert.equal(
+    handleSpiritNotificationProtocolArgv(['spirit.exe', 'spirit://new-session'], handlers),
+    true,
+  );
+  assert.equal(newSessionCount, 1);
+});
+
+test('dispatchSpiritNotificationProtocolUrl returns false without handlers', () => {
+  assert.equal(dispatchSpiritNotificationProtocolUrl('spirit://new-session', undefined), false);
 });
