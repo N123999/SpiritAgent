@@ -8,13 +8,13 @@ import {
 } from "react";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
 import { Block, parseMarkdownIntoBlocks, Streamdown, type BlockProps } from "streamdown";
 import type { Pluggable } from "unified";
 
 import type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
 import type { ReadManagedVideoPreviewUrl } from "@/components/markdown-video";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { useTheme } from "@/hooks/useTheme";
 import {
   createStreamdownMessageComponents,
   markdownMessageRootClassName,
@@ -23,9 +23,13 @@ import {
 import { streamdownRehypePlugins } from "@/lib/markdown-streamdown-plugins";
 import { spiritRemarkPluginsForStreamdown } from "@/lib/markdown-remark-plugins";
 import { streamdownUrlTransform } from "@/lib/markdown-url-transform";
+import { createSpiritMermaidPlugin } from "@/lib/markdown-mermaid-theme";
+import { createMarkdownMermaidRenderer } from "@/components/markdown-mermaid-block";
 import { useWorkspaceMarkdownLinkClick } from "@/components/workspace-markdown-link-context";
 
-const streamdownPlugins = { code, math, mermaid };
+const streamdownMathPlugin = math;
+
+const streamdownPluginsBase = { code, math: streamdownMathPlugin };
 
 /** Char-level + zero stagger: each stream delta animates in parallel (not serial / per-paragraph batch). */
 const streamingAnimateOptions = {
@@ -120,7 +124,17 @@ export function AgentMarkdownMessage({
   readManagedVideoPreviewUrl?: ReadManagedVideoPreviewUrl;
 }) {
   const prefersReducedMotion = usePrefersReducedMotion();
+  const { resolvedDark } = useTheme();
   const onMarkdownLinkClick = useWorkspaceMarkdownLinkClick();
+  const streamdownPlugins = useMemo(
+    () => ({
+      ...streamdownPluginsBase,
+      mermaid: createSpiritMermaidPlugin(resolvedDark),
+      renderers: [createMarkdownMermaidRenderer(resolvedDark)],
+    }),
+    [resolvedDark],
+  );
+
   const components = useMemo(
     () =>
       createStreamdownMessageComponents(
@@ -176,7 +190,7 @@ export function AgentMarkdownMessage({
         rehypePlugins={streamdownRehypePlugins}
         controls={{
           code: { copy: false, download: false },
-          mermaid: { copy: true, download: true, fullscreen: true, panZoom: true },
+          mermaid: { copy: false, download: false, fullscreen: false, panZoom: true },
           table: { copy: true, download: true, fullscreen: true },
         }}
         lineNumbers={false}
