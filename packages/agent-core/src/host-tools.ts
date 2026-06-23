@@ -224,7 +224,7 @@ export function buildBuiltinHostToolDefinitions(
     ),
     functionTool(
       'grep',
-      'Search text within workspace file contents. By default query is matched as case-insensitive literal text; set is_regexp to true for a regular expression. Optionally pass glob to limit which files are searched. Use the glob tool to list paths only and list_directory_files for a single directory inventory.',
+      'Search text within workspace file contents. Respects .gitignore. By default query is matched as case-insensitive literal text; set is_regexp to true for a regular expression. Optionally pass glob to limit which files are searched. Use the glob tool to list paths only and list_directory_files for a single directory inventory.',
       {
         type: 'object',
         properties: {
