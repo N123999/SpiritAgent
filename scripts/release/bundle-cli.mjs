@@ -188,6 +188,16 @@ async function ensureNodeRuntime(targetInfo) {
   return extractedRoot;
 }
 
+async function copyHoistedHostInternalRipgrep(destinationRoot) {
+  const destination = path.join(destinationRoot, 'packages', 'host-internal', 'node_modules', '@vscode', 'ripgrep');
+  const hoistedRipgrep = path.join(repoRoot, 'node_modules', '@vscode', 'ripgrep');
+  if (!(await pathExists(hoistedRipgrep))) {
+    return;
+  }
+  await mkdir(path.dirname(destination), { recursive: true });
+  await cp(hoistedRipgrep, destination, { recursive: true });
+}
+
 async function copyPackageDist(packageName, destinationRoot) {
   const sourceRoot = path.join(repoRoot, 'packages', packageName);
   const destination = path.join(destinationRoot, 'packages', packageName);
@@ -196,6 +206,10 @@ async function copyPackageDist(packageName, destinationRoot) {
   const nodeModules = path.join(sourceRoot, 'node_modules');
   if (await pathExists(nodeModules)) {
     await cp(nodeModules, path.join(destination, 'node_modules'), { recursive: true });
+    return;
+  }
+  if (packageName === 'host-internal') {
+    await copyHoistedHostInternalRipgrep(destinationRoot);
   }
 }
 

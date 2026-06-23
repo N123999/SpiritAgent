@@ -14,6 +14,10 @@ files:
   - '!node_modules/spirit-agent-repo/**/*'
   - '!node_modules/**/spirit-agent-repo/**/*'
   - '!**/target/**/*'
+  - from: ../../node_modules/@vscode/ripgrep
+    to: node_modules/@vscode/ripgrep
+    filter:
+      - '**/*'
   - ../../packages/agent-core/dist/**/*
   - ../../packages/agent-core/package.json
   - ../../packages/host-internal/dist/**/*
@@ -24,6 +28,7 @@ asarUnpack:
   - node_modules/node-pty/**/*
   - node_modules/koffi/**/*
   - node_modules/@napi-rs/keyring/**/*
+  - node_modules/@vscode/ripgrep/**/*
 npmRebuild: true
 buildDependenciesFromSource: false
 publish: null
