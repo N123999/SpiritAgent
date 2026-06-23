@@ -6,20 +6,24 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- MIT: 6 package(s)
+- MIT: 8 package(s)
 - Apache-2.0: 3 package(s)
 - BlueOak-1.0.0: 2 package(s)
 - BSD-3-Clause: 1 package(s)
 
 ## Components
 
-- **@aws-sdk/client-bedrock** 3.1068.0 — Apache-2.0
+- **@aws-sdk/client-bedrock** 3.1075.0 — Apache-2.0
   - https://github.com/aws/aws-sdk-js-v3
-- **@types/node** 25.6.0 — MIT
+- **@spirit-agent/core** 0.2.6 — MIT
+  - https://github.com/N123999/SpiritAgent
+- **@types/node** 25.9.4 — MIT
   - https://github.com/DefinitelyTyped/DefinitelyTyped
+- **@vscode/ripgrep** 1.18.0 — MIT
+  - https://github.com/microsoft/vscode-ripgrep
 - **fast-glob** 3.3.3 — MIT
   - https://github.com/mrmlnc/fast-glob
-- **fflate** 0.8.2 — MIT
+- **fflate** 0.8.3 — MIT
   - https://github.com/101arrowz/fflate
 - **glob** 13.0.6 — BlueOak-1.0.0
   - https://github.com/isaacs/node-glob
@@ -29,13 +33,13 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/kaelzhang/node-ignore
 - **license-checker-rseidelsohn** 4.4.2 — BSD-3-Clause
   - https://github.com/RSeidelsohn/license-checker-rseidelsohn
-- **tar** 7.5.13 — BlueOak-1.0.0
+- **tar** 7.5.16 — BlueOak-1.0.0
   - https://github.com/isaacs/node-tar
 - **typescript** 5.9.3 — Apache-2.0
   - https://github.com/microsoft/TypeScript
 - **vscode-jsonrpc** 8.2.1 — MIT
   - https://github.com/Microsoft/vscode-languageserver-node
-- **vscode-languageserver-protocol** 3.18.0 — MIT
+- **vscode-languageserver-protocol** 3.18.1 — MIT
   - https://github.com/Microsoft/vscode-languageserver-node
 
 ## License texts
@@ -43,7 +47,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 ### Apache-2.0
 
 **Used by:**
-- @aws-sdk/client-bedrock 3.1068.0
+- @aws-sdk/client-bedrock 3.1075.0
 
 ```
                                 Apache License
@@ -596,7 +600,7 @@ software or this license, under any kind of legal claim.***
 ### BlueOak-1.0.0
 
 **Used by:**
-- tar 7.5.13
+- tar 7.5.16
 
 ```
 # Blue Oak Model License
@@ -690,7 +694,36 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ### MIT
 
 **Used by:**
-- @types/node 25.6.0
+- @spirit-agent/core 0.2.6
+
+```
+MIT License
+
+Copyright (c) 2026 Spirit Studio
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### MIT
+
+**Used by:**
+- @types/node 25.9.4
 
 ```
     MIT License
@@ -714,6 +747,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE
+```
+
+### MIT
+
+**Used by:**
+- @vscode/ripgrep 1.18.0
+
+```
+vscode-ripgrep
+
+Copyright (c) Microsoft Corporation
+
+All rights reserved.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### MIT
@@ -748,12 +802,12 @@ SOFTWARE.
 ### MIT
 
 **Used by:**
-- fflate 0.8.2
+- fflate 0.8.3
 
 ```
 MIT License
 
-Copyright (c) 2023 Arjun Barrett
+Copyright (c) 2026 Arjun Barrett
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -807,7 +861,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 **Used by:**
 - vscode-jsonrpc 8.2.1
-- vscode-languageserver-protocol 3.18.0
+- vscode-languageserver-protocol 3.18.1
 
 ```
 Copyright (c) Microsoft Corporation

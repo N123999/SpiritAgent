@@ -140,6 +140,8 @@
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1068.0",
     "@spirit-agent/core": "0.2.6",
+    "@spirit-agent/host-internal": "file:",
+    "@vscode/ripgrep": "^1.18.0",
     "fast-glob": "^3.3.3",
     "fflate": "^0.8.2",
     "glob": "^13.0.6",
