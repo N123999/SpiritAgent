@@ -157,16 +157,52 @@ html.dark,
 
 html,
 body {
-  min-height: 100%;
-}
-
-/* 主树未铺满视口时避免 WebView 底部露出默认黑边 */
-#app {
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 body {
   margin: 0;
+}
+
+#app {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#spirit-ui-scale-root {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#spirit-ui-scale-root [data-spirit-surface="app-shell"] {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+/*
+ * flex 子项上 height:100% 无法可靠做 zoom 补偿；改用 dvh 显式计算布局盒。
+ * Windows 顶栏（2rem）在缩放根外，可用高度为 100dvh - 2rem。
+ */
+#spirit-ui-scale-root.spirit-ui-layout-scaled {
+  flex: none;
+  transform: scale(var(--spirit-ui-layout-scale));
+  transform-origin: top left;
+  width: calc(100vw / var(--spirit-ui-layout-scale));
+  height: calc(100dvh / var(--spirit-ui-layout-scale));
+}
+
+html.spirit-desktop-win32 #spirit-ui-scale-root.spirit-ui-layout-scaled {
+  height: calc((100dvh - 2rem) / var(--spirit-ui-layout-scale));
 }
 
 /* Electron Windows 自绘标题栏：拖拽区与可点击菜单互斥 */
@@ -178,6 +214,7 @@ body {
   -webkit-app-region: no-drag;
 }
 
+/* Windows 自绘顶栏在缩放根之外（desktop-chrome-root 内），原生 titleBarOverlay 不受影响 */
 /* macOS hiddenInset：顶缘透明拖拽区，分区背景延伸至窗口顶，内容以 padding 避让红绿灯 */
 html.spirit-desktop-darwin {
   --spirit-macos-titlebar-inset: 2rem;
@@ -263,6 +300,7 @@ html.spirit-desktop-darwin.spirit-desktop-darwin-fullscreen #session-sidebar-pan
 /* Desktop 且开启原生模糊时：根层透明，便于宿主窗口绘制系统材质；Web 版保持实色。 */
 html.spirit-desktop-native.spirit-desktop-mica,
 html.spirit-desktop-native.spirit-desktop-mica body,
+html.spirit-desktop-native.spirit-desktop-mica #spirit-ui-scale-root,
 html.spirit-desktop-native.spirit-desktop-mica #app {
   background: transparent;
 }

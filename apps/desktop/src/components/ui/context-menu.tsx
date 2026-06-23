@@ -3,6 +3,7 @@ import { Fragment } from "react"
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui"
 
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion"
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale"
 import { cn } from "@/lib/utils"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
@@ -34,10 +35,15 @@ function ContextMenuGroup({
 }
 
 function ContextMenuPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Portal>) {
   return (
-    <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
+    <ContextMenuPrimitive.Portal
+      data-slot="context-menu-portal"
+      container={container ?? getUiLayoutPortalContainer()}
+      {...props}
+    />
   )
 }
 
@@ -65,7 +71,7 @@ function ContextMenuContent({
   side?: "top" | "right" | "bottom" | "left"
 }) {
   return (
-    <ContextMenuPrimitive.Portal>
+    <ContextMenuPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         className={cn(

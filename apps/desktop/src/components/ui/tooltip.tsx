@@ -6,6 +6,7 @@ import * as React from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { useGlobalTooltipSwitch } from "@/hooks/use-global-tooltip-switch"
+import { getUiLayoutPortalContainer, viewportPointToScaleRootLocal } from "@/lib/ui-layout-scale"
 import { cn } from "@/lib/utils"
 
 const TOOLTIP_ZONE_SLOT = "tooltip-zone"
@@ -189,6 +190,10 @@ function GlobalTooltipContentHost() {
   )
   const lingerExitPosition =
     !global.open && global.lingerContentScreenRect !== null ? global.lingerContentScreenRect : null
+  const lingerExitLocal =
+    lingerExitPosition !== null
+      ? viewportPointToScaleRootLocal(lingerExitPosition.top, lingerExitPosition.left)
+      : null
 
   if (!hasContent) {
     return null
@@ -202,17 +207,17 @@ function GlobalTooltipContentHost() {
     isNonHoverableContent && "pointer-events-none",
   )
 
-  if (lingerExitPosition !== null) {
+  if (lingerExitPosition !== null && lingerExitLocal !== null) {
     return (
-      <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Portal container={getUiLayoutPortalContainer()}>
         <div
           ref={global.contentRef}
           data-slot="tooltip-content"
           data-state={dataState}
           style={{
             position: "fixed",
-            top: lingerExitPosition.top,
-            left: lingerExitPosition.left,
+            top: lingerExitLocal.top,
+            left: lingerExitLocal.left,
             transform: "none",
           }}
           className={contentClassName}
@@ -226,7 +231,7 @@ function GlobalTooltipContentHost() {
   }
 
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <TooltipPrimitive.Content
         ref={global.contentRef}
         data-slot="tooltip-content"

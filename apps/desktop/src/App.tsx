@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { SessionSidebarChromeProvider } from "@/contexts/session-sidebar-chrome-context";
@@ -42,6 +42,10 @@ import {
 import { isMarkdownPath } from "@/lib/file-picker-path";
 import { isWorkspaceReferenceDirectoryPath, normalizeWorkspaceReferenceDirectoryPath } from "@spirit-agent/host-internal/workspace-file-reference-query";
 import { tryHandleDesktopWorkspaceLink } from "@/lib/workspace-navigation-link";
+import {
+  applyUiLayoutScaleToDocument,
+  UI_LAYOUT_SCALE_ROOT_ID,
+} from "@/lib/ui-layout-scale";
 import { resolveDark } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -185,6 +189,10 @@ export default function App() {
     !runtime.hostConnectionError.trim() &&
     !runtime.runtimeError.trim();
 
+  useLayoutEffect(() => {
+    applyUiLayoutScaleToDocument(uiLayoutScale.scale);
+  }, [uiLayoutScale.scale]);
+
   const handleWorkspaceMarkdownLinkClick = useCallback(
     (href: string) =>
       tryHandleDesktopWorkspaceLink(
@@ -221,19 +229,27 @@ export default function App() {
     <WorkspaceMarkdownLinkProvider onLinkClick={handleWorkspaceMarkdownLinkClick}>
     <SessionSidebarChromeProvider apiRef={surfaceNav.sessionSidebarChromeApiRef}>
     <div
+      data-spirit-surface="desktop-chrome-root"
+      className="flex h-full min-h-0 flex-col text-foreground"
+    >
+      {winElectronChrome ? (
+        <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} />
+      ) : null}
+      <div
+        id={UI_LAYOUT_SCALE_ROOT_ID}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+    <div
       data-spirit-surface="app-shell"
       data-spirit-shell-kind={isElectronShell ? "electron" : "web"}
       data-spirit-theme={resolveDark(theme) ? "dark" : "light"}
       data-spirit-mica={useMicaBackdrop ? "true" : "false"}
       className={cn(
-        "flex h-[100dvh] min-h-0 flex-col text-foreground",
+        "flex h-full min-h-0 flex-col",
         useMicaBackdrop ? "bg-transparent" : "bg-background",
       )}
     >
       <LaunchSplash active={launchSplashActive} useMicaBackdrop={useMicaBackdrop} />
-      {winElectronChrome ? (
-        <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} />
-      ) : null}
       <div data-spirit-surface="app-body" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {!desktopTitleBarChrome ? (
           <div
@@ -662,6 +678,8 @@ export default function App() {
         onDiscardAndCheckout={composer.discardBranchChangesAndCheckoutSend}
       />
 
+    </div>
+      </div>
     </div>
     </SessionSidebarChromeProvider>
     </WorkspaceMarkdownLinkProvider>
