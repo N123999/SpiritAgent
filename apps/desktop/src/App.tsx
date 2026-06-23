@@ -236,7 +236,12 @@ export default function App() {
       className="flex h-full min-h-0 flex-col text-foreground"
     >
       {winElectronChrome ? (
-        <DesktopTitleBar useMicaBackdrop={useMicaBackdrop} />
+        <DesktopTitleBar
+          useMicaBackdrop={useMicaBackdrop}
+          onZoomIn={uiLayoutScale.zoomIn}
+          onZoomOut={uiLayoutScale.zoomOut}
+          onZoomReset={uiLayoutScale.resetScale}
+        />
       ) : null}
       <div
         id={UI_LAYOUT_SCALE_ROOT_ID}
