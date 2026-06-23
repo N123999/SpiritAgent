@@ -18,6 +18,7 @@ test('buildAgentModeSystemMessage: Agent mode guidance', () => {
 test('buildAgentModeSystemMessage: Plan mode guidance', () => {
   const message = buildAgentModeSystemMessage({ path: '/plans/foo.md', exists: true, agentMode: 'plan' });
   assert.ok(message.includes('You are in Plan mode.'));
+  assert.ok(message.includes('ask_questions'));
   assert.ok(message.includes('create_plan'));
   assert.ok(message.includes('Start implementing'));
   assert.ok(message.includes('switch to Agent mode'));

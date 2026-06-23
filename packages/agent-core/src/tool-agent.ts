@@ -649,7 +649,7 @@ export function buildAgentModeSystemMessage(
 
   if (agentMode === 'plan') {
     lines.push(
-      'Draft implementation plans when appropriate (for example with create_plan). When a plan is ready, tell the user to click Start implementing beside the Plan control, or switch to Agent mode and ask you to implement it.',
+      'If the goal or scope is unclear, use ask_questions to clarify before you draft a plan. Draft implementation plans when appropriate (for example with create_plan). When a plan is ready, tell the user to click Start implementing beside the Plan control, or switch to Agent mode and ask you to implement it.',
     );
   } else if (agentMode === 'ask') {
     lines.push(
