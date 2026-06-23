@@ -108,6 +108,7 @@ export type ComposerDockSectionProps = {
   onRemoveLocalFileAttachment: (path: string) => void;
   onComposerPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   models: DesktopSnapshot["config"]["models"];
+  onOpenGitTab: () => void;
 };
 
 export type WorkspaceToolsSectionProps = {
@@ -346,6 +347,7 @@ export function ConversationView({
             onComposerPaste={composerDock.onComposerPaste}
             models={composerDock.models}
             useMicaBackdrop={useMicaBackdrop}
+            onOpenGitTab={composerDock.onOpenGitTab}
           />
         </div>
       </div>
