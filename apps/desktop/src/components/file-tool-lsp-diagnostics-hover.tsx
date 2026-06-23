@@ -83,7 +83,7 @@ export function FileToolLspDiagnosticsHover({
   children: ReactNode;
 }) {
   return (
-    <Tooltip<LspWriteDiagnosticsUi> getItemId={() => itemId} delayDuration={300}>
+    <Tooltip<LspWriteDiagnosticsUi> getItemId={() => itemId} delayDuration={300} disableHoverableContent>
       <Tooltip.Zone className="min-w-0">{children}</Tooltip.Zone>
       <TooltipContent
         appearance="detail"
