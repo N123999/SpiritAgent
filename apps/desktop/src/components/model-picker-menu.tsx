@@ -234,6 +234,7 @@ export function ModelPickerMenu({
           <Tooltip
             open={suppressTooltip ? false : undefined}
             delayDuration={MODEL_PICKER_TOOLTIP_SHOW_DELAY_MS}
+            disableHoverableContent
           >
             <TooltipTrigger asChild>
               <FilteredOverlayMenuTrigger asChild>
