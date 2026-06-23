@@ -274,6 +274,108 @@ pub(crate) fn model_add_requires_manual_single_provider(
     )
 }
 
+/// 与 Desktop `resolveProfileApiBase` 对齐：托管提供商按 `providerSite` 等重算端点，而非盲读 `apiBase`。
+pub(crate) fn resolve_profile_api_base(profile: &crate::model_registry::ModelProfile) -> String {
+    use crate::model_registry::{ModelProvider, DEFAULT_API_BASE};
+
+    if profile.provider == Some(ModelProvider::AmazonBedrock) {
+        if let Some(region) = profile.aws_region() {
+            if crate::bedrock_mantle::is_bedrock_mantle_openai_model(&profile.name) {
+                return crate::bedrock_mantle::bedrock_mantle_api_base_from_region(&region);
+            }
+            return bedrock_api_base_from_region(&region);
+        }
+    }
+
+    if profile.provider == Some(ModelProvider::GoogleVertexAi) {
+        if let (Some(project), Some(location)) = (
+            profile.vertex_project(),
+            profile.vertex_location(),
+        ) {
+            return crate::vertex_models_list::vertex_api_base_from_project_and_location(
+                &project,
+                &location,
+            );
+        }
+        let trimmed = profile.api_base.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+        return String::new();
+    }
+
+    if profile.provider == Some(ModelProvider::Azure) {
+        if let Some(resource_name) = profile.azure_resource_name() {
+            return azure_api_base_from_resource_name(&resource_name);
+        }
+        let trimmed = profile.api_base.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+        return azure_api_base_from_resource_name("");
+    }
+
+    if let Some(provider) = profile.provider {
+        if provider != ModelProvider::Custom {
+            return default_api_base_for_transport(
+                provider,
+                profile.transport_kind(),
+                profile.provider_site().as_deref(),
+                profile.alibaba_workspace_id().as_deref().unwrap_or(""),
+            );
+        }
+    }
+
+    let trimmed = profile.api_base.trim();
+    if trimmed.is_empty() {
+        DEFAULT_API_BASE.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn bedrock_api_base_from_region(region: &str) -> String {
+    format!("https://bedrock.{}.amazonaws.com", region.trim())
+}
+
+fn default_api_base_for_transport(
+    provider: crate::model_registry::ModelProvider,
+    transport_kind: ModelTransportKind,
+    site: Option<&str>,
+    workspace_id: &str,
+) -> String {
+    if let Some(site) = site {
+        if let Some(base) = resolve_site_api_base(provider, transport_kind, site, workspace_id) {
+            return base;
+        }
+    }
+    model_add_preset_api_base_by_provider(provider)
+        .unwrap_or_else(|| model_add_default_custom_api_base(transport_kind))
+}
+
+fn resolve_site_api_base(
+    provider: crate::model_registry::ModelProvider,
+    transport_kind: ModelTransportKind,
+    site: &str,
+    workspace_id: &str,
+) -> Option<String> {
+    match provider {
+        crate::model_registry::ModelProvider::Moonshot => model_add_moonshot_site_api_base(site),
+        crate::model_registry::ModelProvider::Siliconflow => {
+            model_add_siliconflow_site_api_base(site)
+        }
+        crate::model_registry::ModelProvider::Minimax => {
+            model_add_minimax_site_api_base(site, transport_kind)
+        }
+        crate::model_registry::ModelProvider::Alibaba => model_add_alibaba_site_api_base(
+            site,
+            workspace_id,
+            transport_kind,
+        ),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,6 +478,21 @@ mod tests {
         assert_eq!(
             super::model_add_moonshot_site_api_base("intl").as_deref(),
             Some("https://api.moonshot.ai/v1")
+        );
+    }
+
+    #[test]
+    fn resolve_profile_api_base_prefers_moonshot_cn_site_over_stored_api_base() {
+        let profile: crate::model_registry::ModelProfile = serde_json::from_value(serde_json::json!({
+            "name": "kimi-k2.7-code",
+            "apiBase": "https://api.moonshot.ai/v1",
+            "provider": "moonshot-ai",
+            "providerSite": "cn"
+        }))
+        .expect("parse model profile");
+        assert_eq!(
+            resolve_profile_api_base(&profile),
+            "https://api.moonshot.cn/v1"
         );
     }
 

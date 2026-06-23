@@ -33,7 +33,7 @@ use crate::{
         AppConfig, ModelProvider, load_provider_access_key_id_from_keyring,
         load_provider_secret_access_key_from_keyring, normalize_reasoning_effort_value,
     },
-    model_provider_presets::{azure_api_base_from_resource_name, resolve_azure_resource_name},
+    model_provider_presets::{azure_api_base_from_resource_name, resolve_azure_resource_name, resolve_profile_api_base},
     plan::{self, PlanMetadata},
     ports::{
         ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
@@ -1931,7 +1931,7 @@ impl TsBridgeRuntime {
             self.resolve_key_from_store(&active.name, active.provider)?
         };
 
-        let api_base = env::var(ENV_API_BASE).unwrap_or_else(|_| active.api_base.clone());
+        let api_base = env::var(ENV_API_BASE).unwrap_or_else(|_| resolve_profile_api_base(active));
 
         let normalized_reasoning_effort = normalize_reasoning_effort_value(
             active.reasoning_effort.clone(),
@@ -2137,7 +2137,7 @@ impl TsBridgeRuntime {
                         let mut image_generation = serde_json::json!({
                             "apiKey": image_api_key,
                             "model": image_profile.name,
-                            "baseUrl": image_profile.api_base,
+                            "baseUrl": resolve_profile_api_base(image_profile),
                         });
                         if let Some(provider) = image_profile.provider {
                             if let Some(obj) = image_generation.as_object_mut() {
@@ -2184,7 +2184,7 @@ impl TsBridgeRuntime {
         let mut video_generation = serde_json::json!({
             "apiKey": video_api_key,
             "model": video_profile.name,
-            "baseUrl": video_profile.api_base,
+            "baseUrl": resolve_profile_api_base(video_profile),
         });
         if let Some(provider) = video_profile.provider {
             if let Some(obj) = video_generation.as_object_mut() {
