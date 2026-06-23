@@ -599,6 +599,7 @@ export default function App() {
               onRemoveLocalFileAttachment: composer.removeLocalFileAttachment,
               onComposerPaste: composer.handleComposerPaste,
               models: conversation.models,
+              onOpenGitTab: workspaceTools.openGitTab,
             }}
             workspaceTools={{
               startImplementingDisabled: conversation.startImplementingDisabled,

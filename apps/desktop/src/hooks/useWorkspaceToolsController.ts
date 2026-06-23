@@ -22,6 +22,7 @@ import {
   buildOpenPullRequestNavigation,
   type GitHubPullRequestRevealRequest,
 } from "@/lib/workspace-pr-navigation";
+import { resolveWorkspaceGitTab } from "@/lib/workspace-git-navigation";
 import type { DesktopSnapshot } from "@/types";
 
 type DesktopRuntime = ReturnType<typeof useDesktopRuntime>;
@@ -159,6 +160,16 @@ export function useWorkspaceToolsController({
     setWorkspacePrRevealNonce((value) => value + 1);
   }, [runtime.hostKind]);
 
+  const openGitTab = useCallback(() => {
+    const navigation = resolveWorkspaceGitTab(
+      workspaceToolTabsRef.current,
+      activeWorkspaceToolTabIdRef.current,
+    );
+    setWorkspaceToolsOpen(true);
+    setWorkspaceToolTabs(navigation.tabs);
+    setActiveWorkspaceToolTabId(navigation.activeTabId);
+  }, []);
+
   useEffect(() => {
     if (!runtime.apiReady || runtime.hostKind == null) {
       return;
@@ -280,6 +291,7 @@ export function useWorkspaceToolsController({
     openWorkspaceFile,
     revealWorkspaceDirectory,
     openPullRequestInPrTab,
+    openGitTab,
     workspacePrRevealNonce,
     workspacePrRevealTargetId,
     workspacePrRevealRequest,

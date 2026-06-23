@@ -76,6 +76,7 @@ export type ComposerDockProps = {
   onComposerPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   models: DesktopSnapshot["config"]["models"];
   useMicaBackdrop: boolean;
+  onOpenGitTab: () => void;
 };
 
 export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(function ComposerDock(
@@ -118,6 +119,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     onComposerPaste,
     models,
     useMicaBackdrop,
+    onOpenGitTab,
   },
   ref,
 ) {
