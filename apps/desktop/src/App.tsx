@@ -27,6 +27,7 @@ import { useUiLayoutScale } from "@/hooks/useUiLayoutScale";
 import { useDesktopKeyboardShortcuts } from "@/hooks/useDesktopKeyboardShortcuts";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useDesktopRuntimeErrorToast } from "@/hooks/use-desktop-runtime-error-toast";
+import { useDesktopQuestionErrorToast } from "@/hooks/use-desktop-question-error-toast";
 import { useDesktopShellEffects } from "@/hooks/useDesktopShellEffects";
 import { useFont } from "@/hooks/useFont";
 import { useMessageRewind } from "@/hooks/useMessageRewind";
@@ -59,6 +60,7 @@ export default function App() {
   const uiLayoutScale = useUiLayoutScale();
   const runtime = useDesktopRuntime();
   useDesktopRuntimeErrorToast(runtime.runtimeError);
+  useDesktopQuestionErrorToast(runtime.questionError);
   const snapshot = runtime.snapshot;
   /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
   const isElectronShell = isElectronChrome();

@@ -273,7 +273,6 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
             <PendingQuestionsCard
               pendingQuestions={runtime.pendingQuestions}
               questionDrafts={runtime.questionDrafts}
-              questionError={runtime.questionError}
               questionsBusy={runtime.busyAction === "questions"}
               onUpdateDraft={runtime.updateQuestionDraft}
               onSubmitQuestions={() => void runtime.submitQuestions()}

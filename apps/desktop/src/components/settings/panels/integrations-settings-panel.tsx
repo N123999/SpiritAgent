@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { GitHubDeviceLoginDialog } from "@/components/github-device-login-dialog";
 import { GitHubMarkIcon } from "@/components/github-mark-icon";
 import { Button } from "@/components/ui/button";
+import { showDesktopErrorToast } from "@/lib/desktop-error-toast";
 import {
   useGitHubDeviceLogin,
   type GitHubDeviceLoginRuntime,
@@ -41,6 +42,13 @@ export function IntegrationsSettingsPanel({
     void refreshAuthStatus();
   }, [isElectronShell, refreshAuthStatus, dialogOpen, loadingAuth]);
 
+  useEffect(() => {
+    if (!isElectronShell || dialogOpen) {
+      return;
+    }
+    showDesktopErrorToast(error ?? "", "github-integration-error");
+  }, [isElectronShell, dialogOpen, error]);
+
   const openExternalUrl = useCallback((url: string) => {
     void window.spiritDesktop?.openExternalUrl(url);
   }, []);
@@ -72,12 +80,6 @@ export function IntegrationsSettingsPanel({
 
       {!isElectronShell ? (
         <p className="text-sm text-muted-foreground">{t("settings.integrationsDesktopOnly")}</p>
-      ) : null}
-
-      {error && isElectronShell && !dialogOpen ? (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
       ) : null}
 
       <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">
