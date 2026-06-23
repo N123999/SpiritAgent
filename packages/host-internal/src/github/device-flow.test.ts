@@ -50,6 +50,39 @@ test('requestGitHubDeviceCode maps GitHub device code response', async () => {
   }
 });
 
+test('requestGitHubDeviceCode retries fetch failures until device code is returned', async () => {
+  const previousClientId = process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID;
+  process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID = 'test-client-id';
+
+  let requestCount = 0;
+  mockFetch(async () => {
+    requestCount += 1;
+    if (requestCount === 1) {
+      throw new TypeError('fetch failed');
+    }
+    return Response.json({
+      device_code: 'device-code-1',
+      user_code: 'ABCD-1234',
+      verification_uri: 'https://github.com/login/device',
+      expires_in: 900,
+      interval: 5,
+    });
+  });
+
+  try {
+    const challenge = await requestGitHubDeviceCode();
+    assert.equal(challenge.deviceCode, 'device-code-1');
+    assert.equal(requestCount, 2);
+  } finally {
+    restoreFetch();
+    if (previousClientId === undefined) {
+      delete process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID;
+    } else {
+      process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID = previousClientId;
+    }
+  }
+});
+
 test('pollGitHubDeviceToken waits for authorization_pending then returns token', async () => {
   const previousClientId = process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID;
   process.env.SPIRIT_GITHUB_OAUTH_CLIENT_ID = 'test-client-id';

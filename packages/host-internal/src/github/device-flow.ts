@@ -4,6 +4,13 @@ import {
   GITHUB_OAUTH_SCOPES,
 } from './oauth-config.js';
 import { githubFetch } from './github-fetch.js';
+import {
+  GITHUB_OAUTH_DEVICE_CODE_REQUEST_INTERVAL_MS,
+  GITHUB_OAUTH_DEVICE_CODE_REQUEST_TIMEOUT_MS,
+  isRetriableGitHubHttpStatus,
+  retryGitHubOAuthUntil,
+  type GitHubOAuthRetryAttempt,
+} from './oauth-fetch-retry.js';
 import { GitHubOAuthError, requireGitHubOAuthClientId } from './oauth.js';
 import type { GitHubDeviceAuthChallenge, GitHubOAuthTokenResponse } from './types.js';
 
@@ -37,32 +44,55 @@ export async function requestGitHubDeviceCode(input?: {
     scope: (input?.scopes ?? GITHUB_OAUTH_SCOPES).join(' '),
   });
 
-  const response = await githubFetch(GITHUB_OAUTH_DEVICE_CODE_URL, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/x-www-form-urlencoded',
+  return retryGitHubOAuthUntil({
+    expiresAtMs: Date.now() + GITHUB_OAUTH_DEVICE_CODE_REQUEST_TIMEOUT_MS,
+    intervalMs: GITHUB_OAUTH_DEVICE_CODE_REQUEST_INTERVAL_MS,
+    timedOutMessage: 'GitHub device code request timed out.',
+    attempt: async (): Promise<
+      GitHubOAuthRetryAttempt<GitHubDeviceAuthChallenge & { deviceCode: string }>
+    > => {
+      try {
+        const response = await githubFetch(GITHUB_OAUTH_DEVICE_CODE_URL, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body,
+        });
+
+        if (isRetriableGitHubHttpStatus(response.status)) {
+          return { outcome: 'retry' };
+        }
+
+        const payload = (await response.json()) as DeviceCodeApiResponse & {
+          error?: string;
+          error_description?: string;
+        };
+
+        if (!response.ok || payload.error || !payload.device_code || !payload.user_code) {
+          const detail = payload.error_description ?? payload.error ?? `HTTP ${response.status}`;
+          throw new GitHubOAuthError(`GitHub device code request failed: ${detail}`, response.status);
+        }
+
+        return {
+          outcome: 'success',
+          value: {
+            deviceCode: payload.device_code,
+            userCode: payload.user_code,
+            verificationUri: payload.verification_uri,
+            expiresIn: payload.expires_in,
+            intervalSeconds: payload.interval,
+          },
+        };
+      } catch (error) {
+        if (error instanceof GitHubOAuthError) {
+          throw error;
+        }
+        return { outcome: 'retry' };
+      }
     },
-    body,
   });
-
-  const payload = (await response.json()) as DeviceCodeApiResponse & {
-    error?: string;
-    error_description?: string;
-  };
-
-  if (!response.ok || payload.error || !payload.device_code || !payload.user_code) {
-    const detail = payload.error_description ?? payload.error ?? `HTTP ${response.status}`;
-    throw new GitHubOAuthError(`GitHub device code request failed: ${detail}`, response.status);
-  }
-
-  return {
-    deviceCode: payload.device_code,
-    userCode: payload.user_code,
-    verificationUri: payload.verification_uri,
-    expiresIn: payload.expires_in,
-    intervalSeconds: payload.interval,
-  };
 }
 
 export async function pollGitHubDeviceToken(input: {
