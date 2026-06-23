@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { ApprovalLevelMenu } from "@/components/approval-level-menu";
 import { BranchSelectMenu } from "@/components/branch-select-menu";
 import { ComposerSurface } from "@/components/composer/composer-surface";
+import { ComposerChangesCard } from "@/components/composer-changes-card";
 import { ComposerContextUsageRing } from "@/components/composer-context-usage-ring";
 import { ComposerTodoCard } from "@/components/composer-todo-card";
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
@@ -28,6 +29,7 @@ import {
 import { desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import type { ActiveSkillSlashQuery, SkillSlashSuggestion } from "@/lib/skill-slash";
 import { sameWorkspacePath } from "@/lib/workspace-display-label";
+import { shouldShowComposerChangesCard } from "@/lib/composer-changes-card-visibility";
 import { cn } from "@/lib/utils";
 import type {
   DesktopSnapshot,
@@ -124,6 +126,9 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
   ref,
 ) {
   const { t } = useTranslation();
+  const showChangesCard = shouldShowComposerChangesCard(snapshot?.git);
+  const changesLineDelta = snapshot?.git.workingTreeLineDelta;
+  const hasComposerTodos = Boolean(snapshot?.conversation.todos);
 
   return (
     <div
@@ -283,6 +288,16 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
 
           <div className="relative">
             <div className="relative z-10 flex flex-col">
+              {!isEmptySession && showChangesCard && changesLineDelta ? (
+                <div
+                  className={cn(
+                    "relative z-20 mb-2 shrink-0 self-start",
+                    hasComposerTodos && "mx-4",
+                  )}
+                >
+                  <ComposerChangesCard delta={changesLineDelta} onOpenGitTab={onOpenGitTab} />
+                </div>
+              ) : null}
               {snapshot?.conversation.todos ? (
                 <div className="relative z-20 mx-4 -mb-px shrink-0">
                   <ComposerTodoCard

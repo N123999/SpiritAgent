@@ -888,7 +888,9 @@
     "contextUsageHoverPercent": "{{percent}}% 上下文已用",
     "contextUsageHoverTokens": "{{input}} / {{total}} tokens",
     "enqueueWhileBusy": "加入消息队列",
-    "sendEnterKey": "回车"
+    "sendEnterKey": "回车",
+    "changes": "更改",
+    "changesAria": "打开 Git 变更"
   },
   "queue": {
     "moveUp": "上移",

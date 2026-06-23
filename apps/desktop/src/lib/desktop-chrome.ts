@@ -184,6 +184,13 @@ export const DESKTOP_OVERLAY_LIST_WORKSPACE_PANEL =
 export const DESKTOP_COMPOSER_SURFACE_BACKDROP =
   "bg-background/55 backdrop-blur-xl dark:bg-input/30 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
 
+/** Composer 胶囊小卡片（Changes 等）：与输入框同源底/边框，hover 仅提亮边框 */
+export const DESKTOP_COMPOSER_CHIP_SURFACE = cn(
+  "border border-border/50 dark:border-white/10",
+  "hover:border-ring/60 dark:hover:border-white/12",
+  DESKTOP_COMPOSER_SURFACE_BACKDROP,
+);
+
 /** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）外壳 */
 export const DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE = cn(
   "overflow-hidden rounded-2xl border border-border/50 shadow-sm dark:border-white/10",

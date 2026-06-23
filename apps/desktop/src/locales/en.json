@@ -891,7 +891,9 @@
     "contextUsageHoverPercent": "{{percent}}% context used",
     "contextUsageHoverTokens": "{{input}} / {{total}} tokens",
     "enqueueWhileBusy": "Add to message queue",
-    "sendEnterKey": "Enter"
+    "sendEnterKey": "Enter",
+    "changes": "Changes",
+    "changesAria": "Open Git changes"
   },
   "queue": {
     "moveUp": "Move up",
