@@ -210,7 +210,14 @@ export function ModelPickerMenu({
   }, []);
 
   if (models.length === 0) {
-    return <span className="px-1 text-xs text-muted-foreground">{t("app.noModelsAvailable")}</span>;
+    return (
+      <span
+        data-composer-chrome-static=""
+        className="cursor-default px-1 text-xs text-muted-foreground"
+      >
+        {t("app.noModelsAvailable")}
+      </span>
+    );
   }
 
   return (

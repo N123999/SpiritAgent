@@ -42,7 +42,7 @@ function isComposerChromeInteractiveTarget(target: EventTarget | null): boolean 
   }
   return Boolean(
     target.closest(
-      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [role="combobox"], [role="menuitem"], [role="option"]',
+      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [role="combobox"], [role="menuitem"], [role="option"], [data-composer-chrome-static]',
     ),
   );
 }
