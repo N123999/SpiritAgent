@@ -678,7 +678,7 @@ export function GitCommitGraph({
 
   return (
     <ScrollArea ref={scrollAreaRef} className={cn("min-h-0 flex-1", className)}>
-      <Tooltip<GitCommitGraphRow> getItemId={(row) => row.commit.oid}>
+      <Tooltip<GitCommitGraphRow> getItemId={(row) => row.commit.oid} disableHoverableContent>
         <div className="relative min-w-0 pr-1">
           <CommitGraphGutter rows={rows} graphWidth={graphWidth} geometry={geometry} />
           <Tooltip.Zone ref={rowsContainerRef} className="relative">
