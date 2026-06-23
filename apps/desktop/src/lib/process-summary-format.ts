@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 
 import {
   PROCESS_TOOL_CATEGORY_ORDER,
+  collectProcessCategoryOrder,
   type ProcessToolCategory,
   type ProcessToolCounts,
 } from '@/lib/process-tool-category';
@@ -34,8 +35,11 @@ export function formatProcessSummary(
   t: TFunction,
   counts: ProcessToolCounts,
   maxVisibleCategories = PROCESS_SUMMARY_MAX_VISIBLE_CATEGORIES,
+  categoryOrder?: readonly ProcessToolCategory[],
 ): string {
-  const activeCategories = PROCESS_TOOL_CATEGORY_ORDER.filter((category) => counts[category] > 0);
+  const activeCategories = categoryOrder
+    ? categoryOrder.filter((category) => counts[category] > 0)
+    : PROCESS_TOOL_CATEGORY_ORDER.filter((category) => counts[category] > 0);
   if (activeCategories.length === 0) {
     return '';
   }
@@ -67,6 +71,15 @@ export function countProcessAuxMessages(
   return { thoughtCount };
 }
 
+function collectToolsForMessageIndices(
+  messages: readonly ConversationMessageSnapshot[],
+  messageIndices: readonly number[],
+) {
+  return messageIndices
+    .map((index) => messages[index]?.tool)
+    .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
+}
+
 /** Tool counts first; otherwise summarize sealed thinking rows in the group. */
 export function formatProcessGroupSummary(
   t: TFunction,
@@ -74,7 +87,9 @@ export function formatProcessGroupSummary(
   messages: readonly ConversationMessageSnapshot[],
   messageIndices: readonly number[],
 ): string {
-  const toolSummary = formatProcessSummary(t, counts);
+  const tools = collectToolsForMessageIndices(messages, messageIndices);
+  const categoryOrder = collectProcessCategoryOrder(tools);
+  const toolSummary = formatProcessSummary(t, counts, undefined, categoryOrder);
   if (toolSummary) {
     return toolSummary;
   }

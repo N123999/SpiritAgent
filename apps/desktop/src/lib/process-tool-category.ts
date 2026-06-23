@@ -155,3 +155,20 @@ export function aggregateProcessToolCounts(
     return incrementProcessToolCounts(counts, category);
   }, emptyProcessToolCounts());
 }
+
+/** First occurrence order of each category in the tool sequence. */
+export function collectProcessCategoryOrder(
+  tools: ReadonlyArray<Pick<ToolBlockSnapshot, 'toolName' | 'headline'>>,
+): ProcessToolCategory[] {
+  const seen = new Set<ProcessToolCategory>();
+  const order: ProcessToolCategory[] = [];
+  for (const tool of tools) {
+    const category = classifyProcessToolCategoryFromSnapshot(tool);
+    if (seen.has(category)) {
+      continue;
+    }
+    seen.add(category);
+    order.push(category);
+  }
+  return order;
+}
