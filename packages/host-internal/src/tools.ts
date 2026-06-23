@@ -22,6 +22,10 @@ import {
 } from '@spirit-agent/core';
 
 import { applyDiff } from './apply-diff.js';
+import {
+  formatGrepToolOutput,
+  runRipgrepSearch,
+} from './ripgrep-search.js';
 import { resolveCompactionArchivesDir } from './compaction-archive.js';
 import {
   defaultShellForPty,
@@ -92,28 +96,10 @@ const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
-const MAX_SEARCH_FILE_BYTES = 1_000_000;
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
 
 const SEARCH_IGNORE_DIR_NAMES = new Set(['.git', 'target', 'node_modules']);
-const BINARY_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.ico',
-  '.zip',
-  '.gz',
-  '.7z',
-  '.pdf',
-  '.exe',
-  '.dll',
-  '.so',
-  '.dylib',
-  '.class',
-]);
 
 export type HostJsonPrimitive = string | number | boolean | null;
 export type HostJsonValue = HostJsonPrimitive | HostJsonObject | HostJsonValue[];
@@ -1617,113 +1603,19 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         ? normalizeWorkspaceGlobPattern(inputGlob)
         : null;
 
-    const searchMode = isRegexp ? '正则' : '文本';
-    const matchesLine = createSearchLineMatcher(needle, isRegexp);
-    const files = new Set<string>();
-    const hits: string[] = [];
+    const matches = await runRipgrepSearch({
+      workspaceRoot: this.workspaceRoot,
+      query: needle,
+      isRegexp,
+      globPattern,
+    });
 
-    const visitFile = async (filePath: string): Promise<void> => {
-      const ext = path.extname(filePath).toLowerCase();
-      if (BINARY_EXTENSIONS.has(ext)) {
-        return;
-      }
-
-      let st;
-      try {
-        st = await lstat(filePath);
-      } catch {
-        return;
-      }
-      if (!st.isFile() || st.size > MAX_SEARCH_FILE_BYTES) {
-        return;
-      }
-
-      let content: string;
-      try {
-        content = await readFile(filePath, 'utf8');
-      } catch {
-        return;
-      }
-
-      const rel = path.relative(this.workspaceRoot, filePath).replace(/\\/gu, '/');
-      const relDisplay = rel || '.';
-      const lines = content.split(/\r?\n/u);
-
-      for (let index = 0; index < lines.length; index += 1) {
-        const line = lines[index] ?? '';
-        if (!matchesLine(line)) {
-          continue;
-        }
-
-        files.add(relDisplay);
-        hits.push(`${relDisplay}:${index + 1} | ${normalizeSearchLine(line)}`);
-      }
-    };
-
-    if (globPattern !== null) {
-      const relativePaths = (
-        await globPaths(globPattern, {
-          cwd: this.workspaceRoot,
-          absolute: false,
-          nodir: true,
-          dot: true,
-          windowsPathsNoEscape: true,
-          ignore: [...SEARCH_IGNORE_DIR_NAMES].map((name) => `**/${name}/**`),
-        })
-      )
-        .map((value) => value.replace(/\\/gu, '/'))
-        .sort((left, right) => left.localeCompare(right));
-
-      for (const relPath of relativePaths) {
-        await visitFile(path.join(this.workspaceRoot, relPath));
-      }
-    } else {
-      const walk = async (dir: string): Promise<void> => {
-        let entries;
-        try {
-          entries = await readdir(dir, { withFileTypes: true });
-        } catch {
-          return;
-        }
-
-        for (const entry of entries) {
-          const full = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            if (SEARCH_IGNORE_DIR_NAMES.has(entry.name)) {
-              continue;
-            }
-            await walk(full);
-          } else if (entry.isFile()) {
-            await visitFile(full);
-          }
-        }
-      };
-
-      await walk(this.workspaceRoot);
-    }
-
-    if (files.size === 0) {
-      let out = `[tool] 搜索(${searchMode}): ${query}`;
-      if (globPattern !== null) {
-        out += `\nglob: ${globPattern}`;
-      }
-      out += '\n未搜索到文件';
-      return out;
-    }
-
-    let out = `[tool] 搜索(${searchMode}): ${query}`;
-    if (globPattern !== null) {
-      out += `\nglob: ${globPattern}`;
-    }
-    out += '\n命中片段\n';
-    for (const hit of hits) {
-      out += `${hit}\n`;
-    }
-    out += '\n涉及文件\n';
-    for (const file of [...files].sort((left, right) => left.localeCompare(right))) {
-      out += `${file}\n`;
-    }
-    return out;
+    return formatGrepToolOutput({
+      query,
+      isRegexp,
+      globPattern,
+      matches,
+    });
   }
 
   private async executeShell(
@@ -2341,22 +2233,6 @@ function normalizeWorkspaceGlobPattern(input: string): string {
   return normalized;
 }
 
-function createSearchLineMatcher(query: string, isRegexp: boolean): (line: string) => boolean {
-  if (!isRegexp) {
-    const needleLower = query.toLowerCase();
-    return (line: string) => line.toLowerCase().includes(needleLower);
-  }
-
-  let regexp: RegExp;
-  try {
-    regexp = new RegExp(query, 'i');
-  } catch (error) {
-    throw new Error(`无效正则: ${error instanceof Error ? error.message : String(error)}`);
-  }
-
-  return (line: string) => regexp.test(line);
-}
-
 function isImageInputBlocked(
   profile: HostToolModelCompatibilityProfile | undefined,
 ): boolean {
@@ -2484,10 +2360,6 @@ function validateQuestions(questions: HostAskQuestionsQuestionSpec[]): void {
       }
     }
   }
-}
-
-function normalizeSearchLine(line: string): string {
-  return line.replace(/\r?\n$/u, '').trim();
 }
 
 function countSubstringOccurrences(haystack: string, needle: string): number {

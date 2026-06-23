@@ -1,13 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
+import { promisify } from 'node:util';
 
 import {
   NodeHostToolService,
   type HostToolExecutionOutput,
 } from './tools.js';
+
+const execFileAsync = promisify(execFile);
 
 const ONE_PIXEL_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Zp1cAAAAASUVORK5CYII=';
@@ -541,6 +545,31 @@ test('grep rejects invalid regular expressions with a clear error', async () => 
         }),
       /无效正则/u,
     );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('grep skips files matched by .gitignore', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-search-gitignore-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+    await execFileAsync('git', ['init'], { cwd: workspaceRoot, windowsHide: true });
+    await writeFile(join(workspaceRoot, '.gitignore'), 'ignored.txt\n', 'utf8');
+    await writeFile(join(workspaceRoot, 'ignored.txt'), 'needle here\n', 'utf8');
+    await writeFile(join(workspaceRoot, 'tracked.txt'), 'needle here\n', 'utf8');
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const output = await service.execute({
+      name: 'grep',
+      query: 'needle',
+    });
+
+    assertTextToolOutput(output);
+    assert.match(output, /tracked\.txt:1 \| needle here/u);
+    assert.doesNotMatch(output, /ignored\.txt/u);
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
