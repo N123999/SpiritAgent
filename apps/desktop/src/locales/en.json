@@ -595,6 +595,11 @@
     "downloadVideo": "Download Video",
     "viewLargeImage": "View Large Image",
     "closeImagePreview": "Close Image Preview",
+    "viewLargeDiagram": "View Large Diagram",
+    "closeDiagramPreview": "Close Diagram Preview",
+    "diagramZoomIn": "Zoom In",
+    "diagramZoomOut": "Zoom Out",
+    "diagramZoomReset": "Reset Zoom and Pan",
     "typeMessage": "Type a message\u2026",
     "emptySessionGreeting": {
       "startSomething": "Start something.",

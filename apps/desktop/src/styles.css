@@ -5,7 +5,9 @@
 @source "../node_modules/streamdown/dist/*.js";
 @source "../node_modules/@streamdown/code/dist/*.js";
 @source "../node_modules/@streamdown/math/dist/*.js";
-@source "../node_modules/@streamdown/mermaid/dist/*.js";
+@import "./styles/markdown-mermaid.css";
+@import "./styles/markdown-code-block.css";
+@import "./styles/floating-action-button.css";
 
 @custom-variant dark (&:is(.dark *));
 

@@ -12,8 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 
 // backdrop-filter 在祖先 opacity 动画期间无法正确合成；卡片 hover 渐显须与 blur 写在同一元素上。
-export const LOCAL_IMAGE_FLOATING_ACTION_BUTTON_CLASS =
-  "size-8 rounded-full border border-border/50 bg-background/55 text-foreground shadow-sm backdrop-blur-xl transition-[opacity,background-color,border-color,box-shadow] duration-200 ease-out hover:border-border/60 hover:bg-background/72 dark:border-white/12 dark:bg-input/30 dark:hover:bg-input/40 supports-[backdrop-filter]:bg-background/40 dark:supports-[backdrop-filter]:bg-input/25";
+export const LOCAL_IMAGE_FLOATING_ACTION_BUTTON_CLASS = "spirit-floating-action-button";
 
 export function useImagePreviewAspectRatio(previewDataUrl: string | null): CSSProperties | undefined {
   const [previewAspectRatio, setPreviewAspectRatio] = useState<number | null>(null);
