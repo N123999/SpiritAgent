@@ -11,6 +11,8 @@ import {
 export type SpiritNotificationProtocolHandlers = {
   onApproval: (decision: 'allow' | 'deny') => void | Promise<void>;
   onFocus?: () => void;
+  onNewSession?: () => void;
+  onOpenSession?: (sessionPath: string) => void | Promise<void>;
 };
 
 let handlers: SpiritNotificationProtocolHandlers | undefined;
@@ -36,12 +38,14 @@ export function bindSpiritNotificationProtocolHandlers(
   handlers = next;
 }
 
-export function handleSpiritNotificationProtocolArgv(argv: readonly string[]): void {
+/** Returns true when argv contains a handled spirit:// URL. */
+export function handleSpiritNotificationProtocolArgv(argv: readonly string[]): boolean {
   const rawUrl = findSpiritNotificationProtocolUrl(argv);
   if (!rawUrl) {
-    return;
+    return false;
   }
   dispatchSpiritNotificationProtocolUrl(rawUrl);
+  return true;
 }
 
 function dispatchSpiritNotificationProtocolUrl(rawUrl: string): void {
@@ -51,6 +55,14 @@ function dispatchSpiritNotificationProtocolUrl(rawUrl: string): void {
   }
   if (parsed.kind === 'approval') {
     void handlers.onApproval(parsed.decision);
+    return;
+  }
+  if (parsed.kind === 'new-session') {
+    handlers.onNewSession?.();
+    return;
+  }
+  if (parsed.kind === 'open-session') {
+    void handlers.onOpenSession?.(parsed.path);
     return;
   }
   handlers.onFocus?.();

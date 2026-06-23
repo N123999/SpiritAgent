@@ -42,6 +42,12 @@ import {
   registerSpiritNotificationProtocolClient,
 } from './notification-protocol.js';
 import {
+  bindSpiritProtocolActionHandlers,
+  flushPendingSpiritProtocolActions,
+  handleSpiritNewSessionRequest,
+  handleSpiritOpenSessionRequest,
+} from './spirit-protocol-actions.js';
+import {
   getAppAwayFromUser,
   registerWindowPresence,
   setRendererVisibility,
@@ -94,7 +100,10 @@ if (!gotSpiritSingleInstanceLock) {
   setSpiritAgentDataDirOverride(spiritDataDir);
 
   app.on('second-instance', (_event, argv) => {
-    handleSpiritNotificationProtocolArgv(argv);
+    const hadProtocol = handleSpiritNotificationProtocolArgv(argv);
+    if (!hadProtocol) {
+      focusSpiritDesktopWindows();
+    }
   });
 }
 
@@ -250,6 +259,21 @@ async function stopDesktopWebHostIfRunning(): Promise<void> {
     return;
   }
   await desktopWebHost.stop();
+}
+
+async function handleSpiritOpenSessionFromProtocol(sessionPath: string): Promise<void> {
+  try {
+    const next = await invokeMainDesktopHostCommand('openSession', { path: sessionPath });
+    if (isDesktopSnapshot(next)) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send('desktop:notify-refresh');
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[spirit-desktop] open-session protocol failed:', error);
+  }
 }
 
 async function handleApprovalNotificationAction(decision: 'allow' | 'deny'): Promise<void> {
@@ -623,6 +647,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   }
 
   await syncBrowserWindowFrameFromRendererStorage(window);
+  flushPendingSpiritProtocolActions();
 
   if (process.platform === 'darwin') {
     const broadcastWindowFullscreen = () => {
@@ -680,9 +705,15 @@ if (gotSpiritSingleInstanceLock) {
     videoPreviewMimeType,
     imagePreviewMimeType,
   });
+  bindSpiritProtocolActionHandlers({
+    focusWindows: focusSpiritDesktopWindows,
+    openSession: handleSpiritOpenSessionFromProtocol,
+  });
   bindSpiritNotificationProtocolHandlers({
     onApproval: handleApprovalNotificationAction,
     onFocus: focusSpiritDesktopWindows,
+    onNewSession: handleSpiritNewSessionRequest,
+    onOpenSession: handleSpiritOpenSessionRequest,
   });
   handleSpiritNotificationProtocolArgv(process.argv);
   registerWindowsToastActivationHandler();
