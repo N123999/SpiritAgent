@@ -26,6 +26,8 @@ import { useConversationViewState } from "@/hooks/useConversationViewState";
 import { useUiLayoutScale } from "@/hooks/useUiLayoutScale";
 import { useDesktopKeyboardShortcuts } from "@/hooks/useDesktopKeyboardShortcuts";
 import { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
+import { useDesktopRuntimeErrorToast } from "@/hooks/use-desktop-runtime-error-toast";
+import { useDesktopQuestionErrorToast } from "@/hooks/use-desktop-question-error-toast";
 import { useDesktopShellEffects } from "@/hooks/useDesktopShellEffects";
 import { useFont } from "@/hooks/useFont";
 import { useMessageRewind } from "@/hooks/useMessageRewind";
@@ -57,6 +59,8 @@ export default function App() {
   const { clickablePointerCursor, setClickablePointerCursor } = useClickablePointerCursor();
   const uiLayoutScale = useUiLayoutScale();
   const runtime = useDesktopRuntime();
+  useDesktopRuntimeErrorToast(runtime.runtimeError);
+  useDesktopQuestionErrorToast(runtime.questionError);
   const snapshot = runtime.snapshot;
   /** 与 Host API 的 `kind` 解耦：壳可能是 Electron，但仍通过 Vite 代理走 Web Host（侧栏会显示 Localhost Web Host）。Mica 与 `spirit-desktop-native` 仍应对 Electron 窗口生效。 */
   const isElectronShell = isElectronChrome();
@@ -222,7 +226,6 @@ export default function App() {
     return (
       <WebHostPairingGate
         busy={runtime.busyAction === "bootstrap"}
-        error={runtime.runtimeError}
         onPair={runtime.pairWebHost}
       />
     );
@@ -353,7 +356,6 @@ export default function App() {
               onClickablePointerCursorChange={setClickablePointerCursor}
               settings={runtime.settings}
               snapshot={snapshot}
-              runtimeError={runtime.runtimeError}
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
               modelsBusy={runtime.busyAction === "models"}
@@ -490,7 +492,6 @@ export default function App() {
               snapshot={snapshot}
               apiReady={runtime.apiReady}
               busyAction={runtime.busyAction}
-              runtimeError={runtime.runtimeError}
               onListMarketplaceExtensions={runtime.listMarketplaceExtensions}
               onGetMarketplaceExtensionDetail={runtime.getMarketplaceExtensionDetail}
               onGetMarketplaceExtensionReadme={runtime.getMarketplaceExtensionReadme}
@@ -680,7 +681,6 @@ export default function App() {
         onOpenChange={composer.handleBranchCheckoutDialogOpenChange}
         branchCheckoutBlockedByChanges={composer.branchCheckoutBlockedByChanges}
         git={snapshot?.git}
-        runtimeError={runtime.runtimeError}
         commitBusy={composer.commitBusy}
         onCancel={composer.cancelBranchCheckoutDialog}
         onConfirmCheckout={composer.confirmBranchCheckoutAndSend}

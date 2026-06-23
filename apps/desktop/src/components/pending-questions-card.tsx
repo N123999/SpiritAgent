@@ -26,7 +26,6 @@ const questionOptionClass = cn(
 type PendingQuestionsCardProps = {
   pendingQuestions: PendingQuestionsSnapshot;
   questionDrafts: Record<string, QuestionDraft>;
-  questionError: string;
   questionsBusy: boolean;
   onUpdateDraft(
     questionId: string,
@@ -58,7 +57,6 @@ function isQuestionDraftAnswered(
 export function PendingQuestionsCard({
   pendingQuestions,
   questionDrafts,
-  questionError,
   questionsBusy,
   onUpdateDraft,
   onSubmitQuestions,
@@ -281,12 +279,6 @@ export function PendingQuestionsCard({
               placeholder={question.customInputPlaceholder ?? t("app.supplementOption")}
               disabled={questionsBusy}
             />
-          </div>
-        ) : null}
-
-        {questionError ? (
-          <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
-            {questionError}
           </div>
         ) : null}
 

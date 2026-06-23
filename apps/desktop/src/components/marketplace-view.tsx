@@ -21,6 +21,7 @@ import {
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
+import { showDesktopErrorToast } from "@/lib/desktop-error-toast";
 import { cn } from "@/lib/utils";
 import type {
   DesktopExtensionListItem,
@@ -40,7 +41,6 @@ type MarketplaceViewProps = {
   } | null;
   apiReady: boolean;
   busyAction: string;
-  runtimeError: string;
   onListMarketplaceExtensions: () => Promise<DesktopMarketplaceCatalogItem[]>;
   onGetMarketplaceExtensionDetail: (extensionId: string) => Promise<DesktopMarketplaceDetail>;
   onGetMarketplaceExtensionReadme: (extensionId: string) => Promise<string>;
@@ -109,7 +109,6 @@ export function MarketplaceView({
   snapshot,
   apiReady,
   busyAction,
-  runtimeError,
   onListMarketplaceExtensions,
   onGetMarketplaceExtensionDetail,
   onGetMarketplaceExtensionReadme,
@@ -133,7 +132,10 @@ export function MarketplaceView({
 
   const installedExtensions = snapshot?.extensionsList ?? [];
   const marketplaceBusy = busyAction === "marketplace";
-  const effectiveError = runtimeError || localError;
+
+  useEffect(() => {
+    showDesktopErrorToast(localError, "marketplace-local-error");
+  }, [localError]);
 
   const filteredCatalog = catalog.filter((item) => {
     const query = searchText.trim().toLowerCase();
@@ -548,11 +550,6 @@ export function MarketplaceView({
           ) : (
             <ScrollArea className="min-h-0 flex-1" type="hover" scrollHideDelay={450}>
               <div className={cn("mx-auto w-full space-y-4 px-3 pb-12 pt-5", MARKETPLACE_READING_W)}>
-                {effectiveError ? (
-                  <div className="rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2 text-xs leading-relaxed text-destructive">
-                    {effectiveError}
-                  </div>
-                ) : null}
 
                 {/* 详情顶栏：图标与文本垂直居中；正文压缩为标题行 + 单行摘要（作者并入摘要前缀） */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">

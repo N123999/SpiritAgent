@@ -34,7 +34,6 @@ export function SettingsView({
   onClickablePointerCursorChange,
   settings,
   snapshot,
-  runtimeError,
   apiReady,
   modelsBusy,
   modelsPreviewBusy,
@@ -109,12 +108,6 @@ export function SettingsView({
                 {t(settingsPageTitleKey[tab])}
                 {tab === "dreams" ? <Badge variant="outline">Beta</Badge> : null}
               </h1>
-            ) : null}
-
-            {runtimeError ? (
-              <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                {runtimeError}
-              </div>
             ) : null}
 
             {extensionSettingsItem ? (

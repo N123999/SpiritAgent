@@ -13,29 +13,27 @@ import {
 } from "@/components/ui/card";
 import { DesktopFormInput } from "@/components/ui/desktop-form-field";
 import { Label } from "@/components/ui/label";
+import { showDesktopErrorToast } from "@/lib/desktop-error-toast";
 
 export function WebHostPairingGate({
   busy,
-  error,
   onPair,
 }: {
   busy: boolean;
-  error: string;
   onPair(code: string): Promise<boolean>;
 }) {
   const { t } = useTranslation();
   const [code, setCode] = useState("");
-  const [localError, setLocalError] = useState("");
 
   const submit = () => {
     const normalized = code.trim();
     if (!normalized) {
-      setLocalError(t('app.enterPairingCode'));
+      showDesktopErrorToast(t("app.enterPairingCode"), "web-host-pairing-local");
       return;
     }
     void onPair(normalized).then((ok) => {
       if (!ok) {
-        setLocalError(t('app.pairingFailed'));
+        showDesktopErrorToast(t("app.pairingFailed"), "web-host-pairing-local");
       }
     });
   };
@@ -56,7 +54,6 @@ export function WebHostPairingGate({
               inputMode="numeric"
               autoComplete="one-time-code"
               onChange={(event) => {
-                setLocalError("");
                 setCode(event.target.value);
               }}
               onKeyDown={(event) => {
@@ -66,9 +63,6 @@ export function WebHostPairingGate({
               }}
             />
           </div>
-          {localError || (error && !error.includes('需要完成首次配对')) ? (
-            <p className="text-sm text-destructive">{localError || error}</p>
-          ) : null}
           <Button type="button" className="w-full" disabled={busy} onClick={submit}>
             {busy ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {t('app.pair')}

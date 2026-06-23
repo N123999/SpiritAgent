@@ -58,7 +58,6 @@ export type SettingsViewProps = {
   onClickablePointerCursorChange: (enabled: boolean) => void;
   settings: SettingsFormState;
   snapshot: DesktopSnapshot | null;
-  runtimeError: string;
   apiReady: boolean;
   busyAction: string;
   modelsBusy: boolean;

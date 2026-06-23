@@ -233,11 +233,6 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
               ) : null}
             </div>
           ) : null}
-          {runtime.runtimeError ? (
-            <div className="rounded-md border border-destructive/35 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed text-destructive">
-              {runtime.runtimeError}
-            </div>
-          ) : null}
 
           {rewindWarnings.length > 0 ? (
             <div className="rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-2 text-xs leading-relaxed text-amber-900 dark:text-amber-100">
@@ -278,7 +273,6 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
             <PendingQuestionsCard
               pendingQuestions={runtime.pendingQuestions}
               questionDrafts={runtime.questionDrafts}
-              questionError={runtime.questionError}
               questionsBusy={runtime.busyAction === "questions"}
               onUpdateDraft={runtime.updateQuestionDraft}
               onSubmitQuestions={() => void runtime.submitQuestions()}

@@ -17,7 +17,6 @@ export type BranchCheckoutDialogProps = {
   onOpenChange: (open: boolean) => void;
   branchCheckoutBlockedByChanges: boolean;
   git: DesktopSnapshot["git"] | undefined;
-  runtimeError: string;
   commitBusy: boolean;
   onCancel: () => void;
   onConfirmCheckout: () => void;
@@ -29,7 +28,6 @@ export function BranchCheckoutDialog({
   onOpenChange,
   branchCheckoutBlockedByChanges,
   git,
-  runtimeError,
   commitBusy,
   onCancel,
   onConfirmCheckout,
@@ -59,9 +57,6 @@ export function BranchCheckoutDialog({
             )}
           </DialogDescription>
         </DialogHeader>
-        {runtimeError ? (
-          <p className="text-sm leading-relaxed text-destructive">{runtimeError}</p>
-        ) : null}
         <DialogFooter className="gap-2 sm:justify-end">
           <Button
             type="button"
