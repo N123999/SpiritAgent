@@ -6,7 +6,7 @@ import {
   useRef,
   type MutableRefObject,
 } from "react";
-import { code } from "@streamdown/code";
+import { createCodePlugin } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { Block, parseMarkdownIntoBlocks, Streamdown, type BlockProps } from "streamdown";
 import type { Pluggable } from "unified";
@@ -29,7 +29,12 @@ import { useWorkspaceMarkdownLinkClick } from "@/components/workspace-markdown-l
 
 const streamdownMathPlugin = math;
 
-const streamdownPluginsBase = { code, math: streamdownMathPlugin };
+/** VS Code Default Light+ / Dark+（Shiki bundled） */
+const STREAMDOWN_SHIKI_THEMES = ["light-plus", "dark-plus"] as const;
+
+const spiritStreamdownCodePlugin = createCodePlugin({
+  themes: [...STREAMDOWN_SHIKI_THEMES],
+});
 
 /** Char-level + zero stagger: each stream delta animates in parallel (not serial / per-paragraph batch). */
 const streamingAnimateOptions = {
@@ -128,7 +133,8 @@ export function AgentMarkdownMessage({
   const onMarkdownLinkClick = useWorkspaceMarkdownLinkClick();
   const streamdownPlugins = useMemo(
     () => ({
-      ...streamdownPluginsBase,
+      code: spiritStreamdownCodePlugin,
+      math: streamdownMathPlugin,
       mermaid: createSpiritMermaidPlugin(resolvedDark),
       renderers: [createMarkdownMermaidRenderer(resolvedDark)],
     }),
