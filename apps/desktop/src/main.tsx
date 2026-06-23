@@ -13,22 +13,28 @@ import {
 import { applyDesktopNativeChromeToDocument } from './lib/desktop-shell';
 import { applyFontToDocument, getStoredFont } from './lib/font';
 import { applyThemeToDocument, getStoredTheme } from './lib/theme';
+import {
+  DEFAULT_UI_LAYOUT_SCALE,
+  getStoredUiLayoutScale,
+  SPIRIT_UI_LAYOUT_SCALE_VAR,
+} from './lib/ui-layout-scale';
 import 'katex/dist/katex.min.css';
 import 'streamdown/styles.css';
 import './styles.css';
 
 // 首屏前应用已存外观偏好，避免 portaled 浮层与根样式不一致
 if (typeof document !== 'undefined') {
-  if (import.meta.env.DEV && /\bElectron\//.test(navigator.userAgent)) {
-    console.info(
-      '[spirit-desktop] 首屏前 spiritDesktop:',
-      Boolean(window.spiritDesktop),
-    );
-  }
   applyThemeToDocument(getStoredTheme());
   applyDesktopNativeChromeToDocument();
   applyFontToDocument(getStoredFont());
   applyClickablePointerCursorToDocument(getStoredClickablePointerCursor());
+  const initialUiLayoutScale = getStoredUiLayoutScale();
+  if (initialUiLayoutScale !== DEFAULT_UI_LAYOUT_SCALE) {
+    document.documentElement.style.setProperty(
+      SPIRIT_UI_LAYOUT_SCALE_VAR,
+      String(initialUiLayoutScale),
+    );
+  }
 }
 
 const rootElement = document.getElementById('app');

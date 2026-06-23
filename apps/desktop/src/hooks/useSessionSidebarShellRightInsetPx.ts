@@ -30,7 +30,8 @@ export function useSessionSidebarShellRightInsetPx(
       const dividerLeftPx = sidebarDividerRect
         ? sidebarDividerRect.left - anchorRect.left
         : shellRect.right - anchorRect.left;
-      setInsetPx(Math.max(0, Math.round(dividerLeftPx)));
+      const nextInset = Math.max(0, Math.round(dividerLeftPx));
+      setInsetPx(nextInset);
     };
 
     sync();

@@ -2,6 +2,7 @@ import * as React from "react"
 import { Menubar as MenubarPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale"
 import { CheckIcon, ChevronRightIcon } from "lucide-react"
 
 function Menubar({
@@ -33,9 +34,16 @@ function MenubarGroup({
 }
 
 function MenubarPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof MenubarPrimitive.Portal>) {
-  return <MenubarPrimitive.Portal data-slot="menubar-portal" {...props} />
+  return (
+    <MenubarPrimitive.Portal
+      data-slot="menubar-portal"
+      container={container ?? getUiLayoutPortalContainer()}
+      {...props}
+    />
+  )
 }
 
 function MenubarRadioGroup({

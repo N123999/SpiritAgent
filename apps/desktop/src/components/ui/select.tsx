@@ -2,6 +2,7 @@ import * as React from "react";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";
 
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +52,7 @@ function SelectContent({
   position?: "popper" | "item-aligned";
 }) {
   return (
-    <SelectPrimitive.Portal>
+    <SelectPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <SelectPrimitive.Content
         data-slot="select-content"
         position={position}

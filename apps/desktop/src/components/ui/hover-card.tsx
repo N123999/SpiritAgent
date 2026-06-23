@@ -1,6 +1,7 @@
 import * as React from "react";
 import { HoverCard as HoverCardPrimitive } from "radix-ui";
 
+import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +24,7 @@ function HoverCardContent({
   ...props
 }: React.ComponentProps<typeof HoverCardPrimitive.Content>) {
   return (
-    <HoverCardPrimitive.Portal>
+    <HoverCardPrimitive.Portal container={getUiLayoutPortalContainer()}>
       <HoverCardPrimitive.Content
         data-slot="hover-card-content"
         align={align}

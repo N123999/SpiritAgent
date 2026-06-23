@@ -41,7 +41,7 @@ export function WebHostPairingGate({
   };
 
   return (
-    <div className="flex h-[100dvh] items-center justify-center bg-background px-4 text-foreground">
+    <div className="flex h-full min-h-0 items-center justify-center bg-background px-4 text-foreground">
       <Card className="w-full max-w-sm rounded-lg">
         <CardHeader>
           <CardTitle>{t('app.firstTimePairing')}</CardTitle>
