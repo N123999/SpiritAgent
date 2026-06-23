@@ -77,16 +77,26 @@ export function getCurrentUiLayoutScale(): number {
   return Number.isFinite(parsed) ? parsed : DEFAULT_UI_LAYOUT_SCALE;
 }
 
-/** 视口坐标 → 缩放根内 position:fixed 本地坐标（transform 祖先下的 fixed 参照系）。 */
+/** 缩放根是否带 transform（`.spirit-ui-layout-scaled`）；无 transform 时其内 fixed 走视口坐标。 */
+export function isUiLayoutScaleTransformActive(): boolean {
+  const scaleRoot = getScaleRoot();
+  if (!scaleRoot) {
+    return false;
+  }
+  return scaleRoot.classList.contains(UI_LAYOUT_SCALED_BODY_CLASS);
+}
+
+/** 视口坐标 → 缩放根内 position:fixed 本地坐标（仅 transform 激活时需换算）。 */
 export function viewportPointToScaleRootLocal(
   viewportTop: number,
   viewportLeft: number,
 ): { top: number; left: number } {
   const scaleRoot = getScaleRoot();
-  const scale = getCurrentUiLayoutScale();
-  if (!scaleRoot) {
+  const isScaled = isUiLayoutScaleTransformActive();
+  if (!scaleRoot || !isScaled) {
     return { top: viewportTop, left: viewportLeft };
   }
+  const scale = getCurrentUiLayoutScale();
   const scaleRootRect = scaleRoot.getBoundingClientRect();
   return {
     top: (viewportTop - scaleRootRect.top) / scale,
