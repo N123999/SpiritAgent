@@ -41,6 +41,13 @@ import {
   installSpiritNotificationProtocolRouting,
   registerSpiritNotificationProtocolClient,
 } from './notification-protocol.js';
+import { syncWindowsJumpList } from './sync-windows-jump-list.js';
+import {
+  bindSpiritProtocolActionHandlers,
+  flushPendingSpiritProtocolActions,
+  handleSpiritNewSessionRequest,
+  handleSpiritOpenSessionRequest,
+} from './spirit-protocol-actions.js';
 import {
   getAppAwayFromUser,
   registerWindowPresence,
@@ -94,7 +101,10 @@ if (!gotSpiritSingleInstanceLock) {
   setSpiritAgentDataDirOverride(spiritDataDir);
 
   app.on('second-instance', (_event, argv) => {
-    handleSpiritNotificationProtocolArgv(argv);
+    const hadProtocol = handleSpiritNotificationProtocolArgv(argv);
+    if (!hadProtocol) {
+      focusSpiritDesktopWindows();
+    }
   });
 }
 
@@ -250,6 +260,21 @@ async function stopDesktopWebHostIfRunning(): Promise<void> {
     return;
   }
   await desktopWebHost.stop();
+}
+
+async function handleSpiritOpenSessionFromProtocol(sessionPath: string): Promise<void> {
+  try {
+    const next = await invokeMainDesktopHostCommand('openSession', { path: sessionPath });
+    if (isDesktopSnapshot(next)) {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send('desktop:notify-refresh');
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[spirit-desktop] open-session protocol failed:', error);
+  }
 }
 
 async function handleApprovalNotificationAction(decision: 'allow' | 'deny'): Promise<void> {
@@ -424,6 +449,10 @@ function resolveWindowIconPath(): string | undefined {
     return fromCwd;
   }
   return undefined;
+}
+
+function refreshWindowsJumpList(): void {
+  void syncWindowsJumpList(resolveWindowIconPath());
 }
 
 /** 与 `src/styles.css` Void 暗色 `--background`（#000000）一致；关 Mica 时窗口底色用此值，避免 WebView 透底呈 Chromium #121212 */
@@ -623,6 +652,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
   }
 
   await syncBrowserWindowFrameFromRendererStorage(window);
+  flushPendingSpiritProtocolActions();
 
   if (process.platform === 'darwin') {
     const broadcastWindowFullscreen = () => {
@@ -680,9 +710,15 @@ if (gotSpiritSingleInstanceLock) {
     videoPreviewMimeType,
     imagePreviewMimeType,
   });
+  bindSpiritProtocolActionHandlers({
+    focusWindows: focusSpiritDesktopWindows,
+    openSession: handleSpiritOpenSessionFromProtocol,
+  });
   bindSpiritNotificationProtocolHandlers({
     onApproval: handleApprovalNotificationAction,
     onFocus: focusSpiritDesktopWindows,
+    onNewSession: handleSpiritNewSessionRequest,
+    onOpenSession: handleSpiritOpenSessionRequest,
   });
   handleSpiritNotificationProtocolArgv(process.argv);
   registerWindowsToastActivationHandler();
@@ -726,6 +762,7 @@ if (gotSpiritSingleInstanceLock) {
         window.webContents.send('desktop:session-list-updated');
       }
     }
+    refreshWindowsJumpList();
   });
 
   ipcMain.handle('desktop:invoke', (_event, command: Parameters<typeof invokeDesktopHostCommand>[0], payload?: unknown) =>
@@ -984,6 +1021,7 @@ if (gotSpiritSingleInstanceLock) {
     if (process.platform === 'darwin') {
       setMacOSApplicationMenu();
     }
+    refreshWindowsJumpList();
   });
 
   ipcMain.handle(
@@ -1219,6 +1257,7 @@ if (gotSpiritSingleInstanceLock) {
 
   await syncInitialDesktopWebHost();
   await createMainWindow();
+  refreshWindowsJumpList();
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

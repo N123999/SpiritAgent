@@ -26,6 +26,9 @@
     "src/lib/todo-tool-display.ts",
     "src/lib/tool-verb-context.ts",
     "src/lib/i18n-host.ts",
+    "src/lib/spirit-notification-protocol.ts",
+    "src/lib/windows-jump-list-build.ts",
+    "electron/sync-windows-jump-list.ts",
     "src/types.ts"
   ],
   "exclude": ["electron/preload.ts"]

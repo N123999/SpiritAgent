@@ -4,14 +4,12 @@ import { app } from 'electron';
 
 import {
   SPIRIT_NOTIFICATION_PROTOCOL,
-  findSpiritNotificationProtocolUrl,
-  parseSpiritNotificationProtocolUrl,
+  dispatchSpiritNotificationProtocolUrl,
+  handleSpiritNotificationProtocolArgv as dispatchSpiritNotificationProtocolArgv,
+  type SpiritNotificationProtocolHandlers,
 } from '../src/lib/spirit-notification-protocol.js';
 
-export type SpiritNotificationProtocolHandlers = {
-  onApproval: (decision: 'allow' | 'deny') => void | Promise<void>;
-  onFocus?: () => void;
-};
+export type { SpiritNotificationProtocolHandlers };
 
 let handlers: SpiritNotificationProtocolHandlers | undefined;
 
@@ -36,31 +34,20 @@ export function bindSpiritNotificationProtocolHandlers(
   handlers = next;
 }
 
-export function handleSpiritNotificationProtocolArgv(argv: readonly string[]): void {
-  const rawUrl = findSpiritNotificationProtocolUrl(argv);
-  if (!rawUrl) {
-    return;
-  }
-  dispatchSpiritNotificationProtocolUrl(rawUrl);
+/** Returns true when argv contains a spirit:// URL that was dispatched successfully. */
+export function handleSpiritNotificationProtocolArgv(argv: readonly string[]): boolean {
+  return dispatchSpiritNotificationProtocolArgv(argv, handlers);
 }
 
-function dispatchSpiritNotificationProtocolUrl(rawUrl: string): void {
-  const parsed = parseSpiritNotificationProtocolUrl(rawUrl);
-  if (!parsed || !handlers) {
-    return;
-  }
-  if (parsed.kind === 'approval') {
-    void handlers.onApproval(parsed.decision);
-    return;
-  }
-  handlers.onFocus?.();
+function dispatchSpiritNotificationProtocolUrlFromOpenUrl(rawUrl: string): void {
+  dispatchSpiritNotificationProtocolUrl(rawUrl, handlers);
 }
 
 export function installSpiritNotificationProtocolRouting(): void {
   if (process.platform === 'darwin') {
     app.on('open-url', (event, url) => {
       event.preventDefault();
-      dispatchSpiritNotificationProtocolUrl(url);
+      dispatchSpiritNotificationProtocolUrlFromOpenUrl(url);
     });
   }
 }

@@ -21,6 +21,7 @@ import {
   type MarkdownTone,
 } from "@/lib/markdown-message-components";
 import { streamdownRehypePlugins } from "@/lib/markdown-streamdown-plugins";
+import { spiritRemarkPluginsForStreamdown } from "@/lib/markdown-remark-plugins";
 import { streamdownUrlTransform } from "@/lib/markdown-url-transform";
 import { useWorkspaceMarkdownLinkClick } from "@/components/workspace-markdown-link-context";
 
@@ -169,6 +170,7 @@ export function AgentMarkdownMessage({
         className={markdownMessageRootClassName(tone, className)}
         mode={streaming ? "streaming" : "static"}
         plugins={streamdownPlugins}
+        remarkPlugins={spiritRemarkPluginsForStreamdown}
         components={components}
         urlTransform={streamdownUrlTransform}
         rehypePlugins={streamdownRehypePlugins}

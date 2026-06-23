@@ -431,6 +431,10 @@
     "deleteAllNoWorkspaceSessionsConfirm_other": "Delete all {{count}} sessions under \"No Workspace\"? This cannot be undone.",
     "cannotDeleteBusyInSection": "Cannot delete while a session in this section is running."
   },
+  "jumpList": {
+    "recent": "Recent",
+    "newSession": "New Session"
+  },
   "titleBar": {
     "file": "File",
     "edit": "Edit",

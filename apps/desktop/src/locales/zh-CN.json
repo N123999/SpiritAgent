@@ -428,6 +428,10 @@
     "deleteAllNoWorkspaceSessionsConfirm": "确定删除「无工作区」下的全部 {{count}} 个会话？此操作无法撤销。",
     "cannotDeleteBusyInSection": "该分区下有会话运行中，无法删除。"
   },
+  "jumpList": {
+    "recent": "最近",
+    "newSession": "新会话"
+  },
   "titleBar": {
     "file": "文件",
     "edit": "编辑",

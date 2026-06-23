@@ -1,6 +1,7 @@
 import { useMemo, memo } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+import { spiritRemarkPluginsForReactMarkdown } from "@/lib/markdown-remark-plugins";
 
 import {
   createMarkdownMessageComponents,
@@ -49,7 +50,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   return (
     <div className={markdownMessageRootClassName(tone, className, size)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={spiritRemarkPluginsForReactMarkdown}
         rehypePlugins={allowHtml ? githubHtmlRehypePlugins : undefined}
         components={markdownComponents}
         urlTransform={reactMarkdownUrlTransform}

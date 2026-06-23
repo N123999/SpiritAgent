@@ -1,5 +1,22 @@
 import { clipboard, contextBridge, ipcRenderer } from 'electron';
 
+const newSessionSubscribers = new Set<() => void>();
+let pendingNewSessionFromMain = false;
+
+function dispatchNewSessionToSubscribers(): void {
+  for (const callback of newSessionSubscribers) {
+    callback();
+  }
+}
+
+ipcRenderer.on('desktop:new-session', () => {
+  if (newSessionSubscribers.size > 0) {
+    dispatchNewSessionToSubscribers();
+    return;
+  }
+  pendingNewSessionFromMain = true;
+});
+
 contextBridge.exposeInMainWorld('spiritDesktop', {
   platform: process.platform,
   readNativeBackdropBlur() {
@@ -681,12 +698,13 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
     };
   },
   subscribeNewSession(callback: () => void) {
-    const onNewSession = () => {
+    newSessionSubscribers.add(callback);
+    if (pendingNewSessionFromMain) {
+      pendingNewSessionFromMain = false;
       callback();
-    };
-    ipcRenderer.on('desktop:new-session', onNewSession);
+    }
     return () => {
-      ipcRenderer.removeListener('desktop:new-session', onNewSession);
+      newSessionSubscribers.delete(callback);
     };
   },
 });
