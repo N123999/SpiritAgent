@@ -28,6 +28,8 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
+          // sonner 注入样式硬编码 Segoe UI 等系统栈，须显式接应用 --font-sans（Geist / 用户自选）
+          fontFamily: "var(--font-sans)",
           "--normal-bg": "var(--popover)",
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
