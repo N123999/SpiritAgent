@@ -587,13 +587,13 @@ pub(in crate::ui) fn render_message_lines(
                 plain_text_lines(&effective_message_body),
                 cli_ui_foreground_color(CliUiHookSlot::MessageUser),
             ),
-            MessageRole::Agent if selected_fork_assistant_message => patch_lines_foreground(
-                markdown_lines(&effective_message_body),
-                Some(Color::White),
+            MessageRole::Agent if selected_fork_assistant_message => markdown_lines_with_style(
+                &effective_message_body,
+                markdown_message_body_style(CliUiHookSlot::MessageAssistant, Some(Color::White)),
             ),
-            MessageRole::Agent => patch_lines_foreground(
-                markdown_lines(&effective_message_body),
-                cli_ui_foreground_color(CliUiHookSlot::MessageAssistant),
+            MessageRole::Agent => markdown_lines_with_style(
+                &effective_message_body,
+                markdown_message_body_style(CliUiHookSlot::MessageAssistant, None),
             ),
         }
     } else {

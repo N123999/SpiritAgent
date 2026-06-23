@@ -153,6 +153,19 @@ pub(in crate::ui) fn patch_lines_foreground(
         .collect()
 }
 
+pub(in crate::ui) fn markdown_message_body_style(
+    slot: CliUiHookSlot,
+    selected_override: Option<Color>,
+) -> Style {
+    if let Some(color) = selected_override {
+        return conversation_body_text_style().fg(color);
+    }
+
+    cli_ui_foreground_color(slot)
+        .map(|color| conversation_body_text_style().fg(color))
+        .unwrap_or_else(conversation_body_text_style)
+}
+
 pub(in crate::ui) fn patch_line_foreground(
     line: Line<'static>,
     color: Option<Color>,
