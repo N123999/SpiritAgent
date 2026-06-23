@@ -2,6 +2,7 @@ import {
   useMemo,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +35,17 @@ import {
 } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 import type { DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
+
+function isComposerChromeInteractiveTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return Boolean(
+    target.closest(
+      'button, a, input, textarea, select, [contenteditable="true"], [role="button"], [role="combobox"], [role="menuitem"], [role="option"]',
+    ),
+  );
+}
 
 export type ComposerSurfaceProps = {
   value: string;
@@ -118,6 +130,20 @@ export function ComposerSurface({
     [activeModel, models],
   );
 
+  const focusRichInput = () => {
+    if (!readOnly) {
+      richInputRef?.current?.focus();
+    }
+  };
+
+  const handleComposerChromeMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (readOnly || isComposerChromeInteractiveTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    focusRichInput();
+  };
+
   return (
     <div
       data-spirit-surface="composer-surface"
@@ -168,7 +194,10 @@ export function ComposerSurface({
         }}
         onSelectionChange={onSelectionChange}
       />
-      <div className="flex justify-center px-3 pt-0.5 pb-2">
+      <div
+        className="cursor-text px-3 pt-0.5 pb-2"
+        onMouseDown={handleComposerChromeMouseDown}
+      >
         <div className="flex w-full max-w-full items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             {showInsertButton ? (
@@ -211,6 +240,8 @@ export function ComposerSurface({
                 className={cn(
                   "size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5",
                   instantHoverMotionClass,
+                  sendDisabled &&
+                    "disabled:pointer-events-auto disabled:cursor-default disabled:active:translate-y-0",
                 )}
                 onClick={showAbortButton ? onAbort : onSubmit}
                 disabled={sendDisabled}
