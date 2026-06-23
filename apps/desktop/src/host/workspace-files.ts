@@ -6,11 +6,21 @@ import { resolveWorkspaceExplorerIgnoreFlags } from '@spirit-agent/host-internal
 
 import i18n from '../lib/i18n-host.js';
 import type {
+  ReadWorkspaceTextFileOptions,
   WorkspaceExplorerEntry,
   WorkspaceExplorerListResult,
   WorkspaceReadTextFileResult,
   WriteWorkspaceTextFileRequest,
 } from '../types.js';
+
+function isENOENT(error: unknown): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as NodeJS.ErrnoException).code === 'ENOENT'
+  );
+}
 
 /** 单文件上限，避免大文件拖垮渲染进程。 */
 export const WORKSPACE_TEXT_FILE_MAX_BYTES = 2 * 1024 * 1024;
@@ -122,6 +132,7 @@ export async function listWorkspaceExplorerChildren(
 export async function readWorkspaceTextFile(
   workspaceRoot: string,
   relativePath: string,
+  options?: ReadWorkspaceTextFileOptions,
 ): Promise<WorkspaceReadTextFileResult> {
   const posix = relativePath.replace(/\0/g, '').replace(/\\/g, '/').trim();
   if (!posix) {
@@ -131,7 +142,10 @@ export async function readWorkspaceTextFile(
   let fileStat;
   try {
     fileStat = await stat(filePath);
-  } catch {
+  } catch (statError) {
+    if (options?.optional && isENOENT(statError)) {
+      return { text: '' };
+    }
     throw new Error(i18n.t('error.fileNotAccessible'));
   }
   if (!fileStat.isFile()) {

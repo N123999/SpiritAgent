@@ -148,6 +148,14 @@ export function ConversationList({
     setHoveredAssistantTurnStart(null);
   }, [conversationIsBusy]);
 
+  const toolCallDiffHostValue = useMemo(
+    () => ({
+      workspaceRoot,
+      readWorkspaceTextFile: runtime.readWorkspaceTextFile,
+    }),
+    [workspaceRoot, runtime.readWorkspaceTextFile],
+  );
+
   return (
     <div
       data-spirit-surface="conversation-list-shell"
@@ -157,12 +165,7 @@ export function ConversationList({
         CONVERSATION_MAX_W,
       )}
     >
-      <ToolCallDiffHostProvider
-        value={{
-          workspaceRoot,
-          readWorkspaceTextFile: runtime.readWorkspaceTextFile,
-        }}
-      >
+      <ToolCallDiffHostProvider value={toolCallDiffHostValue}>
         <div
           key={`${composerSessionKey || "__no-session__"}:${conversationListScopeKey}:e${conversationListRemountEpoch}`}
           data-spirit-surface="conversation-list"

@@ -392,10 +392,11 @@ export async function getWorkspaceFileReferenceIndexCommand(
 export async function readWorkspaceTextFileCommand(
   ctx: HostWorkspaceGitCommandContext,
   relativePath: string,
+  options?: import('../types.js').ReadWorkspaceTextFileOptions,
 ): Promise<WorkspaceReadTextFileResult> {
   await ctx.ensureInitialized(undefined, { fastPath: true });
   const state = ctx.requireState();
-  return readWorkspaceTextFileFromDisk(state.workspaceRoot, relativePath);
+  return readWorkspaceTextFileFromDisk(state.workspaceRoot, relativePath, options);
 }
 
 export async function writeWorkspaceTextFileCommand(

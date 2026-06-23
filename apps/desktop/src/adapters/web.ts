@@ -344,9 +344,13 @@ export function createWebHostApi(): HostApi {
         relativePath,
       });
     },
-    readWorkspaceTextFile(relativePath: string) {
+    readWorkspaceTextFile(
+      relativePath: string,
+      options?: import('../types').ReadWorkspaceTextFileOptions,
+    ) {
       return post<WorkspaceReadTextFileResult>(baseUrl, '/api/workspace/file', {
         relativePath,
+        ...(options?.optional ? { optional: true } : {}),
       });
     },
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest) {

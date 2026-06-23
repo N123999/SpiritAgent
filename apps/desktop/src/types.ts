@@ -684,6 +684,11 @@ export interface WorkspaceReadTextFileResult {
   text: string;
 }
 
+/** readWorkspaceTextFile 选项；optional 时文件不存在返回空文本而不抛错。 */
+export interface ReadWorkspaceTextFileOptions {
+  optional?: boolean;
+}
+
 /** 将 UTF-8 文本写回工作区内已有文件（路径规则与读文件一致）。 */
 export interface WriteWorkspaceTextFileRequest {
   relativePath: string;

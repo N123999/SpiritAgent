@@ -271,6 +271,7 @@ function FileToolDiffExpandedBody({
 }) {
   const { t } = useTranslation();
   const diffHost = useToolCallDiffHost();
+  const readWorkspaceTextFile = diffHost?.readWorkspaceTextFile;
   const diffMounted = useCollapsibleChildMount(open);
   const cachedDiffRef = useRef<FileToolDiffSource | null>(null);
   const [planBaselineText, setPlanBaselineText] = useState<string | undefined>();
@@ -286,13 +287,12 @@ function FileToolDiffExpandedBody({
   }, [open, tool.toolName, tool.phase, tool.argsExcerpt, open ? tool.streamingArgumentsJson : undefined]);
 
   useEffect(() => {
-    if (!open || !planRelativePath || !diffHost) {
+    if (!open || !planRelativePath || !readWorkspaceTextFile) {
       setPlanBaselineText(undefined);
       return;
     }
     let cancelled = false;
-    void diffHost
-      .readWorkspaceTextFile(planRelativePath)
+    void readWorkspaceTextFile(planRelativePath, { optional: true })
       .then((result) => {
         if (!cancelled) {
           setPlanBaselineText(result.text);
@@ -306,7 +306,7 @@ function FileToolDiffExpandedBody({
     return () => {
       cancelled = true;
     };
-  }, [diffHost, open, planRelativePath]);
+  }, [readWorkspaceTextFile, open, planRelativePath]);
 
   const diffResult = useMemo(
     () =>

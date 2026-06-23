@@ -1041,6 +1041,7 @@ async function handleApiRequest({
       200,
       await runHostCommand('readWorkspaceTextFile', {
         relativePath: typeof jsonBody?.relativePath === 'string' ? jsonBody.relativePath : '',
+        ...(jsonBody?.optional === true ? { optional: true } : {}),
       }),
     );
     return;

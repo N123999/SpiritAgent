@@ -70,6 +70,7 @@ import type {
   WorkspaceExplorerListResult,
   WorkspaceFileReferenceSuggestionsResponse,
   WorkspaceReadTextFileResult,
+  ReadWorkspaceTextFileOptions,
   WriteHostTextFileRequest,
   WriteWorkspaceTextFileRequest,
   SubmitGitChipRequest,
@@ -203,7 +204,10 @@ export interface HostApi {
   primeWorkspaceFileReferenceIndex(): Promise<void>;
   getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;
-  readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
+  readWorkspaceTextFile(
+    relativePath: string,
+    options?: ReadWorkspaceTextFileOptions,
+  ): Promise<WorkspaceReadTextFileResult>;
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
   revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<void>;
   renameWorkspaceEntry(relativePath: string, newName: string): Promise<{ relativePath: string }>;

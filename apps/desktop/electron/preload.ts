@@ -326,8 +326,14 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   markGitHubPullRequestReady(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'markGitHubPullRequestReady', { request });
   },
-  readWorkspaceTextFile(relativePath: string) {
-    return ipcRenderer.invoke('desktop:invoke', 'readWorkspaceTextFile', { relativePath });
+  readWorkspaceTextFile(
+    relativePath: string,
+    options?: { optional?: boolean },
+  ) {
+    return ipcRenderer.invoke('desktop:invoke', 'readWorkspaceTextFile', {
+      relativePath,
+      ...(options?.optional ? { optional: true } : {}),
+    });
   },
   writeWorkspaceTextFile(request: unknown) {
     return ipcRenderer.invoke('desktop:invoke', 'writeWorkspaceTextFile', { request });

@@ -1,10 +1,13 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
-import type { WorkspaceReadTextFileResult } from '@/types';
+import type { WorkspaceReadTextFileResult, ReadWorkspaceTextFileOptions } from '@/types';
 
 export type ToolCallDiffHostContextValue = {
   workspaceRoot: string;
-  readWorkspaceTextFile: (relativePath: string) => Promise<WorkspaceReadTextFileResult>;
+  readWorkspaceTextFile: (
+    relativePath: string,
+    options?: ReadWorkspaceTextFileOptions,
+  ) => Promise<WorkspaceReadTextFileResult>;
 };
 
 const ToolCallDiffHostContext = createContext<ToolCallDiffHostContextValue | null>(null);

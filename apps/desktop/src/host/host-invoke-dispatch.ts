@@ -98,7 +98,10 @@ export interface HostCommandDelegate {
   getGitHubPullRequestChecks(request: CommandPayloads['getGitHubPullRequestChecks']['request']): Promise<unknown>;
   mergeGitHubPullRequest(request: CommandPayloads['mergeGitHubPullRequest']['request']): Promise<unknown>;
   markGitHubPullRequestReady(request: CommandPayloads['markGitHubPullRequestReady']['request']): Promise<unknown>;
-  readWorkspaceTextFile(relativePath: string): Promise<unknown>;
+  readWorkspaceTextFile(
+    relativePath: string,
+    options?: import('../types.js').ReadWorkspaceTextFileOptions,
+  ): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<unknown>;
   renameWorkspaceEntry(
@@ -218,7 +221,11 @@ const hostCommandDispatch = {
   getGitHubPullRequestChecks: (host, payload) => host.getGitHubPullRequestChecks(payload.request),
   mergeGitHubPullRequest: (host, payload) => host.mergeGitHubPullRequest(payload.request),
   markGitHubPullRequestReady: (host, payload) => host.markGitHubPullRequestReady(payload.request),
-  readWorkspaceTextFile: (host, payload) => host.readWorkspaceTextFile(payload.relativePath),
+  readWorkspaceTextFile: (host, payload) =>
+    host.readWorkspaceTextFile(
+      payload.relativePath,
+      payload.optional ? { optional: true } : undefined,
+    ),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   revealWorkspaceEntry: (host, payload) =>
     host.revealWorkspaceEntry(payload.relativePath, payload.workspaceRoot),

@@ -1875,8 +1875,11 @@ class DesktopHostService {
     return getWorkspaceFileReferenceIndexCommand(this.workspaceGitCommandContext());
   }
 
-  async readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult> {
-    return readWorkspaceTextFileCommand(this.workspaceGitCommandContext(), relativePath);
+  async readWorkspaceTextFile(
+    relativePath: string,
+    options?: import('../types.js').ReadWorkspaceTextFileOptions,
+  ): Promise<WorkspaceReadTextFileResult> {
+    return readWorkspaceTextFileCommand(this.workspaceGitCommandContext(), relativePath, options);
   }
 
   async writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void> {

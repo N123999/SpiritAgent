@@ -176,7 +176,10 @@ declare global {
     markGitHubPullRequestReady(
       request: import('./types').GetGitHubPullRequestDetailRequest,
     ): Promise<import('./types').GitHubPullRequestDetail>;
-    readWorkspaceTextFile(relativePath: string): Promise<WorkspaceReadTextFileResult>;
+    readWorkspaceTextFile(
+      relativePath: string,
+      options?: import('@/types').ReadWorkspaceTextFileOptions,
+    ): Promise<WorkspaceReadTextFileResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<void>;
     renameWorkspaceEntry(relativePath: string, newName: string): Promise<{ relativePath: string }>;

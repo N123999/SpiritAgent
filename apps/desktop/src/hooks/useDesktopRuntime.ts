@@ -2785,11 +2785,14 @@ export function useDesktopRuntime() {
   );
 
   const readWorkspaceTextFile = useCallback(
-    async (relativePath: string): Promise<WorkspaceReadTextFileResult> => {
+    async (
+      relativePath: string,
+      options?: import('@/types').ReadWorkspaceTextFileOptions,
+    ): Promise<WorkspaceReadTextFileResult> => {
       if (!api) {
         throw new Error(i18n.t('error.hostNotReady'));
       }
-      return api.readWorkspaceTextFile(relativePath);
+      return api.readWorkspaceTextFile(relativePath, options);
     },
     [api],
   );
