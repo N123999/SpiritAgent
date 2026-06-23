@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import './lib/i18n';
 import App from './App';
+import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { WorkspaceToolsChromeProvider } from '@/contexts/workspace-tools-chrome-context';
 import { ThemeProvider } from './hooks/useTheme';
@@ -46,6 +47,7 @@ if (!rootElement) {
 createRoot(rootElement).render(
   <StrictMode>
     <ThemeProvider>
+      <Toaster position="bottom-right" />
       <TooltipProvider delayDuration={300}>
         <WorkspaceToolsChromeProvider>
           <App />
