@@ -656,7 +656,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               </div>
             </ScrollArea>
             <DropdownMenu modal>
-              <Tooltip delayDuration={300}>
+              <Tooltip delayDuration={300} disableHoverableContent>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
                     <Button

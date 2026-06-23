@@ -231,7 +231,7 @@ export function ComposerSurface({
             }
 
             return (
-              <Tooltip delayDuration={300}>
+              <Tooltip delayDuration={300} disableHoverableContent>
                 <TooltipTrigger asChild>{actionButton}</TooltipTrigger>
                 <TooltipContent side="top" sideOffset={4}>
                   {showAbortButton ? (
