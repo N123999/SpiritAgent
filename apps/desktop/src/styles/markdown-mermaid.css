@@ -1,0 +1,248 @@
+/* Streamdown Mermaid：单层细边框对齐旧 pre 代码块；操作钮悬停浮现 */
+
+[data-streamdown="mermaid-block"] {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+  margin-block: 0.5rem;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklab, var(--border) 40%, transparent) !important;
+  background: color-mix(in oklab, var(--muted) 30%, transparent) !important;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+.text-muted-foreground [data-streamdown="mermaid-block"] {
+  border-color: color-mix(in oklab, var(--border) 30%, transparent) !important;
+  background: color-mix(in oklab, var(--muted) 20%, transparent) !important;
+}
+
+[data-streamdown="mermaid-block"]:last-child {
+  margin-bottom: 0;
+}
+
+/* Streamdown 内层图表容器：加载中与渲染后均去掉第二层 border（:has(mermaid) 加载态匹配不到） */
+[data-streamdown="mermaid-block"] > div:last-child {
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+/* Mermaid chunk 懒加载骨架（Suspense fallback Oe）：对齐单层 pre 边框，去掉假顶栏 */
+.min-w-0.break-words > div.w-full.overflow-hidden.rounded-xl.border:has(> div.h-\[46px\]) {
+  margin-block: 0.5rem;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid color-mix(in oklab, var(--border) 40%, transparent) !important;
+  background: color-mix(in oklab, var(--muted) 30%, transparent) !important;
+  padding: 0 !important;
+  --tw-divide-y-reverse: 0;
+}
+
+.min-w-0.break-words > div.w-full.overflow-hidden.rounded-xl.border:has(> div.h-\[46px\]) > div.h-\[46px\] {
+  display: none;
+}
+
+.min-w-0.break-words > div.w-full.overflow-hidden.rounded-xl.border:has(> div.h-\[46px\]) > div:last-child {
+  border-top: none !important;
+  padding: 1rem 0 0 !important;
+}
+
+.text-muted-foreground .min-w-0.break-words > div.w-full.overflow-hidden.rounded-xl.border:has(> div.h-\[46px\]) {
+  border-color: color-mix(in oklab, var(--border) 30%, transparent) !important;
+  background: color-mix(in oklab, var(--muted) 20%, transparent) !important;
+}
+
+/* 压掉 Streamdown 默认 rounded-xl，与旧 pre 的 rounded-md 一致 */
+[data-streamdown="mermaid-block"].rounded-xl {
+  border-radius: var(--radius-md) !important;
+}
+
+/* 隐藏 "mermaid" 语言顶栏（占布局且无信息量） */
+[data-streamdown="mermaid-block"] > div:first-child:has([class*="lowercase"]) {
+  display: none;
+}
+
+/* 放大：absolute 钉右上角（actions 即定位层，勿设 position: static） */
+[data-streamdown="mermaid-block"] > [data-streamdown="mermaid-block-actions"],
+[data-streamdown="mermaid-block"] > div:has([data-streamdown="mermaid-block-actions"]) {
+  position: absolute !important;
+  top: 0.5rem !important;
+  right: 0.5rem !important;
+  left: auto !important;
+  bottom: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  width: auto !important;
+  z-index: 1;
+  pointer-events: none;
+}
+
+[data-streamdown="mermaid-block"]:hover > [data-streamdown="mermaid-block-actions"],
+[data-streamdown="mermaid-block"]:focus-within > [data-streamdown="mermaid-block-actions"],
+[data-streamdown="mermaid-block"]:hover > div:has([data-streamdown="mermaid-block-actions"]),
+[data-streamdown="mermaid-block"]:focus-within > div:has([data-streamdown="mermaid-block-actions"]) {
+  pointer-events: auto;
+}
+
+/* 放大：单枚圆形 FAB，hover 浮现（对齐预览关闭钮 spirit-floating-action-button） */
+[data-streamdown="mermaid-block-actions"] {
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1;
+  pointer-events: none;
+}
+
+[data-streamdown="mermaid-block"]:hover [data-streamdown="mermaid-block-actions"],
+[data-streamdown="mermaid-block"]:focus-within [data-streamdown="mermaid-block-actions"] {
+  pointer-events: auto;
+}
+
+/* 缩放控件：合页竖条，同套边框/模糊 */
+[data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls {
+  position: absolute !important;
+  bottom: 0.5rem !important;
+  left: 0.5rem !important;
+  top: auto !important;
+  right: auto !important;
+  z-index: 1;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.25rem !important;
+  padding: 0.25rem !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid color-mix(in oklab, var(--border) 50%, transparent) !important;
+  background: color-mix(in oklab, var(--background) 55%, transparent) !important;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 200ms ease-out;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  [data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls {
+    background: color-mix(in oklab, var(--background) 40%, transparent) !important;
+  }
+}
+
+:is(.dark) [data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls {
+  border-color: color-mix(in oklab, white 12%, transparent) !important;
+  background: color-mix(in oklab, var(--input) 30%, transparent) !important;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  :is(.dark) [data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls {
+    background: color-mix(in oklab, var(--input) 25%, transparent) !important;
+  }
+}
+
+[data-streamdown="mermaid-block"]:hover
+  [data-streamdown="mermaid"]
+  .spirit-mermaid-pan-zoom-controls,
+[data-streamdown="mermaid-block"]:focus-within
+  [data-streamdown="mermaid"]
+  .spirit-mermaid-pan-zoom-controls {
+  opacity: 1;
+}
+
+[data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls > button {
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0.375rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+[data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls > button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+  color: var(--foreground);
+}
+
+[data-streamdown="mermaid-block"] [data-streamdown="mermaid"] .spirit-mermaid-pan-zoom-controls > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 预览 Dialog：pan-zoom 参照 preview 外框（勿相对 mermaid / pan-zoom-host），间距对齐关闭钮 top-3 */
+[data-spirit-mermaid-preview] .spirit-mermaid-pan-zoom-host {
+  position: static !important;
+}
+
+[data-spirit-mermaid-preview] .spirit-mermaid-pan-zoom-controls {
+  opacity: 1 !important;
+  bottom: 0.75rem !important;
+  left: 0.75rem !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid color-mix(in oklab, var(--border) 50%, transparent) !important;
+  background: color-mix(in oklab, var(--background) 55%, transparent) !important;
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  [data-spirit-mermaid-preview] .spirit-mermaid-pan-zoom-controls {
+    background: color-mix(in oklab, var(--background) 40%, transparent) !important;
+  }
+}
+
+:is(.dark) [data-spirit-mermaid-preview] .spirit-mermaid-pan-zoom-controls {
+  border-color: color-mix(in oklab, white 12%, transparent) !important;
+  background: color-mix(in oklab, var(--input) 30%, transparent) !important;
+}
+
+[data-spirit-mermaid-preview] .spirit-mermaid-pan-zoom-controls > button {
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0.375rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+[data-spirit-mermaid-preview] .spirit-mermaid-pan-zoom-controls > button:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--muted) 50%, transparent);
+  color: var(--foreground);
+}
+
+/* 勿设 relative：否则 pan-zoom 参照 mermaid 而非 mermaid-block，会多叠一层 padding */
+[data-streamdown="mermaid"] {
+  position: static;
+  min-height: 8rem;
+  font-family: var(--font-sans);
+}
+
+/* Mermaid SVG 默认易落宋体；强制跟应用 UI 栈 */
+[data-streamdown="mermaid"] svg,
+[data-streamdown="mermaid"] svg text,
+[data-streamdown="mermaid"] svg tspan,
+[data-streamdown="mermaid"] svg .label,
+[data-streamdown="mermaid"] svg .nodeLabel,
+[data-streamdown="mermaid"] svg .cluster-label {
+  font-family: var(--font-sans) !important;
+}
+
+[data-streamdown="mermaid"] svg .edgeLabel rect {
+  fill: color-mix(in oklab, var(--muted) 60%, transparent) !important;
+}

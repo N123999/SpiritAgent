@@ -1,0 +1,54 @@
+/* generate_image 等单钮浮动样式；blur 须写在按钮自身（祖先 opacity 会破坏 backdrop-filter） */
+.spirit-floating-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--border) 50%, transparent);
+  background: color-mix(in oklab, var(--background) 55%, transparent);
+  color: var(--foreground);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  cursor: pointer;
+  transition:
+    opacity 200ms ease-out,
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    box-shadow 200ms ease-out,
+    color 200ms ease-out;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .spirit-floating-action-button {
+    background: color-mix(in oklab, var(--background) 40%, transparent);
+  }
+}
+
+:is(.dark) .spirit-floating-action-button {
+  border-color: color-mix(in oklab, white 12%, transparent);
+  background: color-mix(in oklab, var(--input) 30%, transparent);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  :is(.dark) .spirit-floating-action-button {
+    background: color-mix(in oklab, var(--input) 25%, transparent);
+  }
+}
+
+.spirit-floating-action-button:hover {
+  border-color: color-mix(in oklab, var(--border) 60%, transparent);
+  background: color-mix(in oklab, var(--background) 72%, transparent);
+  color: var(--foreground);
+}
+
+:is(.dark) .spirit-floating-action-button:hover {
+  background: color-mix(in oklab, var(--input) 40%, transparent);
+}
+
+.spirit-floating-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

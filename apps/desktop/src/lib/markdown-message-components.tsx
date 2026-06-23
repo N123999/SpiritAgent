@@ -254,6 +254,32 @@ export function createMarkdownMessageComponents(
   };
 }
 
+/**
+ * Streamdown 专用：不传 pre/code，避免覆盖内置 Mermaid / Shiki 围栏渲染；
+ * 行内 code 样式经 inlineCode 保留。
+ */
+export function createStreamdownMessageComponents(
+  readManagedImagePreviewDataUrl?: ReadManagedImagePreviewDataUrl,
+  tone: MarkdownTone = "default",
+  readManagedVideoPreviewUrl?: ReadManagedVideoPreviewUrl,
+  onLinkClick?: WorkspaceMarkdownLinkClickHandler,
+  size: MarkdownSize = "default",
+  allowHtml = false,
+): Record<string, ComponentType<Record<string, unknown>>> {
+  const { pre: _pre, code, ...rest } = createMarkdownMessageComponents(
+    readManagedImagePreviewDataUrl,
+    tone,
+    readManagedVideoPreviewUrl,
+    onLinkClick,
+    size,
+    allowHtml,
+  );
+  return {
+    ...rest,
+    inlineCode: code,
+  };
+}
+
 export function markdownMessageRootClassName(
   tone: MarkdownTone,
   className?: string,
