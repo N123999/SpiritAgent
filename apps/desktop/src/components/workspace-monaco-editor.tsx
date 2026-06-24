@@ -70,12 +70,14 @@ export const WorkspaceMonacoEditor = forwardRef<
   const onTextChangeRef = useRef(onTextChange);
   const onEditorReadyRef = useRef(onEditorReady);
   const revealLocationRef = useRef(revealLocation);
+  const searchMatchRangesRef = useRef(searchMatchRanges);
   const searchDecorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   onSaveRef.current = onSave;
   onDirtyChangeRef.current = onDirtyChange;
   onTextChangeRef.current = onTextChange;
   onEditorReadyRef.current = onEditorReady;
   revealLocationRef.current = revealLocation;
+  searchMatchRangesRef.current = searchMatchRanges;
 
   useEffect(() => {
     if (baselineText !== undefined) {
@@ -94,30 +96,6 @@ export const WorkspaceMonacoEditor = forwardRef<
     editor.revealLineInCenter(reveal.line);
     editor.focus();
   }, []);
-
-  const applySearchDecorations = useCallback(
-    (editor: monaco.editor.IStandaloneCodeEditor) => {
-      searchDecorationsRef.current?.clear();
-      if (searchMatchRanges.length === 0) {
-        searchDecorationsRef.current = null;
-        return;
-      }
-      searchDecorationsRef.current = editor.createDecorationsCollection(
-        searchMatchRanges.map((range) => ({
-          range: new monaco.Range(
-            range.line,
-            range.startColumn,
-            range.line,
-            range.endColumn,
-          ),
-          options: {
-            className: "spirit-monaco-search-match",
-          },
-        })),
-      );
-    },
-    [searchMatchRanges],
-  );
 
   const runSave = useCallback(async () => {
     const editor = editorRef.current;
@@ -149,8 +127,21 @@ export const WorkspaceMonacoEditor = forwardRef<
     if (!editor) {
       return;
     }
-    applySearchDecorations(editor);
-  }, [applySearchDecorations]);
+    const ranges = searchMatchRangesRef.current;
+    searchDecorationsRef.current?.clear();
+    if (ranges.length === 0) {
+      searchDecorationsRef.current = null;
+      return;
+    }
+    searchDecorationsRef.current = editor.createDecorationsCollection(
+      ranges.map((range) => ({
+        range: new monaco.Range(range.line, range.startColumn, range.line, range.endColumn),
+        options: {
+          className: "spirit-monaco-search-match",
+        },
+      })),
+    );
+  }, [searchMatchRanges]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -166,6 +157,8 @@ export const WorkspaceMonacoEditor = forwardRef<
     if (!root) {
       return;
     }
+
+    const mountInitialText = initialText;
 
     let disposed = false;
     let obs: MutationObserver | null = null;
@@ -186,9 +179,9 @@ export const WorkspaceMonacoEditor = forwardRef<
       } else {
         applySpiritMonacoEditorTheme();
       }
-      baselineRef.current = initialText;
+      baselineRef.current = mountInitialText;
       editor = monaco.editor.create(containerRef.current, {
-        value: initialText,
+        value: mountInitialText,
         language: monacoLanguageId(relativePath),
         readOnly,
         minimap: { enabled: false },
@@ -204,8 +197,9 @@ export const WorkspaceMonacoEditor = forwardRef<
       });
       editorRef.current = editor;
       onEditorReadyRef.current?.(editor);
-      applySearchDecorations(editor);
-      applyRevealLocation(editor);
+      if (revealLocationRef.current) {
+        applyRevealLocation(editor);
+      }
 
       dirtyDisposable = editor.onDidChangeModelContent(() => {
         const value = editor!.getValue();
@@ -239,7 +233,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       editor?.dispose();
       editorRef.current = null;
     };
-  }, [applyRevealLocation, applySearchDecorations, initialText, relativePath, readOnly, runSave]);
+  }, [applyRevealLocation, relativePath, readOnly, runSave]);
 
   return <div ref={containerRef} className="h-full min-h-0 w-full min-w-0" />;
 });
