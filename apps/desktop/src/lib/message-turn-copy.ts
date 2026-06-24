@@ -1,9 +1,6 @@
 import { lastUserMessageIndexBefore } from '@/lib/message-turn-actions-ui';
 import { formatToolCallSummaryPlainText } from '@/lib/tool-call-display';
-import {
-  isGenericPendingCompactionStatusText,
-  isGenericPendingThinkingStatusText,
-} from '@/lib/subagent-display';
+import { isGenericPendingCompactionStatusText } from '@/lib/subagent-display';
 import type { ConversationMessageSnapshot } from '@/types';
 
 export function assistantTurnMessageIndices(
@@ -28,10 +25,6 @@ export function formatAssistantMessageCopySegments(
   message: ConversationMessageSnapshot,
 ): string[] {
   const segments: string[] = [];
-  const thinking = message.aux?.thinking?.trim() ?? '';
-  if (thinking && !isGenericPendingThinkingStatusText(thinking)) {
-    segments.push(thinking);
-  }
   const compaction = message.aux?.compaction?.trim() ?? '';
   if (compaction && !isGenericPendingCompactionStatusText(compaction)) {
     segments.push(compaction);

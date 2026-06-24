@@ -22,7 +22,7 @@ test('assistantTurnMessageIndices stops at the next user message', () => {
   assert.deepEqual(assistantTurnMessageIndices(messages, 3), [3]);
 });
 
-test('formatAssistantTurnCopyText preserves thinking, body, and tool order', () => {
+test('formatAssistantTurnCopyText preserves body and tool order without thinking', () => {
   const messages = [
     { id: 1, role: 'user', content: 'go', pending: false },
     {
@@ -50,11 +50,20 @@ test('formatAssistantTurnCopyText preserves thinking, body, and tool order', () 
 
   assert.equal(
     formatAssistantTurnCopyText(messages, 3),
-  [
-    'Need to inspect the file.',
-    '读取 foo.txt',
-    'Here is the summary.',
-  ].join('\n\n'),
+    ['读取 foo.txt', 'Here is the summary.'].join('\n\n'),
+  );
+});
+
+test('formatAssistantMessageCopySegments omits thinking text', () => {
+  assert.deepEqual(
+    formatAssistantMessageCopySegments({
+      id: 1,
+      role: 'assistant',
+      content: 'Answer.',
+      pending: false,
+      aux: { thinking: 'Internal reasoning.' },
+    }),
+    ['Answer.'],
   );
 });
 
@@ -97,7 +106,7 @@ test('formatToolCallSummaryPlainText: failed tools append settings.failed suffix
   );
 });
 
-test('canCopyAssistantTurn is false for placeholder-only thinking', () => {
+test('canCopyAssistantTurn is false for thinking-only assistant rows', () => {
   const messages = [
     { id: 1, role: 'user', content: 'go', pending: false },
     {
@@ -105,7 +114,7 @@ test('canCopyAssistantTurn is false for placeholder-only thinking', () => {
       role: 'assistant',
       content: '',
       pending: true,
-      aux: { thinking: 'Thinking...' },
+      aux: { thinking: 'Still reasoning about the task.' },
     },
   ];
 
