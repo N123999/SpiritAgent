@@ -21,6 +21,21 @@ test('file diff tools are expandable during preview with streaming args only', (
   );
 });
 
+test('toolHasExpandableContent: read_file is never expandable', () => {
+  assert.equal(
+    toolHasExpandableContent({
+      toolName: 'read_file',
+      phase: 'succeeded',
+      headline: 'Read',
+      headlineDetail: 'README.md',
+      detailLines: ['line 1'],
+      outputExcerpt: 'file body',
+      argsExcerpt: '{"path":"README.md"}',
+    }),
+    false,
+  );
+});
+
 test('getToolCallSummaryParts: run_shell_command prefixes reason and keeps command as detail', () => {
   assert.deepEqual(
     getToolCallSummaryParts({

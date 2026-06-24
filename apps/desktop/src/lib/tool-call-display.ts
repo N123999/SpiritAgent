@@ -363,6 +363,10 @@ function responsesBuiltInToolHasExpandableContent(tool: ToolBlockSnapshot): bool
 }
 
 export function toolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
+  if (tool.toolName === 'read_file') {
+    return false;
+  }
+
   if (FILE_DIFF_TOOL_NAMES.has(tool.toolName)) {
     return fileDiffToolHasExpandableContent(tool);
   }
