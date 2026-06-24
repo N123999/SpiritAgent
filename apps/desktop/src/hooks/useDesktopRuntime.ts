@@ -834,6 +834,21 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const getPathForDroppedFile = useCallback(
+    (file: File): string | null => {
+      if (!api?.getPathForDroppedFile) {
+        return null;
+      }
+      try {
+        const path = api.getPathForDroppedFile(file);
+        return path.trim() ? path : null;
+      } catch {
+        return null;
+      }
+    },
+    [api],
+  );
+
   const ingestClipboardImage = useCallback(async (): Promise<string | null> => {
     if (!api?.ingestClipboardImage) {
       return null;
@@ -2989,6 +3004,7 @@ export function useDesktopRuntime() {
     rememberWorkspaceRoot,
     pickWorkspaceDirectory,
     pickLocalFile,
+    getPathForDroppedFile,
     classifyLocalFileComposerRoute,
     ingestClipboardImage,
     readLocalImagePreviewDataUrl,

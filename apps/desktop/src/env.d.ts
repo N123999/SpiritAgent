@@ -197,6 +197,7 @@ declare global {
     ): Promise<import('@spirit-agent/host-internal').LocalFileComposerRoute>;
     pickWorkspaceDirectory(): Promise<string | null>;
     pickLocalFile(): Promise<string | null>;
+    getPathForDroppedFile(file: File): string;
     ingestClipboardImage(): Promise<string | null>;
     listSystemFonts(): Promise<string[]>;
     readLocalImagePreviewDataUrl(filePath: string): Promise<string | null>;

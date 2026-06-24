@@ -223,6 +223,7 @@ export interface HostApi {
   classifyLocalFileComposerRoute(absolutePath: string): Promise<import('@spirit-agent/host-internal').LocalFileComposerRoute>;
   pickWorkspaceDirectory?(): Promise<string | null>;
   pickLocalFile?(): Promise<string | null>;
+  getPathForDroppedFile?(file: File): string;
   ingestClipboardImage?(): Promise<string | null>;
   readLocalImagePreviewDataUrl?(filePath: string): Promise<string | null>;
   readManagedImagePreviewDataUrl?(reference: string): Promise<string | null>;
