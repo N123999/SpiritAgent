@@ -353,6 +353,8 @@ export function useDesktopRuntime() {
   const busyActionRef = useRef<BusyAction>("");
   const settingsRef = useRef(settings);
   const snapshotRef = useRef<DesktopSnapshot | null>(null);
+  const micaSaveSeqRef = useRef(0);
+  const micaInFlightRef = useRef(0);
   const sessionUiCacheRef = useRef(new Map<string, SessionUiState>());
 
   const sessionUiKey = useCallback((sessionKey: string | undefined) => sessionKey?.trim() || "", []);
@@ -539,6 +541,12 @@ export function useDesktopRuntime() {
         agentMode = "agent";
       }
 
+      const snapshotWindowsMica = next.config.windowsMica !== false;
+      const windowsMica =
+        micaInFlightRef.current > 0 && current.windowsMica !== snapshotWindowsMica
+          ? current.windowsMica
+          : snapshotWindowsMica;
+
       return {
         activeModel: next.config.activeModel,
         imageGenerationModel: next.config.imageGenerationModel ?? "",
@@ -547,7 +555,7 @@ export function useDesktopRuntime() {
         apiBase: activeModelProfile?.apiBase ?? current.apiBase,
         uiLocale: next.config.uiLocale ?? "",
         apiKey: current.apiKey,
-        windowsMica: next.config.windowsMica !== false,
+        windowsMica,
         systemNotifications: next.config.systemNotifications !== false,
         agentMode,
         webHostEnabled: next.webHost.config.enabled,
@@ -1773,6 +1781,14 @@ export function useDesktopRuntime() {
         return;
       }
 
+      const micaPatch = patch.windowsMica !== undefined;
+      let micaSeq = 0;
+      if (micaPatch) {
+        micaSaveSeqRef.current += 1;
+        micaSeq = micaSaveSeqRef.current;
+        micaInFlightRef.current += 1;
+      }
+
       const prev = settingsRef.current;
       const nextActiveModel = patch.activeModel ?? prev.activeModel;
       const resolvedApiBase =
@@ -1800,7 +1816,10 @@ export function useDesktopRuntime() {
             ...(webHostEndpointChanged ? { resetPairing: true } : {}),
           }),
         );
-        applySnapshot(next);
+        const staleWindowsMicaSave = micaPatch && micaSeq < micaSaveSeqRef.current;
+        if (!staleWindowsMicaSave) {
+          applySnapshot(next);
+        }
         setRuntimeError("");
         setSettings((current) => ({
           ...current,
@@ -1808,6 +1827,10 @@ export function useDesktopRuntime() {
         }));
       } catch (error) {
         setRuntimeError(describeError(error));
+      } finally {
+        if (micaPatch) {
+          micaInFlightRef.current -= 1;
+        }
       }
     },
     [api, applySnapshot],
