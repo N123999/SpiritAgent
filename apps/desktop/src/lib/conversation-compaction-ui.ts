@@ -16,6 +16,21 @@ export function isStandaloneCompactionMessage(
   );
 }
 
+/** Compaction aux worth showing/copying: non-placeholder and not identical to trimmed body. */
+export function displayableCompactionText(
+  message: ConversationMessageSnapshot,
+): string | undefined {
+  const compaction = message.aux?.compaction?.trim();
+  if (
+    !compaction ||
+    isGenericPendingCompactionStatusText(compaction) ||
+    (message.content.trim() && compaction === message.content.trim())
+  ) {
+    return undefined;
+  }
+  return compaction;
+}
+
 function isLiveCompactionPlaceholderMessage(
   message: ConversationMessageSnapshot,
   pendingAuxState: PendingAssistantAux | undefined,
@@ -63,14 +78,7 @@ export function shouldShowAssistantCompactionCollapsible(
     return false;
   }
 
-  const compaction = message.aux?.compaction?.trim();
-  const hasDisplayableCompactionAux = Boolean(
-    compaction &&
-      !isGenericPendingCompactionStatusText(compaction) &&
-      (!message.content.trim() || compaction !== message.content.trim()),
-  );
-
-  if (hasDisplayableCompactionAux) {
+  if (displayableCompactionText(message)) {
     return true;
   }
 

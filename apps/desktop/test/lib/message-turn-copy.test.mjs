@@ -54,6 +54,19 @@ test('formatAssistantTurnCopyText preserves body and tool order without thinking
   );
 });
 
+test('formatAssistantMessageCopySegments omits compaction when it matches body', () => {
+  assert.deepEqual(
+    formatAssistantMessageCopySegments({
+      id: 1,
+      role: 'assistant',
+      content: 'Same text.',
+      pending: false,
+      aux: { compaction: 'Same text.' },
+    }),
+    ['Same text.'],
+  );
+});
+
 test('formatAssistantMessageCopySegments omits thinking text', () => {
   assert.deepEqual(
     formatAssistantMessageCopySegments({
