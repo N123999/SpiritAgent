@@ -19,6 +19,26 @@ export interface ResolvedLanguageServerCommand {
   args: string[];
 }
 
+/** Windows 上 where/PATH 常先命中无扩展名的 npm Unix shim；须改用 .cmd 等可 spawn 目标。 */
+export async function preferWindowsSpawnableCommand(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<string> {
+  if (!isWindowsPlatform(platform) || /\.[^\\/]+$/i.test(command)) {
+    return command;
+  }
+  for (const extension of ['.cmd', '.exe', '.bat']) {
+    const candidate = `${command}${extension}`;
+    try {
+      await access(candidate, constants.F_OK);
+      return candidate;
+    } catch {
+      // try next extension
+    }
+  }
+  return command;
+}
+
 async function resolveCommandViaWindowsWhere(
   command: string,
   args: string[],
@@ -35,8 +55,9 @@ async function resolveCommandViaWindowsWhere(
     if (!firstLine) {
       return undefined;
     }
-    await access(firstLine, constants.F_OK);
-    return { command: firstLine, args };
+    const spawnable = await preferWindowsSpawnableCommand(firstLine);
+    await access(spawnable, constants.F_OK);
+    return { command: spawnable, args };
   } catch {
     return undefined;
   }
@@ -58,8 +79,9 @@ export async function resolveCommandOnPath(
   const candidates = buildCommandCandidates(command, env, platform);
   for (const candidate of candidates) {
     try {
-      await access(candidate, constants.X_OK);
-      return { command: candidate, args };
+      const spawnable = await preferWindowsSpawnableCommand(candidate, platform);
+      await access(spawnable, constants.X_OK);
+      return { command: spawnable, args };
     } catch {
       // try next candidate
     }

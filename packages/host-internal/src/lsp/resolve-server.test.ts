@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
   isRustAnalyzerVersionOutputHealthy,
+  preferWindowsSpawnableCommand,
   resolveClangdOnPath,
+  resolveCommandOnPath,
   resolveGoplsOnPath,
   resolvePyrightOnPath,
   resolveRustAnalyzerOnPath,
@@ -40,4 +45,25 @@ test('isRustAnalyzerVersionOutputHealthy rejects rustup proxy infinite recursion
 test('resolveClangdOnPath passes --background-index when found', async () => {
   const result = await resolveClangdOnPath({ PATH: '' }, 'linux');
   assert.equal(result, undefined);
+});
+
+test('preferWindowsSpawnableCommand prefers .cmd over extensionless npm shim', async () => {
+  const binDir = await mkdtemp(path.join(tmpdir(), 'spirit-lsp-bin-'));
+  const shim = path.join(binDir, 'typescript-language-server');
+  const cmd = `${shim}.cmd`;
+  await writeFile(shim, '#!/bin/sh\n');
+  await writeFile(cmd, '@echo off\r\n');
+  const resolved = await preferWindowsSpawnableCommand(shim, 'win32');
+  assert.equal(resolved, cmd);
+});
+
+test('resolveCommandOnPath prefers Windows .cmd sibling for extensionless command path', async () => {
+  const binDir = await mkdtemp(path.join(tmpdir(), 'spirit-lsp-path-'));
+  const shim = path.join(binDir, 'typescript-language-server');
+  const cmd = `${shim}.cmd`;
+  await writeFile(shim, '#!/bin/sh\n');
+  await writeFile(cmd, '@echo off\r\n');
+  const result = await resolveCommandOnPath(shim, {}, 'win32', ['--stdio']);
+  assert.equal(result?.command, cmd);
+  assert.deepEqual(result?.args, ['--stdio']);
 });
