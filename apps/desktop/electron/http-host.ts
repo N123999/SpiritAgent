@@ -1047,6 +1047,23 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/search') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('searchWorkspaceContent', {
+        request: {
+          query: typeof jsonBody?.query === 'string' ? jsonBody.query : '',
+          caseSensitive: jsonBody?.caseSensitive === true,
+          wholeWord: jsonBody?.wholeWord === true,
+          isRegexp: jsonBody?.isRegexp === true,
+        },
+      }),
+    );
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/workspace/file/write') {
     writeJson(
       request,

@@ -695,6 +695,29 @@ export interface WriteWorkspaceTextFileRequest {
   text: string;
 }
 
+export type WorkspaceContentSearchRequest = {
+  query: string;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
+  isRegexp?: boolean;
+};
+
+export type WorkspaceContentSearchSubmatch = {
+  start: number;
+  end: number;
+};
+
+export type WorkspaceContentSearchMatch = {
+  relativePath: string;
+  lineNumber: number;
+  lineText: string;
+  submatches: WorkspaceContentSearchSubmatch[];
+};
+
+export type WorkspaceContentSearchResult = {
+  matches: WorkspaceContentSearchMatch[];
+};
+
 export interface HostTextFileStatResult {
   exists: boolean;
   isFile: boolean;

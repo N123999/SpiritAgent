@@ -49,6 +49,30 @@ test('buildRipgrepArgs maps text query to fixed-string case-insensitive search',
   ]);
 });
 
+test('buildRipgrepArgs maps case-sensitive whole-word text search', () => {
+  const args = buildRipgrepArgs({
+    workspaceRoot: '/workspace',
+    query: 'Needle',
+    isRegexp: false,
+    caseSensitive: true,
+    wholeWord: true,
+  });
+
+  assert.deepEqual(args, [
+    '--json',
+    '--no-heading',
+    '--color=never',
+    '--line-number',
+    '--max-filesize',
+    '1M',
+    '--hidden',
+    '-w',
+    '-F',
+    'Needle',
+    '/workspace',
+  ]);
+});
+
 test('buildRipgrepArgs maps regexp query without --hidden when glob is set', () => {
   const args = buildRipgrepArgs({
     workspaceRoot: 'C:\\repo',
@@ -71,6 +95,24 @@ test('buildRipgrepArgs maps regexp query without --hidden when glob is set', () 
     'runtime\\s+parity',
     'C:\\repo',
   ]);
+});
+
+test('runRipgrepSearch parses submatch column ranges', async () => {
+  await withTempWorkspace(async (root) => {
+    await writeFile(join(root, 'alpha.txt'), 'foo NEEDLE bar\n', 'utf8');
+
+    const matches = await runRipgrepSearch({
+      workspaceRoot: root,
+      query: 'NEEDLE',
+      isRegexp: false,
+      caseSensitive: true,
+    });
+
+    assert.equal(matches.length, 1);
+    assert.ok(matches[0]?.submatches.length);
+    assert.equal(matches[0]?.submatches[0]?.start, 4);
+    assert.equal(matches[0]?.submatches[0]?.end, 10);
+  });
 });
 
 test('runRipgrepSearch finds case-insensitive text matches', async () => {
@@ -196,6 +238,7 @@ test('formatGrepToolOutput preserves grep tool summary shape', () => {
         relativePath: 'src/app.ts',
         lineNumber: 1,
         lineText: 'needle here',
+        submatches: [{ start: 0, end: 6 }],
       },
     ],
   });

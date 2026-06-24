@@ -37,6 +37,7 @@ export * from './tools.js';
 export * from './workspace-file-reference-query.js';
 export * from './workspace-file-references.js';
 export * from './workspace-ignore.js';
+export * from './ripgrep-search.js';
 export * from './worktree-naming.js';
 export * from './generate-worktree-names.js';
 export * from './hooks/index.js';

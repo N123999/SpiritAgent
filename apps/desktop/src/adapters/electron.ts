@@ -294,6 +294,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     readWorkspaceTextFile(relativePath, options) {
       return bridge.readWorkspaceTextFile(relativePath, options);
     },
+    searchWorkspaceContent(request) {
+      return bridge.searchWorkspaceContent(request);
+    },
     writeWorkspaceTextFile(request) {
       return bridge.writeWorkspaceTextFile(request);
     },

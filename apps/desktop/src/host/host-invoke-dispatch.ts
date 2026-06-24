@@ -102,6 +102,9 @@ export interface HostCommandDelegate {
     relativePath: string,
     options?: import('../types.js').ReadWorkspaceTextFileOptions,
   ): Promise<unknown>;
+  searchWorkspaceContent(
+    request: import('../types.js').WorkspaceContentSearchRequest,
+  ): Promise<unknown>;
   writeWorkspaceTextFile(request: CommandPayloads['writeWorkspaceTextFile']['request']): Promise<unknown>;
   revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<unknown>;
   renameWorkspaceEntry(
@@ -227,6 +230,7 @@ const hostCommandDispatch = {
       payload.relativePath,
       payload.optional ? { optional: true } : undefined,
     ),
+  searchWorkspaceContent: (host, payload) => host.searchWorkspaceContent(payload.request),
   writeWorkspaceTextFile: (host, payload) => host.writeWorkspaceTextFile(payload.request),
   revealWorkspaceEntry: (host, payload) =>
     host.revealWorkspaceEntry(payload.relativePath, payload.workspaceRoot),

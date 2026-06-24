@@ -2850,6 +2850,18 @@ export function useDesktopRuntime() {
     [api],
   );
 
+  const searchWorkspaceContent = useCallback(
+    async (
+      request: import('@/types').WorkspaceContentSearchRequest,
+    ): Promise<import('@/types').WorkspaceContentSearchResult> => {
+      if (!api) {
+        throw new Error(i18n.t('error.hostNotReady'));
+      }
+      return api.searchWorkspaceContent(request);
+    },
+    [api],
+  );
+
   const writeWorkspaceTextFile = useCallback(
     async (request: WriteWorkspaceTextFileRequest): Promise<void> => {
       if (!api) {
@@ -3100,6 +3112,7 @@ export function useDesktopRuntime() {
     mergeGitHubPullRequest,
     markGitHubPullRequestReady,
     readWorkspaceTextFile,
+    searchWorkspaceContent,
     writeWorkspaceTextFile,
     readHostTextFile,
     writeHostTextFile,

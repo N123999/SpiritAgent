@@ -353,6 +353,13 @@ export function createWebHostApi(): HostApi {
         ...(options?.optional ? { optional: true } : {}),
       });
     },
+    searchWorkspaceContent(request: import('../types').WorkspaceContentSearchRequest) {
+      return post<import('../types').WorkspaceContentSearchResult>(
+        baseUrl,
+        '/api/workspace/search',
+        request,
+      );
+    },
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest) {
       return post<void>(baseUrl, '/api/workspace/file/write', request);
     },

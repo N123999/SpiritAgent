@@ -98,6 +98,7 @@ export type HostCommandName =
   | 'getWorkspaceFileReferenceIndex'
   | 'listWorkspaceExplorerChildren'
   | 'readWorkspaceTextFile'
+  | 'searchWorkspaceContent'
   | 'writeWorkspaceTextFile'
   | 'revealWorkspaceEntry'
   | 'renameWorkspaceEntry'
