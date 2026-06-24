@@ -4,7 +4,9 @@ import { test } from 'node:test';
 import {
   applyCodeCompletionOperations,
   buildCodeCompletionIdentityPrompt,
+  codeCompletionOperationToInlineItemAtCursor,
   codeCompletionToMonacoItems,
+  isCodeCompletionInlineGhostRenderable,
   validateCodeCompletionOutput,
 } from '../../dist/code-completion/index.js';
 
@@ -114,4 +116,124 @@ test('codeCompletionToMonacoItems maps insert to inline item', () => {
     endColumn: 4,
     insertText: 'bar',
   });
+});
+
+test('codeCompletionOperationToInlineItemAtCursor insert keeps suffix at cursor', () => {
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'insert',
+      startLine: 1,
+      startColumn: 4,
+      endLine: 1,
+      endColumn: 4,
+      text: 'bar',
+    },
+    { lineText: 'foo', cursorLine: 1, cursorColumn: 4 },
+  );
+  assert.deepEqual(item, {
+    startLineNumber: 1,
+    startColumn: 4,
+    endLineNumber: 1,
+    endColumn: 4,
+    insertText: 'bar',
+  });
+});
+
+test('codeCompletionOperationToInlineItemAtCursor replace hyphen suffix extension', () => {
+  const lineText = '# Spirit Agent- comment';
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'replace',
+      startLine: 1,
+      startColumn: 15,
+      endLine: 1,
+      endColumn: 16,
+      text: '- ',
+    },
+    { lineText, cursorLine: 1, cursorColumn: 16 },
+  );
+  assert.deepEqual(item, {
+    startLineNumber: 1,
+    startColumn: 15,
+    endLineNumber: 1,
+    endColumn: 16,
+    insertText: '- ',
+  });
+});
+
+test('codeCompletionOperationToInlineItemAtCursor rejects cross-line replace', () => {
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'replace',
+      startLine: 1,
+      startColumn: 1,
+      endLine: 2,
+      endColumn: 2,
+      text: 'x',
+    },
+    { lineText: 'a', cursorLine: 1, cursorColumn: 1 },
+  );
+  assert.equal(item, undefined);
+});
+
+test('codeCompletionOperationToInlineItemAtCursor rejects replace when cursor outside span', () => {
+  const lineText = '# Spirit Agent- comment';
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'replace',
+      startLine: 1,
+      startColumn: 10,
+      endLine: 1,
+      endColumn: 16,
+      text: 'Agent -',
+    },
+    { lineText, cursorLine: 1, cursorColumn: lineText.length + 1 },
+  );
+  assert.equal(item, undefined);
+});
+
+test('codeCompletionOperationToInlineItemAtCursor rejects non-prefix replace span', () => {
+  const lineText = '# Spirit Agent- comment';
+  assert.equal(
+    isCodeCompletionInlineGhostRenderable(
+      {
+        kind: 'replace',
+        startLine: 1,
+        startColumn: 10,
+        endLine: 1,
+        endColumn: 16,
+        text: 'Agent -',
+      },
+      { lineText, cursorLine: 1, cursorColumn: 16 },
+    ),
+    false,
+  );
+  assert.equal(
+    codeCompletionOperationToInlineItemAtCursor(
+      {
+        kind: 'replace',
+        startLine: 1,
+        startColumn: 10,
+        endLine: 1,
+        endColumn: 16,
+        text: 'Agent -',
+      },
+      { lineText, cursorLine: 1, cursorColumn: 16 },
+    ),
+    undefined,
+  );
+});
+
+test('codeCompletionOperationToInlineItemAtCursor rejects delete', () => {
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'delete',
+      startLine: 1,
+      startColumn: 1,
+      endLine: 1,
+      endColumn: 2,
+    },
+    { lineText: 'ab', cursorLine: 1, cursorColumn: 2 },
+  );
+  assert.equal(item, undefined);
 });

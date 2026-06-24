@@ -26,3 +26,10 @@ export interface InlineCompletionItemSpec {
   endColumn: number;
   insertText: string;
 }
+
+/** Context for mapping a completion operation to an inline ghost item at the cursor. */
+export interface InlineCompletionMapContext {
+  lineText: string;
+  cursorLine: number;
+  cursorColumn: number;
+}
