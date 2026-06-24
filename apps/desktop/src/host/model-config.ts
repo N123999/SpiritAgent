@@ -4,6 +4,7 @@ import {
   type LlmModelCapabilities,
   type LlmTransportConfig,
   type OpenResponsesSdkProvider,
+  isOpenAiCompatibleTransportConfig,
 } from '@spirit-agent/core';
 import {
   resolveAnthropicTransportReasoningEffortForContext,
@@ -401,6 +402,20 @@ export function buildPrimaryTransportConfig(input: {
       ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
       : {}),
     ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+  };
+}
+
+/** 代码补全走轻量模型；DeepSeek 默认关闭 thinking 以降低延迟。 */
+export function buildCodeCompletionTransportConfig(
+  input: Parameters<typeof buildPrimaryTransportConfig>[0],
+): LlmTransportConfig {
+  const transportConfig = buildPrimaryTransportConfig(input);
+  if (input.profile?.provider !== 'deepseek' || !isOpenAiCompatibleTransportConfig(transportConfig)) {
+    return transportConfig;
+  }
+  return {
+    ...transportConfig,
+    vendorExtendedThinking: false,
   };
 }
 

@@ -4,7 +4,7 @@ import type { CodeCompletionResult } from '@spirit-agent/core';
 
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
 import { resolveLightweightChatModelProfile } from './lightweight-chat-model.js';
-import { buildPrimaryTransportConfig } from './model-config.js';
+import { buildCodeCompletionTransportConfig } from './model-config.js';
 import { currentApiBase } from './service-utils.js';
 import type { DesktopConfigFile } from './storage.js';
 import { resolveApiKeyForConfigModel } from './storage.js';
@@ -80,7 +80,7 @@ export async function requestCodeCompletionCommand(
       return { operations: [] };
     }
 
-    const transportConfig = buildPrimaryTransportConfig({
+    const transportConfig = buildCodeCompletionTransportConfig({
       apiKey,
       model: resolved.name,
       baseUrl: resolved.profile.apiBase ?? currentApiBase(context.config),

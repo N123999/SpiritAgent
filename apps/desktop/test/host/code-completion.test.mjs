@@ -7,6 +7,7 @@ import {
   requestCodeCompletionCommand,
   resetCodeCompletionJournalCommand,
 } from '../../dist-electron/src/host/code-completion-commands.js';
+import { buildCodeCompletionTransportConfig } from '../../dist-electron/src/host/model-config.js';
 import { defaultAgentsConfig } from '../../dist-electron/src/host/storage.js';
 
 const workspaceRoot = '/tmp/code-completion-test';
@@ -82,4 +83,35 @@ test('record and reset journal commands do not throw', () => {
   });
   resetCodeCompletionJournalCommand(context);
   abortCodeCompletionCommand(context.workspaceRoot);
+});
+
+test('buildCodeCompletionTransportConfig disables DeepSeek thinking', () => {
+  const config = buildCodeCompletionTransportConfig({
+    apiKey: 'test-key',
+    model: 'deepseek-v4-flash',
+    baseUrl: 'https://api.deepseek.com',
+    workspaceRoot,
+    profile: {
+      provider: 'deepseek',
+      capabilities: ['chat'],
+      reasoningEffort: 'default',
+    },
+  });
+  assert.equal(config.llmVendor, 'deepseek');
+  assert.equal(config.vendorExtendedThinking, false);
+});
+
+test('buildCodeCompletionTransportConfig leaves non-DeepSeek unchanged', () => {
+  const config = buildCodeCompletionTransportConfig({
+    apiKey: 'test-key',
+    model: 'gpt-4o-mini',
+    baseUrl: 'https://api.openai.com/v1',
+    workspaceRoot,
+    profile: {
+      provider: 'openai',
+      capabilities: ['chat'],
+      reasoningEffort: 'default',
+    },
+  });
+  assert.equal(config.vendorExtendedThinking, undefined);
 });
