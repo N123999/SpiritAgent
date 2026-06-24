@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent } from "react";
 
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { segmentsToMessageText } from "@/components/composer-rich-input";
@@ -16,6 +16,10 @@ import {
   snapshotsToComposerAttachmentViews,
 } from "@/lib/local-file-attachments";
 import { canStartMessageRewind } from "@/lib/message-rewind-eligibility";
+import {
+  isComposerFileDropAccepted,
+  resolveComposerDropAbsolutePaths,
+} from "@/lib/composer-file-drop";
 import type { ConversationMessageSnapshot, MessageRewindDraftState } from "@/types";
 
 type DesktopRuntime = ReturnType<typeof useDesktopRuntime>;
@@ -190,6 +194,47 @@ export function useMessageRewind({
     [activeSessionReadOnly, attachRewindMediaFilePath, rewindDraft, runtime],
   );
 
+  const handleRewindComposerDragOver = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (activeSessionReadOnly || runtime.hostKind !== "electron" || !rewindDraft) {
+        return;
+      }
+      if (!isComposerFileDropAccepted(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    },
+    [activeSessionReadOnly, rewindDraft, runtime.hostKind],
+  );
+
+  const handleRewindComposerDrop = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (activeSessionReadOnly || runtime.hostKind !== "electron" || !rewindDraft) {
+        return;
+      }
+      if (!isComposerFileDropAccepted(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      const paths = resolveComposerDropAbsolutePaths(event, {
+        workspaceRoot: runtime.snapshot?.workspaceRoot ?? "",
+        getPathForFile: runtime.getPathForDroppedFile,
+      });
+      for (const filePath of paths) {
+        void routeRewindLocalFilePath(filePath);
+      }
+    },
+    [
+      activeSessionReadOnly,
+      rewindDraft,
+      routeRewindLocalFilePath,
+      runtime.getPathForDroppedFile,
+      runtime.hostKind,
+      runtime.snapshot?.workspaceRoot,
+    ],
+  );
+
   return {
     rewindDraft,
     setRewindDraft,
@@ -200,5 +245,7 @@ export function useMessageRewind({
     attachRewindLocalFilePath: routeRewindLocalFilePath,
     pickRewindLocalFileFromPalette,
     handleRewindComposerPaste,
+    handleRewindComposerDragOver,
+    handleRewindComposerDrop,
   };
 }

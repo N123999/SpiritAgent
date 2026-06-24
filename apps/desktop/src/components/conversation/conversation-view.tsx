@@ -75,6 +75,8 @@ export type ConversationListSectionProps = {
   onRewindRemoveLocalFileAttachment: (path: string) => void;
   onRewindPickLocalFile: () => void;
   onRewindPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
+  onRewindDragOver: (event: ReactDragEvent<HTMLElement>) => void;
+  onRewindDrop: (event: ReactDragEvent<HTMLElement>) => void;
   onComposerAgentModeChange: (mode: DesktopAgentMode) => void;
 };
 
@@ -317,6 +319,8 @@ export function ConversationView({
                   onRewindRemoveLocalFileAttachment={list.onRewindRemoveLocalFileAttachment}
                   onRewindPickLocalFile={list.onRewindPickLocalFile}
                   onRewindPaste={list.onRewindPaste}
+                  onRewindDragOver={list.onRewindDragOver}
+                  onRewindDrop={list.onRewindDrop}
                   onComposerAgentModeChange={list.onComposerAgentModeChange}
                 />
               ) : null}
