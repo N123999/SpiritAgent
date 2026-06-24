@@ -694,7 +694,7 @@
     "hideContentSearch": "收起内容搜索",
     "showContentSearch": "展开内容搜索",
     "exitFileSearch": "退出内容搜索",
-    "fileSearchPlaceholder": "搜索工作区…",
+    "fileSearchPlaceholder": "搜索",
     "matchCase": "区分大小写",
     "matchWholeWord": "全字匹配",
     "useRegex": "正则表达式",
