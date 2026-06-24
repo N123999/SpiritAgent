@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 
+import { codeCompletionOperationToInlineItemAtCursor } from "@spirit-agent/core";
+import type { CodeCompletionOperation } from "@spirit-agent/core";
 import * as monaco from "monaco-editor";
 
 import { useHostApi } from "@/hooks/useHostApi";
@@ -37,80 +39,31 @@ function isMonacoCanceled(error: unknown): boolean {
   return false;
 }
 
-const MAX_INLINE_INSERT_CHARS = 500;
-
-/** 剥离换行与过长文本，供 inline ghost text 使用。 */
-function sanitizeInlineInsertText(text: string): string {
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-  return firstLine.length > MAX_INLINE_INSERT_CHARS
-    ? firstLine.slice(0, MAX_INLINE_INSERT_CHARS)
-    : firstLine;
-}
-
-/** 只保留光标处尚未输入的补全后缀，配合 point range 供 Monaco ghost text 渲染。 */
-function completionSuffixAtCursor(
-  model: monaco.editor.ITextModel,
-  position: monaco.Position,
-  insertText: string,
-): string {
-  const sanitized = sanitizeInlineInsertText(insertText);
-  if (sanitized.length === 0) {
-    return "";
-  }
-  const linePrefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
-  if (sanitized.startsWith(linePrefix)) {
-    return sanitized.slice(linePrefix.length);
-  }
-  const maxOverlap = Math.min(linePrefix.length, sanitized.length);
-  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
-    if (linePrefix.endsWith(sanitized.slice(0, overlap))) {
-      return sanitized.slice(overlap);
-    }
-  }
-  return sanitized;
-}
-
 function toInlineItem(
   operation: CodeCompletionOperationSnapshot,
   model: monaco.editor.ITextModel,
   position: monaco.Position,
 ): monaco.languages.InlineCompletion | undefined {
-  if (operation.kind === "insert") {
-    const insertText = completionSuffixAtCursor(model, position, operation.text ?? "");
-    if (insertText.length === 0) {
-      return undefined;
-    }
-    return {
-      range: monaco.Range.fromPositions(position),
-      insertText,
-    };
+  const spec = codeCompletionOperationToInlineItemAtCursor(
+    operation as CodeCompletionOperation,
+    {
+      lineText: model.getLineContent(position.lineNumber),
+      cursorLine: position.lineNumber,
+      cursorColumn: position.column,
+    },
+  );
+  if (!spec) {
+    return undefined;
   }
-
-  if (operation.kind === "replace") {
-    const range = new monaco.Range(
-      operation.startLine,
-      operation.startColumn,
-      operation.endLine,
-      operation.endColumn,
-    );
-    const existing = model.getValueInRange(range);
-    const nextText = sanitizeInlineInsertText(operation.text ?? "");
-    if (nextText.length === 0) {
-      return undefined;
-    }
-    const suffix = nextText.startsWith(existing)
-      ? nextText.slice(existing.length)
-      : nextText;
-    if (suffix.length === 0) {
-      return undefined;
-    }
-    return {
-      range: monaco.Range.fromPositions(position),
-      insertText: suffix,
-    };
-  }
-
-  return undefined;
+  return {
+    range: new monaco.Range(
+      spec.startLineNumber,
+      spec.startColumn,
+      spec.endLineNumber,
+      spec.endColumn,
+    ),
+    insertText: spec.insertText,
+  };
 }
 
 export function useMonacoCodeCompletion(options: {
