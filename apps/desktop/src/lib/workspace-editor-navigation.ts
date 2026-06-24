@@ -8,9 +8,24 @@ import { normalizeWorkspaceEntryRel } from "@/lib/workspace-entry-path-sync";
 
 export type WorkspaceEditorViewMode = "edit" | "preview";
 
+export type EditorFileRevealLocation = {
+  line: number;
+  column?: number;
+};
+
 export type EditorFileTarget =
-  | { scope: "workspace"; relativePath: string; viewMode: WorkspaceEditorViewMode }
-  | { scope: "external"; absolutePath: string; viewMode: WorkspaceEditorViewMode };
+  | {
+      scope: "workspace";
+      relativePath: string;
+      viewMode: WorkspaceEditorViewMode;
+      reveal?: EditorFileRevealLocation;
+    }
+  | {
+      scope: "external";
+      absolutePath: string;
+      viewMode: WorkspaceEditorViewMode;
+      reveal?: EditorFileRevealLocation;
+    };
 
 export type WorkspaceFileRevealRequest = {
   relativePath: string;

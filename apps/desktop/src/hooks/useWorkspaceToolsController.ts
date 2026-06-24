@@ -75,6 +75,8 @@ export function useWorkspaceToolsController({
   const [workspaceFileRevealViewMode, setWorkspaceFileRevealViewMode] =
     useState<WorkspaceEditorViewMode>("edit");
   const [workspaceFileRevealDirectoryOnly, setWorkspaceFileRevealDirectoryOnly] = useState(false);
+  const [workspaceFileRevealLine, setWorkspaceFileRevealLine] = useState<number | null>(null);
+  const [workspaceFileRevealColumn, setWorkspaceFileRevealColumn] = useState<number | null>(null);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(readWorkspaceToolsWidthPx);
   const [workspacePrRevealNonce, setWorkspacePrRevealNonce] = useState(0);
   const [workspacePrRevealTargetId, setWorkspacePrRevealTargetId] = useState<string | null>(null);
@@ -104,6 +106,8 @@ export function useWorkspaceToolsController({
     setWorkspaceFileRevealScope(target.scope);
     setWorkspaceFileRevealViewMode(target.viewMode);
     setWorkspaceFileRevealDirectoryOnly(false);
+    setWorkspaceFileRevealLine(target.reveal?.line ?? null);
+    setWorkspaceFileRevealColumn(target.reveal?.column ?? null);
     if (target.scope === "workspace") {
       setWorkspaceFileRevealPath(target.relativePath);
       setWorkspaceFileRevealAbsolutePath("");
@@ -128,25 +132,37 @@ export function useWorkspaceToolsController({
   );
 
   const openWorkspaceFile = useCallback(
-    (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => {
-      const tabs = workspaceToolTabsRef.current;
-      const existingTabId = findFilesTabWithWorkspacePath(tabs, relativePath);
-      if (existingTabId) {
-        setWorkspaceToolsOpen(true);
-        setActiveWorkspaceToolTabId(existingTabId);
-        return;
-      }
-      openEditorFile({
+    (
+      relativePath: string,
+      options?: { viewMode?: WorkspaceEditorViewMode; reveal?: import('@/lib/workspace-editor-navigation').EditorFileRevealLocation },
+    ) => {
+      const target: EditorFileTarget = {
         scope: "workspace",
         relativePath,
         viewMode: options?.viewMode ?? "edit",
-      });
+        reveal: options?.reveal,
+      };
+      const tabs = workspaceToolTabsRef.current;
+      const existingTabId = findFilesTabWithWorkspacePath(tabs, relativePath);
+      if (existingTabId) {
+        revealEditorFile({
+          tabs: [...tabs],
+          activeTabId: existingTabId,
+          filesTabId: existingTabId,
+          reveal: target,
+        });
+        return;
+      }
+      openEditorFile(target);
     },
-    [openEditorFile, setWorkspaceToolsOpen],
+    [openEditorFile, revealEditorFile],
   );
 
   const openWorkspaceFileInNewTab = useCallback(
-    (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => {
+    (
+      relativePath: string,
+      options?: { viewMode?: WorkspaceEditorViewMode; reveal?: import('@/lib/workspace-editor-navigation').EditorFileRevealLocation },
+    ) => {
       revealEditorFile(
         buildOpenEditorFileInNewTabNavigation({
           tabs: workspaceToolTabsRef.current,
@@ -155,6 +171,7 @@ export function useWorkspaceToolsController({
             scope: "workspace",
             relativePath,
             viewMode: options?.viewMode ?? "edit",
+            reveal: options?.reveal,
           },
         }),
       );
@@ -321,6 +338,8 @@ export function useWorkspaceToolsController({
     workspaceFileRevealScope,
     workspaceFileRevealViewMode,
     workspaceFileRevealDirectoryOnly,
+    workspaceFileRevealLine,
+    workspaceFileRevealColumn,
     openBrowserUrlInNewTab,
     openEditorFile,
     openWorkspaceFile,

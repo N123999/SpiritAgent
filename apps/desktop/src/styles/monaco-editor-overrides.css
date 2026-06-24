@@ -10,3 +10,8 @@
 .monaco-editor .inputarea:focus {
   outline: none !important;
 }
+
+.monaco-editor .spirit-monaco-search-match {
+  background-color: color-mix(in srgb, var(--primary) 22%, transparent);
+  border-radius: 2px;
+}
