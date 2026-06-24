@@ -613,6 +613,7 @@
     "send": "发送",
     "continue": "继续",
     "forkChat": "分叉会话",
+    "copiedToClipboard": "已复制到剪贴板",
     "messageActions": "消息操作",
     "required": "必答",
     "firstTimePairing": "首次配对",

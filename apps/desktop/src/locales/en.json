@@ -616,6 +616,7 @@
     "send": "Send",
     "continue": "Continue",
     "forkChat": "Fork Chat",
+    "copiedToClipboard": "Copied to clipboard",
     "messageActions": "Message actions",
     "required": "Required",
     "firstTimePairing": "First-Time Pairing",

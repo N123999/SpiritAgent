@@ -1,4 +1,4 @@
-import { GitFork, LoaderCircle, MoreHorizontal, Play } from "lucide-react";
+import { Copy, GitFork, LoaderCircle, MoreHorizontal, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,10 @@ export function MessageTurnActions({
   continueTarget,
   continueBusy,
   onContinue,
+  canShowActionsMenu,
+  canCopy,
+  copyEnabled,
+  onCopy,
   canFork,
   forkBusy,
   forkEnabled,
@@ -29,6 +33,10 @@ export function MessageTurnActions({
   continueTarget?: ConversationMessageSnapshot;
   continueBusy: boolean;
   onContinue: (message: ConversationMessageSnapshot) => void;
+  canShowActionsMenu: boolean;
+  canCopy: boolean;
+  copyEnabled: boolean;
+  onCopy: () => void;
   canFork: boolean;
   forkBusy: boolean;
   forkEnabled: boolean;
@@ -41,7 +49,7 @@ export function MessageTurnActions({
   const forkMenuHidden =
     !forkMenuAlwaysVisible && !forkMenuHoverRevealed;
 
-  if (!showContinueButton && !canFork) {
+  if (!showContinueButton && !canShowActionsMenu) {
     return null;
   }
 
@@ -69,7 +77,7 @@ export function MessageTurnActions({
           )}
         </Button>
       ) : null}
-      {canFork ? (
+      {canShowActionsMenu ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -81,23 +89,36 @@ export function MessageTurnActions({
                 forkMenuHidden && MESSAGE_TURN_FORK_MENU_HIDDEN_CLASSES,
               )}
               aria-label={t("app.messageActions")}
-              disabled={forkBusy || !forkEnabled}
             >
               <MoreHorizontal className="size-3.5 text-muted-foreground" aria-hidden />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-40 p-0">
             <div className="p-1">
-              <DropdownMenuItem
-                disabled={forkBusy || !forkEnabled}
-                className="gap-2"
-                onSelect={() => {
-                  onFork();
-                }}
-              >
-                <GitFork className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                <span>{t("app.forkChat")}</span>
-              </DropdownMenuItem>
+              {canCopy ? (
+                <DropdownMenuItem
+                  disabled={!copyEnabled}
+                  className="gap-2"
+                  onSelect={() => {
+                    onCopy();
+                  }}
+                >
+                  <Copy className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span>{t("common.copy")}</span>
+                </DropdownMenuItem>
+              ) : null}
+              {canFork ? (
+                <DropdownMenuItem
+                  disabled={forkBusy || !forkEnabled}
+                  className="gap-2"
+                  onSelect={() => {
+                    onFork();
+                  }}
+                >
+                  <GitFork className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span>{t("app.forkChat")}</span>
+                </DropdownMenuItem>
+              ) : null}
             </div>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -273,6 +273,10 @@ export function ConversationList({
                         onContinue={(targetMessage) => {
                           void runtime.continueAssistantCompletion(targetMessage.id);
                         }}
+                        canShowActionsMenu={false}
+                        canCopy={false}
+                        copyEnabled={false}
+                        onCopy={() => {}}
                         canFork={false}
                         forkBusy={false}
                         forkEnabled={false}
