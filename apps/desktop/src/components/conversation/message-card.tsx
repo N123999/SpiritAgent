@@ -1,4 +1,4 @@
-import { useMemo, type ClipboardEvent as ReactClipboardEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useMemo, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
@@ -76,6 +76,8 @@ export function MessageCard({
   onRewindRemoveLocalFileAttachment,
   onRewindPickLocalFile,
   onRewindPaste,
+  onRewindDragOver,
+  onRewindDrop,
   onModelSelect,
   onModelReasoningEffortSelect,
   onAgentModeChange,
@@ -135,6 +137,8 @@ export function MessageCard({
   onRewindRemoveLocalFileAttachment(path: string): void;
   onRewindPickLocalFile(): void;
   onRewindPaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void;
+  onRewindDragOver(event: ReactDragEvent<HTMLElement>): void;
+  onRewindDrop(event: ReactDragEvent<HTMLElement>): void;
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
   onAgentModeChange(mode: DesktopAgentMode): void;
@@ -279,6 +283,8 @@ export function MessageCard({
             onPickLocalFile={onRewindPickLocalFile}
             onRemoveLocalFileAttachment={onRewindRemoveLocalFileAttachment}
             onPaste={onRewindPaste}
+            onDragOver={onRewindDragOver}
+            onDrop={onRewindDrop}
             saveLocalImageAs={saveLocalImageAs}
           />
         ) : null}

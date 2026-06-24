@@ -77,6 +77,8 @@ export type ConversationListProps = {
   onRewindRemoveLocalFileAttachment: (path: string) => void;
   onRewindPickLocalFile: () => void;
   onRewindPaste: (event: import("react").ClipboardEvent<HTMLTextAreaElement>) => void;
+  onRewindDragOver: (event: import("react").DragEvent<HTMLElement>) => void;
+  onRewindDrop: (event: import("react").DragEvent<HTMLElement>) => void;
   onComposerAgentModeChange: (mode: DesktopAgentMode) => void;
   onForkMessage: (message: ConversationMessageSnapshot, listIndex: number) => void;
 };
@@ -113,6 +115,8 @@ export function ConversationList({
   onRewindRemoveLocalFileAttachment,
   onRewindPickLocalFile,
   onRewindPaste,
+  onRewindDragOver,
+  onRewindDrop,
   onComposerAgentModeChange,
   onForkMessage,
 }: ConversationListProps) {
@@ -373,6 +377,8 @@ export function ConversationList({
                 onRewindRemoveLocalFileAttachment={onRewindRemoveLocalFileAttachment}
                 onRewindPickLocalFile={onRewindPickLocalFile}
                 onRewindPaste={onRewindPaste}
+                onRewindDragOver={onRewindDragOver}
+                onRewindDrop={onRewindDrop}
                 onModelSelect={runtime.setActiveModel}
                 onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
                 onAgentModeChange={onComposerAgentModeChange}

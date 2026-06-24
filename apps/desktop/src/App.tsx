@@ -543,6 +543,8 @@ export default function App() {
               onRewindRemoveLocalFileAttachment: messageRewind.removeRewindLocalFileAttachment,
               onRewindPickLocalFile: messageRewind.pickRewindLocalFileFromPalette,
               onRewindPaste: messageRewind.handleRewindComposerPaste,
+              onRewindDragOver: messageRewind.handleRewindComposerDragOver,
+              onRewindDrop: messageRewind.handleRewindComposerDrop,
               onComposerAgentModeChange: composer.handleComposerAgentModeChange,
             }}
             composerDock={{
