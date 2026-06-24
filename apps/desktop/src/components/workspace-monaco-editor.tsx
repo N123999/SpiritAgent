@@ -11,6 +11,7 @@ import "monaco-editor/min/vs/editor/editor.main.css";
 import "@/styles/monaco-editor-overrides.css";
 
 import { ensureMonacoWorkers } from "@/lib/monaco-environment";
+import { ensureMonacoShikiReady } from "@/lib/monaco-shiki";
 import { monacoLanguageId } from "@/lib/monaco-language";
 import { syncMonacoThemeFromDocument } from "@/lib/monaco-theme";
 
@@ -96,48 +97,60 @@ export const WorkspaceMonacoEditor = forwardRef<
     if (!root) {
       return;
     }
-    syncMonacoThemeFromDocument();
-    baselineRef.current = initialText;
-    const editor = monaco.editor.create(root, {
-      value: initialText,
-      language: monacoLanguageId(relativePath),
-      readOnly,
-      minimap: { enabled: false },
-      fontSize: 12,
-      scrollBeyondLastLine: false,
-      wordWrap: "off",
-      automaticLayout: true,
-      tabSize: 2,
-      renderLineHighlight: "line",
-      overviewRulerLanes: 0,
-      hideCursorInOverviewRuler: true,
-      scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
-    });
-    editorRef.current = editor;
-    onEditorReadyRef.current?.(editor);
 
-    const dirtyDisposable = editor.onDidChangeModelContent(() => {
-      const value = editor.getValue();
-      onTextChangeRef.current?.(value);
-      onDirtyChangeRef.current?.(value !== baselineRef.current);
-    });
+    let disposed = false;
+    let obs: MutationObserver | null = null;
+    let dirtyDisposable: monaco.IDisposable | null = null;
+    let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 
-    if (!readOnly) {
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        void runSave();
-      });
-    }
-
-    const obs = new MutationObserver(() => {
+    void ensureMonacoShikiReady().then(() => {
+      if (disposed || !containerRef.current) {
+        return;
+      }
       syncMonacoThemeFromDocument();
+      baselineRef.current = initialText;
+      editor = monaco.editor.create(containerRef.current, {
+        value: initialText,
+        language: monacoLanguageId(relativePath),
+        readOnly,
+        minimap: { enabled: false },
+        fontSize: 12,
+        scrollBeyondLastLine: false,
+        wordWrap: "off",
+        automaticLayout: true,
+        tabSize: 2,
+        renderLineHighlight: "line",
+        overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true,
+        scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+      });
+      editorRef.current = editor;
+      onEditorReadyRef.current?.(editor);
+
+      dirtyDisposable = editor.onDidChangeModelContent(() => {
+        const value = editor!.getValue();
+        onTextChangeRef.current?.(value);
+        onDirtyChangeRef.current?.(value !== baselineRef.current);
+      });
+
+      if (!readOnly) {
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+          void runSave();
+        });
+      }
+
+      obs = new MutationObserver(() => {
+        syncMonacoThemeFromDocument();
+      });
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     });
-    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
     return () => {
-      obs.disconnect();
-      dirtyDisposable.dispose();
+      disposed = true;
+      obs?.disconnect();
+      dirtyDisposable?.dispose();
       onEditorReadyRef.current?.(null);
-      editor.dispose();
+      editor?.dispose();
       editorRef.current = null;
     };
   }, [relativePath, readOnly, runSave]);
