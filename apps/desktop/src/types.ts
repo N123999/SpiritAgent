@@ -72,6 +72,9 @@ export interface DesktopAgentsConfigUpdate {
   lsp?: {
     enabled?: boolean;
   };
+  codeCompletion?: {
+    enabled?: boolean;
+  };
 }
 
 export interface InstallLspProviderRequest {
@@ -696,7 +699,6 @@ export interface ReadWorkspaceTextFileOptions {
   optional?: boolean;
 }
 
-/** 将 UTF-8 文本写回工作区内已有文件（路径规则与读文件一致）。 */
 export interface WriteWorkspaceTextFileRequest {
   relativePath: string;
   text: string;
@@ -725,6 +727,35 @@ export type WorkspaceContentSearchResult = {
   matches: WorkspaceContentSearchMatch[];
   truncated?: boolean;
 };
+
+export type CodeCompletionKind = 'insert' | 'replace' | 'delete';
+
+export interface CodeCompletionOperationSnapshot {
+  kind: CodeCompletionKind;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  text?: string;
+}
+
+export interface CodeCompletionResponse {
+  operations: CodeCompletionOperationSnapshot[];
+}
+
+export interface RequestCodeCompletionRequest {
+  relativePath: string;
+  languageId: string;
+  documentText: string;
+  cursorLine: number;
+  cursorColumn: number;
+}
+
+export interface RecordCodeCompletionFileStateRequest {
+  relativePath: string;
+  baselineText: string;
+  currentText: string;
+}
 
 export interface HostTextFileStatResult {
   exists: boolean;

@@ -255,6 +255,18 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
       request,
     });
   },
+  requestCodeCompletion(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'requestCodeCompletion', { request });
+  },
+  abortCodeCompletion() {
+    return ipcRenderer.invoke('desktop:invoke', 'abortCodeCompletion');
+  },
+  recordCodeCompletionFileState(request: unknown) {
+    return ipcRenderer.invoke('desktop:invoke', 'recordCodeCompletionFileState', { request });
+  },
+  resetCodeCompletionJournal() {
+    return ipcRenderer.invoke('desktop:invoke', 'resetCodeCompletionJournal');
+  },
   primeWorkspaceFileReferenceIndex() {
     return ipcRenderer.invoke('desktop:invoke', 'primeWorkspaceFileReferenceIndex');
   },
