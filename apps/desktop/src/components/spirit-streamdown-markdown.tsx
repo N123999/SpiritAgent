@@ -21,11 +21,10 @@ import { streamdownUrlTransform } from "@/lib/markdown-url-transform";
 
 const streamdownMathPlugin = math;
 
-/** VS Code Default Light+ / Dark+（Shiki bundled） */
-const STREAMDOWN_SHIKI_THEMES = ["light-plus", "dark-plus"] as const;
+import { SPIRIT_SHIKI_PLUS_THEMES } from "@/lib/spirit-shiki-themes";
 
 const spiritStreamdownCodePlugin = createCodePlugin({
-  themes: [...STREAMDOWN_SHIKI_THEMES],
+  themes: [...SPIRIT_SHIKI_PLUS_THEMES],
 });
 
 export const spiritStreamdownControls = {
