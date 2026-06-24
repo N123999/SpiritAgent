@@ -48,6 +48,15 @@ test('buildCodeCompletionSystemSections excludes tool agent host sections', () =
   assert.doesNotMatch(sections.join('\n'), /Available tools are defined/);
 });
 
+test('buildCodeCompletionTaskPrompt constrains inline replace near cursor', () => {
+  const sections = buildCodeCompletionSystemSections('mini-model');
+  const task = sections[1] ?? '';
+  assert.match(task, /single-line/);
+  assert.match(task, /prefix of the replacement text/);
+  assert.match(task, /include the cursor/);
+  assert.match(task, /Never duplicate the current line/);
+});
+
 test('buildCodeCompletionUserPrompt includes recent edits block', () => {
   const prompt = buildCodeCompletionUserPrompt({
     context: {

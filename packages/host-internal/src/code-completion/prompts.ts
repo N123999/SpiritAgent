@@ -9,12 +9,15 @@ export function buildCodeCompletionTaskPrompt(): string {
     'Return only JSON matching the code_completion schema. No Markdown fences or prose.',
     'Use operations[] to describe edits relative to the provided cursor and document snapshot.',
     '- insert: append text at cursor (startLine/startColumn equals endLine/endColumn).',
-    '- replace: change an existing span to text.',
+    '- replace: change an existing single-line span to text; the span must include the cursor (cursor inside the span or at its end column).',
     '- delete: remove a span (omit text or use empty string).',
+    'Inline preview only supports single-line edits. For replace, the span text must be a prefix of the replacement text (extend or append; do not rewrite from the middle).',
+    'Prefer the shortest replace span near the cursor. To insert before a character, use insert at that column rather than replace.',
+    'Never duplicate the current line or repeat content already in [suffix]. Do not append an entire line at the cursor when the fix belongs earlier on the same line.',
     'Prefer minimal, idiomatic completions matching local style and indentation.',
     'Match string quotes, semicolons, and naming already present in the file.',
     'If uncertain or nothing useful to add, return {"operations":[]}.',
-    'Do not wrap output in comments or repeat large unchanged regions.',
+    'Do not wrap output in comments, repeat large unchanged regions, or continue README/markdown prose.',
   ].join('\n');
 }
 
