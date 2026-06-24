@@ -10,8 +10,10 @@ import {
   isModShortcutPressed,
 } from "@/lib/desktop-shell";
 import {
+  resolveModCommaSettingsShortcutAction,
   resolveModPShortcutAction,
   shouldTriggerConversationAbortShortcut,
+  shouldTriggerSettingsEscapeShortcut,
 } from "@/lib/desktop-keyboard-shortcut-eligibility";
 import { resolveUiLayoutZoomShortcutAction } from "@/lib/ui-layout-scale";
 import type { AppSurface } from "@/hooks/useAppSurfaceNavigation";
@@ -30,6 +32,8 @@ export type UseDesktopKeyboardShortcutsOptions = {
   conversationAbortShortcutEligibleRef: MutableRefObject<boolean>;
   sessionSidebarChromeApiRef: MutableRefObject<SessionSidebarChromeApi | null>;
   handleNewSession: () => void;
+  handleOpenSettings: () => void;
+  handleCloseSettings: () => void;
   setActionPickerOpen: (open: boolean) => void;
   setFilePickerOpen: (open: boolean) => void;
   uiLayoutScaleApi: UiLayoutScaleShortcutApi;
@@ -41,6 +45,8 @@ export function useDesktopKeyboardShortcuts({
   conversationAbortShortcutEligibleRef,
   sessionSidebarChromeApiRef,
   handleNewSession,
+  handleOpenSettings,
+  handleCloseSettings,
   setActionPickerOpen,
   setFilePickerOpen,
   uiLayoutScaleApi,
@@ -155,6 +161,45 @@ export function useDesktopKeyboardShortcuts({
     }
     return bridge.subscribeNewSession(handleNewSession);
   }, [handleNewSession]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = resolveModCommaSettingsShortcutAction(
+        {
+          defaultPrevented: event.defaultPrevented,
+          key: event.key,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+          modPressed: isModShortcutPressed(event),
+          target: event.target,
+        },
+        { activeSurface: activeSurfaceRef.current },
+      );
+      if (!action) {
+        return;
+      }
+      event.preventDefault();
+      handleOpenSettings();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeSurfaceRef, handleOpenSettings]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !shouldTriggerSettingsEscapeShortcut(event, {
+          activeSurface: activeSurfaceRef.current,
+        })
+      ) {
+        return;
+      }
+      event.preventDefault();
+      handleCloseSettings();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeSurfaceRef, handleCloseSettings]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
