@@ -23,6 +23,14 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -490,6 +498,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   const [mountedShellTabIds, setMountedShellTabIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId),
@@ -532,7 +541,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
     [browserTabEnabled, gitHubAuthConnected, prTabEnabled, onActiveTabIdChange, onTabsChange, tabs, t],
   );
 
-  const handleCloseTab = useCallback(
+  const performCloseTab = useCallback(
     (closeId: string) => {
       const next = closeWorkspaceToolTab(tabs, activeTabId, closeId, {
         includeBrowser: browserTabEnabled,
@@ -550,6 +559,26 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
     },
     [activeTabId, browserTabEnabled, onActiveTabIdChange, onTabsChange, tabs],
   );
+
+  const handleCloseTab = useCallback(
+    (closeId: string) => {
+      const tab = tabs.find((item) => item.id === closeId);
+      if (tab?.kind === "files" && tab.tabDirty) {
+        setPendingCloseTabId(closeId);
+        return;
+      }
+      performCloseTab(closeId);
+    },
+    [performCloseTab, tabs],
+  );
+
+  const handleConfirmCloseTab = useCallback(() => {
+    if (!pendingCloseTabId) {
+      return;
+    }
+    performCloseTab(pendingCloseTabId);
+    setPendingCloseTabId(null);
+  }, [pendingCloseTabId, performCloseTab]);
 
   const handleBrowserUrlChange = useCallback(
     (tabId: string, url: string) => {
@@ -912,6 +941,30 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               <p className="p-3 text-muted-foreground">{t('workspace.noOpenTabs')}</p>
             ) : null}
           </div>
+
+      <Dialog
+        open={pendingCloseTabId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingCloseTabId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>{t("workspace.unsavedChangesCloseConfirm")}</DialogTitle>
+            <DialogDescription>{t("app.discardChangesWarning")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button type="button" variant="outline" size="sm" onClick={() => setPendingCloseTabId(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button type="button" size="sm" variant="destructive" onClick={handleConfirmCloseTab}>
+              {t("common.close")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 });
