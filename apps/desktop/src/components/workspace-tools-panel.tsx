@@ -563,7 +563,22 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   const handleTabTitleChange = useCallback(
     (tabId: string, title: string | undefined) => {
       onTabsChange((prev) =>
-        prev.map((item) => (item.id === tabId ? { ...item, tabTitle: title || undefined } : item)),
+        prev.map((item) =>
+          item.id === tabId
+            ? { ...item, tabTitle: title || undefined, tabDirty: title ? item.tabDirty : undefined }
+            : item,
+        ),
+      );
+    },
+    [onTabsChange],
+  );
+
+  const handleTabDirtyChange = useCallback(
+    (tabId: string, dirty: boolean) => {
+      onTabsChange((prev) =>
+        prev.map((item) =>
+          item.id === tabId ? { ...item, tabDirty: dirty || undefined } : item,
+        ),
       );
     },
     [onTabsChange],
@@ -631,7 +646,18 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                       onClick={() => onActiveTabIdChange(item.id)}
                     >
                       <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
-                      {displayTitle ? <span className="truncate">{displayTitle}</span> : null}
+                      {displayTitle ? (
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{displayTitle}</span>
+                          {item.tabDirty ? (
+                            <span
+                              className="size-1.5 shrink-0 rounded-full bg-muted-foreground"
+                              role="status"
+                              aria-label={t("workspace.unsavedChangesIndicator")}
+                            />
+                          ) : null}
+                        </span>
+                      ) : null}
                     </button>
                     {displayTitle ? (
                       <button
@@ -805,6 +831,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                         fileRevealViewMode={fileRevealViewMode}
                         fileRevealDirectoryOnly={fileRevealDirectoryOnly}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
+                        onDirtyChange={(dirty) => handleTabDirtyChange(item.id, dirty)}
                         onFileSnippetAddToSession={onFileSnippetAddToSession}
                         onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
                         useMicaBackdrop={useMicaBackdrop}

@@ -677,6 +677,7 @@
   "workspace": {
     "planNotCreated": "Plan 还没有创建。",
     "unsavedChangesCloseConfirm": "有未保存的更改，仍要关闭吗？",
+    "unsavedChangesIndicator": "未保存",
     "markdownPreview": "Markdown 预览",
     "preview": "预览",
     "markdownEdit": "Markdown 编辑",

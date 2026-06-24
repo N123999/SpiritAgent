@@ -230,6 +230,8 @@ export type WorkspaceFilesTabProps = {
   fileRevealDirectoryOnly?: boolean;
   /** 当前打开文件名变化时通知父层，用于选项卡标题显示；无选中时传 undefined */
   onTitleChange?: (title: string | undefined) => void;
+  /** 当前打开文件脏状态变化时通知父层，用于选项卡未保存指示 */
+  onDirtyChange?: (dirty: boolean) => void;
   onFileSnippetAddToSession?: (attachment: FileSnippetAttachment) => void;
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
   gitRevision?: number;
@@ -257,6 +259,7 @@ export function WorkspaceFilesTab({
   fileRevealViewMode = "edit",
   fileRevealDirectoryOnly = false,
   onTitleChange,
+  onDirtyChange,
   onFileSnippetAddToSession,
   onWorkspaceFileAddToSession,
   gitRevision,
@@ -283,8 +286,10 @@ export function WorkspaceFilesTab({
   const previewRootRef = useRef<HTMLElement | null>(null);
   const monacoContainerRef = useRef<HTMLDivElement>(null);
   const onTitleChangeRef = useRef(onTitleChange);
+  const onDirtyChangeRef = useRef(onDirtyChange);
   useLayoutEffect(() => {
     onTitleChangeRef.current = onTitleChange;
+    onDirtyChangeRef.current = onDirtyChange;
   });
   const prevSelectedEntryRef = useRef(selectedEntry);
 
@@ -369,6 +374,9 @@ export function WorkspaceFilesTab({
   useEffect(() => {
     const prev = prevSelectedEntryRef.current;
     prevSelectedEntryRef.current = selectedEntry;
+    if (prev !== selectedEntry) {
+      onDirtyChangeRef.current?.(false);
+    }
     if (!selectedEntry) {
       if (prev !== null) {
         onTitleChangeRef.current?.(undefined);
@@ -570,6 +578,10 @@ export function WorkspaceFilesTab({
     [persistEditorText],
   );
 
+  const onMonacoDirtyChange = useCallback((dirty: boolean) => {
+    onDirtyChangeRef.current?.(dirty);
+  }, []);
+
   const isPreviewVisible =
     doc?.status === "ready" && isMarkdownDocument && markdownViewMode === "preview";
 
@@ -591,6 +603,13 @@ export function WorkspaceFilesTab({
       setMonacoEditor(null);
     }
   }, [isPreviewVisible]);
+
+  useEffect(() => {
+    if (!isPreviewVisible || doc?.readOnly) {
+      return;
+    }
+    onDirtyChangeRef.current?.(draftText !== savedText);
+  }, [draftText, doc?.readOnly, isPreviewVisible, savedText]);
 
   const selectionEnabled = doc?.status === "ready" && Boolean(onFileSnippetAddToSession && selectedPath);
 
@@ -794,6 +813,7 @@ export function WorkspaceFilesTab({
                     baselineText={savedText}
                     onSave={onEditorSave}
                     onTextChange={isMarkdownDocument ? setDraftText : undefined}
+                    onDirtyChange={doc.readOnly ? undefined : onMonacoDirtyChange}
                     readOnly={doc.readOnly}
                     onEditorReady={setMonacoEditor}
                   />

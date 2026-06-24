@@ -11,6 +11,8 @@ export type WorkspaceToolTab = {
   browserUrl?: string;
   /** 由各子 Tab 组件上报的当前标题（文件名 / 网页标题 / 终端标题）；空时仅显示图标 */
   tabTitle?: string;
+  /** 仅 kind === "files" 时使用；表示当前打开文件有未保存编辑 */
+  tabDirty?: boolean;
   /** 仅 kind === "pr" 时使用；表示当前 PR 详情页的状态，用于切换选项卡图标 */
   prStatus?: PullRequestChipStatus;
 };

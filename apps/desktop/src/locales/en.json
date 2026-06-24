@@ -680,6 +680,7 @@
   "workspace": {
     "planNotCreated": "Plan has not been created yet.",
     "unsavedChangesCloseConfirm": "There are unsaved changes. Close anyway?",
+    "unsavedChangesIndicator": "Unsaved changes",
     "markdownPreview": "Markdown Preview",
     "preview": "Preview",
     "markdownEdit": "Markdown Edit",
