@@ -1,6 +1,8 @@
+import { useRef } from "react";
 import type {
   ClipboardEvent as ReactClipboardEvent,
   ComponentProps,
+  ComponentRef,
   Dispatch,
   KeyboardEvent as ReactKeyboardEvent,
   Ref,
@@ -36,6 +38,7 @@ import type {
   WorkspaceFileReferenceSuggestionsResponse,
 } from "@/types";
 import type { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
+import { useConversationSessionScrollTail } from "@/hooks/useConversationSessionScrollTail";
 import type { ConversationRenderItem } from "@/lib/conversation-process-groups";
 import type { TurnContinuePresentation } from "@/lib/conversation-continue-ui";
 import type { PendingAssistantAux } from "@/types";
@@ -198,6 +201,15 @@ export function ConversationView({
   workspaceTools,
 }: ConversationViewProps) {
   const { t } = useTranslation();
+  const conversationScrollAreaRef = useRef<ComponentRef<typeof ScrollArea>>(null);
+  const conversationMessagesVisible =
+    (!isEmptySession || subagentViewActive) && !hideStaleConversationMessages;
+
+  useConversationSessionScrollTail({
+    scrollAreaRef: conversationScrollAreaRef,
+    composerSessionKey: list.composerSessionKey,
+    enabled: conversationMessagesVisible,
+  });
 
   return (
     <div data-spirit-surface="conversation-layout" className={cn("flex min-h-0 min-w-0 flex-1 flex-row overflow-hidden min-w-0", desktopMicaTintInnerClass(useMicaBackdrop))}>
@@ -252,6 +264,7 @@ export function ConversationView({
             />
           ) : null}
           <ScrollArea
+            ref={conversationScrollAreaRef}
             data-spirit-surface="conversation-scroll"
             className={cn("min-h-0 flex-1", desktopMicaTintInnerClass(useMicaBackdrop))}
             type="hover"
