@@ -84,7 +84,8 @@ function hasOpenDialogInDocument(): boolean {
   if (typeof document === "undefined") {
     return false;
   }
-  return document.querySelector('[role="dialog"][data-state="open"]') !== null;
+  // Radix Dialog（见 dialog.tsx / overlay-motion.ts）开放态为 data-open，非 data-state。
+  return document.querySelector('[data-slot="dialog-content"][data-open]') !== null;
 }
 
 /** Mod+, opens settings when not already on the settings surface. */

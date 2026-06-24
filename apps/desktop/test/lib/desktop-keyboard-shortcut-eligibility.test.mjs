@@ -254,3 +254,31 @@ test('shouldTriggerSettingsEscapeShortcut rejects textarea targets', () => {
     false,
   );
 });
+
+test('shouldTriggerSettingsEscapeShortcut rejects when a Radix dialog is open', () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    querySelector: (selector) =>
+      selector.includes('data-slot="dialog-content"][data-open') ? {} : null,
+  };
+  try {
+    assert.equal(
+      shouldTriggerSettingsEscapeShortcut(
+        {
+          defaultPrevented: false,
+          ctrlKey: false,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          code: 'Escape',
+          key: 'Escape',
+          target: { tagName: 'DIV', isContentEditable: false, closest: () => null },
+        },
+        { activeSurface: 'settings' },
+      ),
+      false,
+    );
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
