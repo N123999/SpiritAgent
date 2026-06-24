@@ -176,7 +176,7 @@ export function ComposerSurface({
       data-spirit-surface="composer-surface"
       className={cn(
         "relative overflow-hidden rounded-2xl border border-border/50 shadow-sm focus-within:ring-0 hover:border-ring/60 focus-within:border-ring/60 dark:border-white/10 dark:hover:border-white/12 dark:focus-within:border-white/12",
-        fileDragOver && "border-ring/60 ring-2 ring-ring/40 dark:border-white/12",
+        fileDragOver && "border-ring/60 dark:border-white/12",
         DESKTOP_COMPOSER_SURFACE_BACKDROP,
       )}
       onDragOver={handleSurfaceDragOver}
