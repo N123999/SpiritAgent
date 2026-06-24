@@ -539,6 +539,8 @@ export function WorkspaceFilesTab({
         line: fileRevealLine,
         column: fileRevealColumn ?? undefined,
       });
+    } else {
+      setEditorRevealLocation(null);
     }
   }, [
     autoRevealFileNonce,
@@ -558,6 +560,7 @@ export function WorkspaceFilesTab({
       setSaveError("");
       setDraftText("");
       setSavedText("");
+      setEditorRevealLocation(null);
       return;
     }
 
@@ -729,6 +732,7 @@ export function WorkspaceFilesTab({
     if (fileSearchOpen) {
       setFileSearchOpen(false);
       setSearchHighlightSession(null);
+      setEditorRevealLocation(null);
       return;
     }
     setFileTreeOpen((open) => {
@@ -747,6 +751,10 @@ export function WorkspaceFilesTab({
     setFileSearchOpen(true);
     setFileTreeOpen(true);
   }, [fileSearchOpen]);
+
+  const onEditorRevealConsumed = useCallback(() => {
+    setEditorRevealLocation(null);
+  }, []);
 
   const onSearchSessionChange = useCallback(
     (session: { query: string; matchesByPath: Map<string, WorkspaceContentSearchMatch[]> } | null) => {
@@ -876,6 +884,7 @@ export function WorkspaceFilesTab({
           expandDirectoryPath={fileRevealDirectoryOnly ? fileRevealPath : ""}
           expandDirectoryNonce={fileRevealDirectoryOnly ? autoRevealFileNonce : 0}
           onOpenFile={(relativePath) => {
+            setEditorRevealLocation(null);
             const viewMode = isMarkdownPath(relativePath) ? "preview" : "edit";
             if (
               selectedEntry?.kind === "workspace" &&
@@ -896,6 +905,7 @@ export function WorkspaceFilesTab({
             setSelectedEntry({ kind: "workspace", relativePath });
           }}
           onOpenPlan={() => {
+            setEditorRevealLocation(null);
             setMarkdownViewMode("preview");
             setSelectedEntry({ kind: "plan" });
           }}
@@ -1025,6 +1035,7 @@ export function WorkspaceFilesTab({
                     readOnly={doc.readOnly}
                     onEditorReady={setMonacoEditor}
                     revealLocation={editorRevealLocation}
+                    onRevealConsumed={onEditorRevealConsumed}
                     searchMatchRanges={monacoSearchMatchRanges}
                   />
                   {selectionEnabled ? (

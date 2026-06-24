@@ -41,6 +41,7 @@ export type WorkspaceMonacoEditorProps = {
   readOnly?: boolean;
   onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor | null) => void;
   revealLocation?: EditorFileRevealLocation | null;
+  onRevealConsumed?: () => void;
   searchMatchRanges?: readonly WorkspaceMonacoSearchMatchRange[];
 };
 
@@ -58,6 +59,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     readOnly = false,
     onEditorReady,
     revealLocation = null,
+    onRevealConsumed,
     searchMatchRanges = [],
   },
   ref,
@@ -69,6 +71,7 @@ export const WorkspaceMonacoEditor = forwardRef<
   const onDirtyChangeRef = useRef(onDirtyChange);
   const onTextChangeRef = useRef(onTextChange);
   const onEditorReadyRef = useRef(onEditorReady);
+  const onRevealConsumedRef = useRef(onRevealConsumed);
   const revealLocationRef = useRef(revealLocation);
   const searchMatchRangesRef = useRef(searchMatchRanges);
   const searchDecorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
@@ -76,6 +79,7 @@ export const WorkspaceMonacoEditor = forwardRef<
   onDirtyChangeRef.current = onDirtyChange;
   onTextChangeRef.current = onTextChange;
   onEditorReadyRef.current = onEditorReady;
+  onRevealConsumedRef.current = onRevealConsumed;
   revealLocationRef.current = revealLocation;
   searchMatchRangesRef.current = searchMatchRanges;
 
@@ -95,6 +99,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     editor.setPosition(position);
     editor.revealLineInCenter(reveal.line);
     editor.focus();
+    onRevealConsumedRef.current?.();
   }, []);
 
   const runSave = useCallback(async () => {
@@ -149,7 +154,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       return;
     }
     applyRevealLocation(editor);
-  }, [applyRevealLocation, revealLocation, initialText]);
+  }, [applyRevealLocation, revealLocation]);
 
   useEffect(() => {
     ensureMonacoWorkers();
