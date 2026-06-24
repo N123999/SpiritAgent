@@ -32,6 +32,9 @@ function buildVoidMermaidThemeVariables(resolvedDark: boolean): MermaidConfig["t
       defaultLinkColor: "#717171",
       titleColor: "#a1a1a1",
       edgeLabelBackground: "#181818",
+      noteBkgColor: "#181818",
+      noteTextColor: "#d4d4d4",
+      noteBorderColor: "#272727",
     };
   }
 
@@ -59,6 +62,9 @@ function buildVoidMermaidThemeVariables(resolvedDark: boolean): MermaidConfig["t
     defaultLinkColor: "#71717a",
     titleColor: "#52525b",
     edgeLabelBackground: "#fafafa",
+    noteBkgColor: "#fafafa",
+    noteTextColor: "#18181b",
+    noteBorderColor: "#e4e4e7",
   };
 }
 
