@@ -601,6 +601,8 @@ export default function App() {
               workspaceFileRevealScope: workspaceTools.workspaceFileRevealScope,
               workspaceFileRevealViewMode: workspaceTools.workspaceFileRevealViewMode,
               workspaceFileRevealDirectoryOnly: workspaceTools.workspaceFileRevealDirectoryOnly,
+              workspaceFileRevealLine: workspaceTools.workspaceFileRevealLine,
+              workspaceFileRevealColumn: workspaceTools.workspaceFileRevealColumn,
               workspacePrRevealNonce: workspaceTools.workspacePrRevealNonce,
               workspacePrRevealTargetId: workspaceTools.workspacePrRevealTargetId,
               workspacePrRevealRequest: workspaceTools.workspacePrRevealRequest,

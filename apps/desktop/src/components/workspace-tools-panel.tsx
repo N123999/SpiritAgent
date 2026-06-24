@@ -133,6 +133,11 @@ export type WorkspaceToolsDockProps = {
   fileRevealScope?: EditorFileTarget["scope"];
   fileRevealViewMode?: WorkspaceEditorViewMode;
   fileRevealDirectoryOnly?: boolean;
+  fileRevealLine?: number | null;
+  fileRevealColumn?: number | null;
+  searchWorkspaceContent?: (
+    request: import("@/types").WorkspaceContentSearchRequest,
+  ) => Promise<import("@/types").WorkspaceContentSearchResult>;
   prRevealNonce?: number;
   prRevealTabId?: string | null;
   prRevealRequest?: import("@/lib/workspace-pr-navigation").GitHubPullRequestRevealRequest | null;
@@ -456,6 +461,9 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   fileRevealScope = "workspace",
   fileRevealViewMode = "edit",
   fileRevealDirectoryOnly = false,
+  fileRevealLine = null,
+  fileRevealColumn = null,
+  searchWorkspaceContent,
   prRevealNonce = 0,
   prRevealTabId = null,
   prRevealRequest = null,
@@ -882,6 +890,9 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                         fileRevealScope={fileRevealScope}
                         fileRevealViewMode={fileRevealViewMode}
                         fileRevealDirectoryOnly={fileRevealDirectoryOnly}
+                        fileRevealLine={fileRevealEnabled ? fileRevealLine : null}
+                        fileRevealColumn={fileRevealEnabled ? fileRevealColumn : null}
+                        searchWorkspaceContent={searchWorkspaceContent}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                         onDirtyChange={(dirty) => handleTabDirtyChange(item.id, dirty)}
                         onOpenWorkspaceFile={onOpenWorkspaceFile}
