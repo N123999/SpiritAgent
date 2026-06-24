@@ -142,6 +142,7 @@ export type CommandPayloads = {
   getWorkspaceFileReferenceIndex: undefined;
   listWorkspaceExplorerChildren: { relativePath: string };
   readWorkspaceTextFile: { relativePath: string; optional?: boolean };
+  searchWorkspaceContent: { request: import('../types.js').WorkspaceContentSearchRequest };
   writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };
   revealWorkspaceEntry: { relativePath: string; workspaceRoot?: string };
   renameWorkspaceEntry: { relativePath: string; newName: string };

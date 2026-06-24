@@ -185,6 +185,7 @@ import {
   readGitWorkingTreeCommand,
   readHostTextFileCommand,
   readWorkspaceTextFileCommand,
+  searchWorkspaceContentCommand,
   refreshGitSnapshotCommand,
   rememberWorkspaceRootCommand,
   forgetWorkspaceRootCommand,
@@ -1882,6 +1883,12 @@ class DesktopHostService {
     options?: import('../types.js').ReadWorkspaceTextFileOptions,
   ): Promise<WorkspaceReadTextFileResult> {
     return readWorkspaceTextFileCommand(this.workspaceGitCommandContext(), relativePath, options);
+  }
+
+  async searchWorkspaceContent(
+    request: import('../types.js').WorkspaceContentSearchRequest,
+  ): Promise<import('../types.js').WorkspaceContentSearchResult> {
+    return searchWorkspaceContentCommand(this.workspaceGitCommandContext(), request);
   }
 
   async writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void> {

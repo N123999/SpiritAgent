@@ -8,19 +8,28 @@ export type RipgrepSearchOptions = {
   workspaceRoot: string;
   query: string;
   isRegexp?: boolean;
+  caseSensitive?: boolean;
+  wholeWord?: boolean;
   globPattern?: string | null;
+};
+
+export type RipgrepSubmatch = {
+  start: number;
+  end: number;
 };
 
 export type RipgrepMatch = {
   relativePath: string;
   lineNumber: number;
   lineText: string;
+  submatches: RipgrepSubmatch[];
 };
 
 type RipgrepMatchLine = {
   path: { text: string };
   lines: { text: string };
   line_number: number;
+  submatches?: Array<{ start: number; end: number }>;
 };
 
 type RipgrepJsonLine =
@@ -37,8 +46,35 @@ export function normalizeSearchLine(line: string): string {
   return line.replace(/\r?\n$/u, '').trim();
 }
 
+function appendQueryArgs(args: string[], options: RipgrepSearchOptions): void {
+  const { query, isRegexp = false, caseSensitive = false, wholeWord = false } = options;
+
+  if (wholeWord) {
+    args.push('-w');
+  }
+
+  if (isRegexp) {
+    if (!caseSensitive) {
+      args.push('-i');
+    }
+    args.push('--regexp', query);
+    return;
+  }
+
+  args.push('-F');
+  if (!caseSensitive) {
+    args.push('-i');
+  }
+
+  if (query.startsWith('-')) {
+    args.push('--', query);
+  } else {
+    args.push(query);
+  }
+}
+
 export function buildRipgrepArgs(options: RipgrepSearchOptions): string[] {
-  const { query, isRegexp = false, globPattern, workspaceRoot } = options;
+  const { globPattern, workspaceRoot } = options;
   const args: string[] = [
     '--json',
     '--no-heading',
@@ -56,14 +92,7 @@ export function buildRipgrepArgs(options: RipgrepSearchOptions): string[] {
     args.push('-g', globPattern);
   }
 
-  if (isRegexp) {
-    args.push('-i', '--regexp', query);
-  } else if (query.startsWith('-')) {
-    args.push('-F', '-i', '--', query);
-  } else {
-    args.push('-F', '-i', query);
-  }
-
+  appendQueryArgs(args, options);
   args.push(workspaceRoot);
   return args;
 }
@@ -145,6 +174,10 @@ export async function runRipgrepSearch(options: RipgrepSearchOptions): Promise<R
       relativePath: toRelativePath(options.workspaceRoot, matchData.path.text),
       lineNumber: matchData.line_number,
       lineText: normalizeSearchLine(matchData.lines.text),
+      submatches: (matchData.submatches ?? []).map((item) => ({
+        start: item.start,
+        end: item.end,
+      })),
     });
   }
 

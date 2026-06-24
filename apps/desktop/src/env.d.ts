@@ -180,6 +180,9 @@ declare global {
       relativePath: string,
       options?: import('@/types').ReadWorkspaceTextFileOptions,
     ): Promise<WorkspaceReadTextFileResult>;
+    searchWorkspaceContent(
+      request: import('@/types').WorkspaceContentSearchRequest,
+    ): Promise<import('@/types').WorkspaceContentSearchResult>;
     writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
     revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<void>;
     renameWorkspaceEntry(relativePath: string, newName: string): Promise<{ relativePath: string }>;
