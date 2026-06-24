@@ -31,6 +31,7 @@ import {
   writeWorkspaceFilesTreeWidthPx,
 } from "@/lib/layout-prefs";
 import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import { useHostApi } from "@/hooks/useHostApi";
 import { FILES_EXPLORER_TOOLBAR_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import {
   isUnderWorkspaceEntryPath,
@@ -301,6 +302,7 @@ export type WorkspaceFilesTabProps = {
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
   gitRevision?: number;
   useMicaBackdrop?: boolean;
+  codeCompletionEnabled?: boolean;
 };
 
 export function WorkspaceFilesTab({
@@ -335,8 +337,10 @@ export function WorkspaceFilesTab({
   onWorkspaceFileAddToSession,
   gitRevision,
   useMicaBackdrop = false,
+  codeCompletionEnabled = true,
 }: WorkspaceFilesTabProps) {
   const { t } = useTranslation();
+  const { api } = useHostApi();
   type MonacoEditor = Monaco.editor.IStandaloneCodeEditor;
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
   const [doc, setDoc] = useState<LoadedDoc | null>(null);
@@ -374,6 +378,15 @@ export function WorkspaceFilesTab({
     onFilesWorkspacePathChangeRef.current = onFilesWorkspacePathChange;
   });
   const prevSelectedEntryRef = useRef(selectedEntry);
+  const journalFlushRef = useRef<{ path: string; baseline: string; current: string } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (api) {
+        void api.resetCodeCompletionJournal();
+      }
+    };
+  }, [api]);
 
   latestFileTreeWidthPxRef.current = fileTreeWidthPx;
 
@@ -498,6 +511,25 @@ export function WorkspaceFilesTab({
           : "");
   const headerSubtitle = doc?.subtitle ?? selectedPath;
   const isMarkdownDocument = Boolean(selectedPath && isMarkdownPath(selectedPath));
+
+  useEffect(() => {
+    if (!api || !selectedPath) {
+      return;
+    }
+    const prev = journalFlushRef.current;
+    if (prev && prev.path !== selectedPath) {
+      void api.recordCodeCompletionFileState({
+        relativePath: prev.path,
+        baselineText: prev.baseline,
+        currentText: prev.current,
+      });
+    }
+    journalFlushRef.current = {
+      path: selectedPath,
+      baseline: savedText,
+      current: draftText,
+    };
+  }, [api, selectedPath, savedText, draftText]);
 
   useEffect(() => {
     if (!planRevealEnabled) {
@@ -1049,6 +1081,7 @@ export function WorkspaceFilesTab({
                     onTextChange={isMarkdownDocument ? setDraftText : undefined}
                     onDirtyChange={doc.readOnly ? undefined : onMonacoDirtyChange}
                     readOnly={doc.readOnly}
+                    codeCompletionEnabled={codeCompletionEnabled}
                     onEditorReady={setMonacoEditor}
                     revealLocation={editorRevealLocation}
                     onRevealConsumed={onEditorRevealConsumed}
