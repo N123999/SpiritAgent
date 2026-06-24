@@ -315,7 +315,8 @@ async function invokeMainDesktopHostCommand(
     const config = await loadConfig();
     await syncDesktopWebHostWithConfig(config.webHost);
     if (command === 'updateConfig') {
-      return invokeDesktopHostCommand('poll');
+      const polled = await invokeDesktopHostCommand('poll');
+      return polled;
     }
   }
   return result;
@@ -544,8 +545,12 @@ async function syncBrowserWindowFrameFromRendererStorage(
   return prefs;
 }
 
-function applyNativeWindowBackdrop(window: BrowserWindow, darkContent: boolean): void {
-  const blurEnabled = readBackdropBlurFromDisk();
+function applyNativeWindowBackdrop(
+  window: BrowserWindow,
+  darkContent: boolean,
+  blurOverride?: boolean,
+): void {
+  const blurEnabled = blurOverride ?? readBackdropBlurFromDisk();
 
   if (process.platform === 'win32') {
     try {
@@ -1000,14 +1005,18 @@ if (gotSpiritSingleInstanceLock) {
 
   ipcMain.handle(
     'desktop:sync-window-frame',
-    (event, request: { dark: boolean; nativeTheme: 'system' | 'light' | 'dark' }) => {
+    (event, request: {
+      dark: boolean;
+      nativeTheme: 'system' | 'light' | 'dark';
+      nativeBackdropBlur?: boolean;
+    }) => {
       nativeTheme.themeSource = request.nativeTheme;
       const window = BrowserWindow.fromWebContents(event.sender);
       if (!window) {
         console.warn('[spirit-desktop] desktop:sync-window-frame: no BrowserWindow for sender');
         return;
       }
-      applyNativeWindowBackdrop(window, request.dark);
+      applyNativeWindowBackdrop(window, request.dark, request.nativeBackdropBlur);
     },
   );
 

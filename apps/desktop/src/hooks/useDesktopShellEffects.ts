@@ -16,7 +16,6 @@ export type UseDesktopShellEffectsOptions = {
   useMicaBackdrop: boolean;
   theme: ThemePreference;
   extensionCss: DesktopExtensionCssLayer[] | undefined;
-  windowsMica: boolean | undefined;
 };
 
 export function useDesktopShellEffects({
@@ -25,7 +24,6 @@ export function useDesktopShellEffects({
   useMicaBackdrop,
   theme,
   extensionCss,
-  windowsMica,
 }: UseDesktopShellEffectsOptions) {
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -81,7 +79,12 @@ export function useDesktopShellEffects({
     } else {
       document.documentElement.classList.remove("spirit-desktop-mica");
     }
-  }, [useMicaBackdrop]);
+    if (isElectronShell) {
+      syncDesktopWindowFrame(resolveDark(theme), desktopNativeThemeForPreference(theme), {
+        nativeBackdropBlur: useMicaBackdrop,
+      });
+    }
+  }, [useMicaBackdrop, isElectronShell, theme]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -114,16 +117,6 @@ export function useDesktopShellEffects({
       }
     };
   }, [extensionCss]);
-
-  // Align with persisted `config.windows_mica` (host syncs one frame on save; re-sync border via `html.dark` here).
-  useEffect(() => {
-    if (!isElectronShell) {
-      return;
-    }
-    syncDesktopWindowFrame(resolveDark(theme), desktopNativeThemeForPreference(theme));
-    // Theme changes are synced by `applyThemeToDocument`; this effect tracks mica config only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- windowsMica / native blur host only
-  }, [isElectronShell, windowsMica]);
 
   useEffect(() => {
     if (!isElectronShell) {

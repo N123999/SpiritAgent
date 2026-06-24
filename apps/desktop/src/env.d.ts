@@ -208,6 +208,7 @@ declare global {
     syncWindowFrame(request: {
       dark: boolean;
       nativeTheme: 'system' | 'light' | 'dark';
+      nativeBackdropBlur?: boolean;
     }): Promise<void>;
     syncLanguage(lang: string): Promise<void>;
     popupApplicationMenu(

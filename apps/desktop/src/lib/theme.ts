@@ -59,13 +59,16 @@ export function applyThemeToDocument(pref: ThemePreference): void {
   }
   document.documentElement.classList.toggle("dark", resolveDark(pref));
   const nativeTheme = desktopNativeThemeForPreference(pref);
-  syncDesktopWindowFrame(resolveDark(pref), nativeTheme);
+  syncDesktopWindowFrame(resolveDark(pref), nativeTheme, {
+    nativeBackdropBlur: document.documentElement.classList.contains("spirit-desktop-mica"),
+  });
 }
 
 /** 与 Tauri `sync_tauri_frame_styling` 对齐：同一 IPC 内先设 `nativeTheme.themeSource` 再刷背景，避免与系统主题错位。 */
 export function syncDesktopWindowFrame(
   dark: boolean,
   nativeTheme: "system" | "light" | "dark",
+  options?: { nativeBackdropBlur?: boolean },
 ): void {
   if (typeof window === "undefined" || !window.spiritDesktop) {
     if (
@@ -79,7 +82,9 @@ export function syncDesktopWindowFrame(
     }
     return;
   }
-  void window.spiritDesktop.syncWindowFrame({ dark, nativeTheme }).catch((err) => {
-    console.error("[spirit-desktop] syncWindowFrame IPC 失败:", err);
-  });
+  void window.spiritDesktop
+    .syncWindowFrame({ dark, nativeTheme, nativeBackdropBlur: options?.nativeBackdropBlur })
+    .catch((err) => {
+      console.error("[spirit-desktop] syncWindowFrame IPC 失败:", err);
+    });
 }

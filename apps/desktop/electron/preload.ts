@@ -404,6 +404,7 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   syncWindowFrame(request: {
     dark: boolean;
     nativeTheme: 'system' | 'light' | 'dark';
+    nativeBackdropBlur?: boolean;
   }) {
     return ipcRenderer.invoke('desktop:sync-window-frame', request);
   },

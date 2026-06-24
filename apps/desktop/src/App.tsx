@@ -67,7 +67,7 @@ export default function App() {
   const winElectronChrome = isWin32ElectronShell();
   const darwinElectronChrome = isDarwinElectronShell();
   const desktopTitleBarChrome = winElectronChrome || darwinElectronChrome;
-  const useMicaBackdrop = resolveUseMicaBackdrop(snapshot?.config.windowsMica);
+  const useMicaBackdrop = resolveUseMicaBackdrop(runtime.settings.windowsMica);
 
   useDesktopShellEffects({
     isElectronShell,
@@ -75,7 +75,6 @@ export default function App() {
     useMicaBackdrop,
     theme,
     extensionCss: snapshot?.extensionCss,
-    windowsMica: snapshot?.config.windowsMica,
   });
 
   const compactionDemo = useCompactionUiDemo();
