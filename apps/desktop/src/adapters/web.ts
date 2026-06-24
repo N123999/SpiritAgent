@@ -330,6 +330,22 @@ export function createWebHostApi(): HostApi {
         request,
       );
     },
+    requestCodeCompletion(request: import('../types').RequestCodeCompletionRequest) {
+      return post<import('../types').CodeCompletionResponse>(
+        baseUrl,
+        '/api/workspace/code-completion/request',
+        request,
+      );
+    },
+    abortCodeCompletion() {
+      return post<void>(baseUrl, '/api/workspace/code-completion/abort');
+    },
+    recordCodeCompletionFileState(request: import('../types').RecordCodeCompletionFileStateRequest) {
+      return post<void>(baseUrl, '/api/workspace/code-completion/record-file-state', request);
+    },
+    resetCodeCompletionJournal() {
+      return post<void>(baseUrl, '/api/workspace/code-completion/reset-journal');
+    },
     primeWorkspaceFileReferenceIndex() {
       return post<void>(baseUrl, '/api/workspace/file-reference-index/prime');
     },

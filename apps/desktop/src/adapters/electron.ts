@@ -222,6 +222,18 @@ export async function createElectronHostApi(): Promise<HostApi> {
     listWorkspaceFileReferenceSuggestions(request) {
       return bridge.listWorkspaceFileReferenceSuggestions(request);
     },
+    requestCodeCompletion(request) {
+      return bridge.requestCodeCompletion(request);
+    },
+    abortCodeCompletion() {
+      return bridge.abortCodeCompletion();
+    },
+    recordCodeCompletionFileState(request) {
+      return bridge.recordCodeCompletionFileState(request);
+    },
+    resetCodeCompletionJournal() {
+      return bridge.resetCodeCompletionJournal();
+    },
     primeWorkspaceFileReferenceIndex() {
       return bridge.primeWorkspaceFileReferenceIndex();
     },

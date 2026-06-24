@@ -1024,6 +1024,36 @@ async function handleApiRequest({
     return;
   }
 
+  if (request.method === 'POST' && pathname === '/api/workspace/code-completion/request') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('requestCodeCompletion', { request: jsonBody }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/workspace/code-completion/abort') {
+    writeJson(request, response, 200, await runHostCommand('abortCodeCompletion'));
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/workspace/code-completion/record-file-state') {
+    writeJson(
+      request,
+      response,
+      200,
+      await runHostCommand('recordCodeCompletionFileState', { request: jsonBody }),
+    );
+    return;
+  }
+
+  if (request.method === 'POST' && pathname === '/api/workspace/code-completion/reset-journal') {
+    writeJson(request, response, 200, await runHostCommand('resetCodeCompletionJournal'));
+    return;
+  }
+
   if (request.method === 'POST' && pathname === '/api/workspace/file-reference-index/prime') {
     writeJson(request, response, 200, await runHostCommand('primeWorkspaceFileReferenceIndex'));
     return;
