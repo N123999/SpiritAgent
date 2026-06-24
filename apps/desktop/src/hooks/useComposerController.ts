@@ -30,6 +30,7 @@ import { useWorkspaceFileIndex } from "@/hooks/use-workspace-file-index";
 import type { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import {
   appendComposerLocalFileAttachment,
+  normalizeSlashPath,
   removeComposerLocalFileAttachment,
 } from "@/lib/local-file-attachments";
 import {
@@ -531,16 +532,22 @@ export function useComposerController({
   }, [runtime.setComposerLocalFileAttachments]);
 
   const attachLocalFilePath = useCallback(
-    (filePath: string) => {
-      appendComposerLocalFileAttachment(runtime.setComposerLocalFileAttachments, filePath, {
-        onAfterAttach: () => {
-          queueMicrotask(() => {
-            composerRichInputRef.current?.focus();
-          });
-        },
-      });
+    async (filePath: string) => {
+      const route = await runtime.classifyLocalFileComposerRoute(filePath);
+      if (route === "media") {
+        appendComposerLocalFileAttachment(runtime.setComposerLocalFileAttachments, filePath, {
+          onAfterAttach: () => {
+            queueMicrotask(() => {
+              composerRichInputRef.current?.focus();
+            });
+          },
+        });
+        return;
+      }
+      composerRichInputRef.current?.insertWorkspaceFileAtCaret(normalizeSlashPath(filePath));
+      composerRichInputRef.current?.focus();
     },
-    [runtime.setComposerLocalFileAttachments],
+    [runtime.classifyLocalFileComposerRoute, runtime.setComposerLocalFileAttachments],
   );
 
   const handleBrowserElementPicked = useCallback(

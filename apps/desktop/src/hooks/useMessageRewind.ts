@@ -122,7 +122,7 @@ export function useMessageRewind({
     });
   }, []);
 
-  const attachRewindLocalFilePath = useCallback((filePath: string) => {
+  const attachRewindMediaFilePath = useCallback((filePath: string) => {
     setRewindDraft((current) => {
       if (!current) {
         return current;
@@ -145,14 +145,27 @@ export function useMessageRewind({
     });
   }, []);
 
+  const routeRewindLocalFilePath = useCallback(
+    async (filePath: string) => {
+      const route = await runtime.classifyLocalFileComposerRoute(filePath);
+      if (route === "media") {
+        attachRewindMediaFilePath(filePath);
+        return;
+      }
+      rewindRichInputRef.current?.insertWorkspaceFileAtCaret(normalizeAttachmentPath(filePath));
+      rewindRichInputRef.current?.focus();
+    },
+    [attachRewindMediaFilePath, runtime.classifyLocalFileComposerRoute],
+  );
+
   const pickRewindLocalFileFromPalette = useCallback(() => {
     void runtime.pickLocalFile().then((filePath) => {
       if (!filePath) {
         return;
       }
-      attachRewindLocalFilePath(filePath);
+      void routeRewindLocalFilePath(filePath);
     });
-  }, [attachRewindLocalFilePath, runtime]);
+  }, [routeRewindLocalFilePath, runtime]);
 
   const handleRewindComposerPaste = useCallback(
     (event: ReactClipboardEvent<HTMLTextAreaElement>) => {
@@ -170,11 +183,11 @@ export function useMessageRewind({
       event.preventDefault();
       void runtime.ingestClipboardImage().then((filePath) => {
         if (filePath) {
-          attachRewindLocalFilePath(filePath);
+          attachRewindMediaFilePath(filePath);
         }
       });
     },
-    [activeSessionReadOnly, attachRewindLocalFilePath, rewindDraft, runtime],
+    [activeSessionReadOnly, attachRewindMediaFilePath, rewindDraft, runtime],
   );
 
   return {
@@ -184,7 +197,7 @@ export function useMessageRewind({
     startMessageRewind,
     submitMessageRewind,
     removeRewindLocalFileAttachment,
-    attachRewindLocalFilePath,
+    attachRewindLocalFilePath: routeRewindLocalFilePath,
     pickRewindLocalFileFromPalette,
     handleRewindComposerPaste,
   };
