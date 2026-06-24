@@ -133,3 +133,41 @@ test('resolveFileToolDiffSource uses fileToolDiffArgumentsJson when argsExcerpt 
   assert.equal(result.modified, content);
   assert.equal(result.relativePath, 'test-messy.txt');
 });
+
+test('resolveFileToolDiffSource resolves create_plan from host request plan_name', () => {
+  const request = {
+    name: 'create_plan',
+    plan_name: 'my-plan',
+    content: '# Plan body',
+  };
+  const tool = {
+    toolName: 'create_plan',
+    phase: 'pending-approval',
+    headline: '计划',
+    detailLines: [],
+    argsExcerpt: '{"name":"create_plan","plan_name":"my-plan"...<truncated>',
+    fileToolDiffArgumentsJson: JSON.stringify(request),
+  };
+  const result = resolveFileToolDiffSource(tool, { open: true });
+  assert.ok(result && typeof result === 'object' && 'modified' in result);
+  assert.equal(result.relativePath, 'plans/my-plan.md');
+  assert.equal(result.modified, '# Plan body');
+});
+
+test('resolveFileToolDiffSource keeps diff during pending-approval via streamingArgumentsJson fallback', () => {
+  const tool = {
+    toolName: 'create_plan',
+    phase: 'pending-approval',
+    headline: '计划',
+    detailLines: [],
+    argsExcerpt: '{"name":"debug-diagnostics-subsystem","content":"# Plan"...<truncated>',
+    streamingArgumentsJson: JSON.stringify({
+      name: 'debug-diagnostics-subsystem',
+      content: '# Plan\n\nLong body',
+    }),
+  };
+  const result = resolveFileToolDiffSource(tool, { open: true });
+  assert.ok(result && typeof result === 'object' && 'modified' in result);
+  assert.equal(result.relativePath, 'plans/debug-diagnostics-subsystem.md');
+  assert.equal(result.modified, '# Plan\n\nLong body');
+});

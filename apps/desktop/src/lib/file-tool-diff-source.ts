@@ -5,6 +5,19 @@ import {
 import { monacoLanguageId } from './monaco-language.js';
 import type { ToolBlockSnapshot } from '../types.js';
 
+/** Host request uses `plan_name`; streaming / model JSON uses slug in `name`. */
+function planSlugFromCreatePlanRecord(record: Record<string, unknown>): string | undefined {
+  const planName = typeof record.plan_name === 'string' ? record.plan_name.trim() : '';
+  if (planName) {
+    return planName;
+  }
+  const streamedName = typeof record.name === 'string' ? record.name.trim() : '';
+  if (!streamedName || streamedName === 'create_plan') {
+    return undefined;
+  }
+  return streamedName;
+}
+
 export const FILE_DIFF_TOOL_NAMES = new Set([
   'create_file',
   'create_plan',
@@ -30,7 +43,27 @@ function fileToolDiffArgumentsJsonForTool(tool: ToolBlockSnapshot): string | und
   if (tool.phase === 'preview') {
     return tool.streamingArgumentsJson;
   }
-  return tool.fileToolDiffArgumentsJson;
+  return tool.fileToolDiffArgumentsJson ?? tool.streamingArgumentsJson;
+}
+
+/** 审批/执行阶段 upsert 时保留 preview 流式参数或既有完整 JSON，避免只剩截断 argsExcerpt。 */
+export function preserveFileToolDiffArguments(
+  toolName: string,
+  attached: ToolBlockSnapshot,
+  prior?: ToolBlockSnapshot,
+): ToolBlockSnapshot {
+  if (!FILE_DIFF_TOOL_NAMES.has(toolName)) {
+    return attached;
+  }
+  if (attached.fileToolDiffArgumentsJson?.trim()) {
+    return attached;
+  }
+  const fromPrior =
+    prior?.fileToolDiffArgumentsJson?.trim() || prior?.streamingArgumentsJson?.trim();
+  if (!fromPrior) {
+    return attached;
+  }
+  return { ...attached, fileToolDiffArgumentsJson: fromPrior };
 }
 
 export type FileToolDiffSource = {
@@ -98,8 +131,8 @@ function extractPathFromRequest(
   record: Record<string, unknown>,
 ): string | undefined {
   if (toolName === 'create_plan') {
-    const name = typeof record.name === 'string' ? record.name.trim() : '';
-    return name ? planRelativePath(name) : undefined;
+    const slug = planSlugFromCreatePlanRecord(record);
+    return slug ? planRelativePath(slug) : undefined;
   }
   const pathValue = record.path;
   return typeof pathValue === 'string' && pathValue.trim() ? pathValue.trim() : undefined;
@@ -255,6 +288,24 @@ export function resolveFileToolDiffSource(
 
   const argumentsJson = fileToolDiffArgumentsJsonForTool(tool);
 
+  if (argumentsJson?.trim()) {
+    try {
+      const parsed = JSON.parse(argumentsJson) as unknown;
+      if (parsed && typeof parsed === 'object') {
+        const fromComplete = resolveFromRecord(
+          tool,
+          parsed as Record<string, unknown>,
+          options,
+        );
+        if (fromComplete !== undefined) {
+          return fromComplete;
+        }
+      }
+    } catch {
+      // Incomplete streaming JSON — fall through to partial field extraction.
+    }
+  }
+
   const partial = argumentsJson
     ? parsePartialRequestRecord(tool.toolName, argumentsJson)
     : undefined;
@@ -278,7 +329,7 @@ export function resolveFileToolDiffSource(
 
   if (
     tool.phase !== 'preview' &&
-    !tool.fileToolDiffArgumentsJson?.trim() &&
+    !fileToolDiffArgumentsJsonForTool(tool)?.trim() &&
     tool.argsExcerpt &&
     argsExcerptLooksTruncated(tool.argsExcerpt)
   ) {

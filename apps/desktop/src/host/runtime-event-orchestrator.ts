@@ -20,6 +20,7 @@ import {
 } from '../lib/edit-file-line-delta.js';
 import {
   FILE_DIFF_TOOL_NAMES,
+  preserveFileToolDiffArguments,
   serializeFileToolDiffArgumentsJson,
 } from '../lib/file-tool-diff-source.js';
 import i18n from '../lib/i18n-host.js';
@@ -177,10 +178,14 @@ export class DesktopRuntimeEventOrchestrator {
       attached,
       prior?.editLineDelta,
     );
-    return preserveDeleteFileBaseline(
+    return preserveFileToolDiffArguments(
       tool.toolName,
-      withDelta,
-      prior?.deleteFileBaselineText,
+      preserveDeleteFileBaseline(
+        tool.toolName,
+        withDelta,
+        prior?.deleteFileBaselineText,
+      ),
+      prior,
     );
   }
 
@@ -791,6 +796,9 @@ export class DesktopRuntimeEventOrchestrator {
         approval.request,
         this.toolSummaryOptions(),
       );
+      const fileToolDiffArgumentsJson = FILE_DIFF_TOOL_NAMES.has(approval.toolName)
+        ? serializeFileToolDiffArgumentsJson(approval.request)
+        : undefined;
       const pendingTool: ToolBlockSnapshot = this.attachLineDelta(
         applyToolCallSummaryCopy(
           {
@@ -800,6 +808,7 @@ export class DesktopRuntimeEventOrchestrator {
             headline: approvalSummary.headline,
             detailLines: [stripReasonLineFromShellPrompt(approval.toolName, approval.prompt)],
             argsExcerpt: truncateJson(approval.request),
+            ...(fileToolDiffArgumentsJson ? { fileToolDiffArgumentsJson } : {}),
           },
           approvalSummary,
         ),
