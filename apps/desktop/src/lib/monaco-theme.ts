@@ -137,6 +137,10 @@ function buildSpiritDarkChromeColors(editorSurface: string): Record<string, stri
       "color-mix(in oklab, var(--foreground) 35%, transparent)",
       "rgba(191, 191, 191, 0.4)",
     ),
+    "editorGhostText.foreground": resolveCssColor(
+      "color-mix(in oklab, var(--foreground) 45%, transparent)",
+      "#ffffff56",
+    ),
   };
 }
 
@@ -152,6 +156,10 @@ function buildSpiritLightChromeColors(editorSurface: string): Record<string, str
     contrastBorder: TRANSPARENT_MONACO_COLOR,
     "editorLineNumber.foreground": mutedFg,
     "editorLineNumber.activeForeground": fg,
+    "editorGhostText.foreground": resolveCssColor(
+      "color-mix(in oklab, var(--foreground) 55%, transparent)",
+      "#0000007a",
+    ),
   };
 }
 

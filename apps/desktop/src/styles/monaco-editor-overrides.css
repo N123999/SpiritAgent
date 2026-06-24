@@ -19,6 +19,7 @@
 /* Inline completion ghost text：略降不透明度以区分已输入文本。 */
 .monaco-editor .ghost-text,
 .monaco-editor .ghost-text-decoration,
-.monaco-editor .suggest-preview-text {
-  opacity: 0.55;
+.monaco-editor .ghost-text-decoration-preview,
+.monaco-editor .suggest-preview-text .ghost-text {
+  opacity: 0.65;
 }

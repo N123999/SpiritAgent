@@ -216,6 +216,7 @@ export const WorkspaceMonacoEditor = forwardRef<
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
         scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+        inlineSuggest: { enabled: true },
       });
       editorRef.current = editor;
       setActiveEditor(editor);
