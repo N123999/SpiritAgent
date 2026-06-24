@@ -226,9 +226,6 @@ export function WorkspaceFilesSearchPanel({
         {!searching && !searchError && debouncedQuery && groups.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">{t("workspace.fileSearchNoResults")}</p>
         ) : null}
-        {!debouncedQuery ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">{t("workspace.fileSearchPlaceholder")}</p>
-        ) : null}
 
         <ScrollArea className="h-full min-h-0 w-full">
           <ul className="space-y-1 px-1 pb-2">
