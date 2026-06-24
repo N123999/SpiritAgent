@@ -411,6 +411,7 @@ export function WorkspaceFilesTab({
       return;
     }
     if (autoRevealPlanNonce > 0) {
+      setMarkdownViewMode("preview");
       setSelectedEntry({ kind: "plan" });
     }
   }, [autoRevealPlanNonce, planRevealEnabled]);
@@ -673,7 +674,7 @@ export function WorkspaceFilesTab({
             setSelectedEntry({ kind: "workspace", relativePath });
           }}
           onOpenPlan={() => {
-            setMarkdownViewMode("edit");
+            setMarkdownViewMode("preview");
             setSelectedEntry({ kind: "plan" });
           }}
           onWorkspaceEntryRenamed={(oldRelativePath, newRelativePath) => {
