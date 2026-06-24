@@ -605,6 +605,7 @@ export default function App() {
               workspacePrRevealTargetId: workspaceTools.workspacePrRevealTargetId,
               workspacePrRevealRequest: workspaceTools.workspacePrRevealRequest,
               onOpenWorkspaceFile: workspaceTools.openWorkspaceFile,
+              onOpenWorkspaceFileInNewTab: workspaceTools.openWorkspaceFileInNewTab,
               workspaceToolTabs: workspaceTools.workspaceToolTabs,
               activeWorkspaceToolTabId: workspaceTools.activeWorkspaceToolTabId,
               onWorkspaceToolTabsChange: workspaceTools.setWorkspaceToolTabs,

@@ -137,6 +137,10 @@ export type WorkspaceToolsDockProps = {
   prRevealTabId?: string | null;
   prRevealRequest?: import("@/lib/workspace-pr-navigation").GitHubPullRequestRevealRequest | null;
   onOpenWorkspaceFile?: (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => void;
+  onOpenWorkspaceFileInNewTab?: (
+    relativePath: string,
+    options?: { viewMode?: WorkspaceEditorViewMode },
+  ) => void;
   tabs: WorkspaceToolTab[];
   activeTabId: string;
   onTabsChange: Dispatch<SetStateAction<WorkspaceToolTab[]>>;
@@ -456,6 +460,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   prRevealTabId = null,
   prRevealRequest = null,
   onOpenWorkspaceFile,
+  onOpenWorkspaceFileInNewTab,
   tabs,
   activeTabId,
   onTabsChange,
@@ -861,6 +866,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                         fileRevealDirectoryOnly={fileRevealDirectoryOnly}
                         onTitleChange={(title) => handleTabTitleChange(item.id, title)}
                         onDirtyChange={(dirty) => handleTabDirtyChange(item.id, dirty)}
+                        onOpenWorkspaceFileInNewTab={onOpenWorkspaceFileInNewTab}
                         onFileSnippetAddToSession={onFileSnippetAddToSession}
                         onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
                         useMicaBackdrop={useMicaBackdrop}

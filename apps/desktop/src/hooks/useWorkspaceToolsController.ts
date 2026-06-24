@@ -13,6 +13,7 @@ import {
   openBrowserUrlInWorkspaceTabs,
 } from "@/lib/workspace-tool-tabs";
 import {
+  buildOpenEditorFileInNewTabNavigation,
   buildOpenEditorFileNavigation,
   resolveWorkspaceFilesTab,
   type EditorFileTarget,
@@ -93,12 +94,8 @@ export function useWorkspaceToolsController({
     setActiveWorkspaceToolTabId(navigation.activeId);
   }, [runtime.hostKind]);
 
-  const openEditorFile = useCallback((target: EditorFileTarget) => {
-    const navigation = buildOpenEditorFileNavigation({
-      tabs: workspaceToolTabsRef.current,
-      activeTabId: activeWorkspaceToolTabIdRef.current,
-      target,
-    });
+  const revealEditorFile = useCallback((navigation: ReturnType<typeof buildOpenEditorFileNavigation>) => {
+    const target = navigation.reveal;
     setWorkspaceToolsOpen(true);
     setWorkspaceToolTabs(navigation.tabs);
     setActiveWorkspaceToolTabId(navigation.activeTabId);
@@ -114,7 +111,20 @@ export function useWorkspaceToolsController({
       setWorkspaceFileRevealAbsolutePath(target.absolutePath);
     }
     setWorkspaceFileRevealNonce((value) => value + 1);
-  }, []);
+  }, [setWorkspaceToolsOpen]);
+
+  const openEditorFile = useCallback(
+    (target: EditorFileTarget) => {
+      revealEditorFile(
+        buildOpenEditorFileNavigation({
+          tabs: workspaceToolTabsRef.current,
+          activeTabId: activeWorkspaceToolTabIdRef.current,
+          target,
+        }),
+      );
+    },
+    [revealEditorFile],
+  );
 
   const openWorkspaceFile = useCallback(
     (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => {
@@ -125,6 +135,23 @@ export function useWorkspaceToolsController({
       });
     },
     [openEditorFile],
+  );
+
+  const openWorkspaceFileInNewTab = useCallback(
+    (relativePath: string, options?: { viewMode?: WorkspaceEditorViewMode }) => {
+      revealEditorFile(
+        buildOpenEditorFileInNewTabNavigation({
+          tabs: workspaceToolTabsRef.current,
+          activeTabId: activeWorkspaceToolTabIdRef.current,
+          target: {
+            scope: "workspace",
+            relativePath,
+            viewMode: options?.viewMode ?? "edit",
+          },
+        }),
+      );
+    },
+    [revealEditorFile],
   );
 
   const revealWorkspaceDirectory = useCallback((relativePath: string) => {
@@ -289,6 +316,7 @@ export function useWorkspaceToolsController({
     openBrowserUrlInNewTab,
     openEditorFile,
     openWorkspaceFile,
+    openWorkspaceFileInNewTab,
     revealWorkspaceDirectory,
     openPullRequestInPrTab,
     openGitTab,

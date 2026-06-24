@@ -65,6 +65,19 @@ export function buildOpenEditorFileNavigation(
   };
 }
 
+/** 新建 files 选项卡并聚焦；用于当前页有未保存文件时从文件树打开另一文件。 */
+export function buildOpenEditorFileInNewTabNavigation(
+  input: OpenEditorFileNavigationInput,
+): OpenEditorFileNavigationResult {
+  const added = addWorkspaceToolTab(input.tabs, "files");
+  return {
+    tabs: added.tabs,
+    activeTabId: added.activeId,
+    filesTabId: added.activeId,
+    reveal: input.target,
+  };
+}
+
 export type OpenWorkspaceFileNavigationInput = {
   tabs: readonly WorkspaceToolTab[];
   activeTabId: string;

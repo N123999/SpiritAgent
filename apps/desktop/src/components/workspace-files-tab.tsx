@@ -232,6 +232,11 @@ export type WorkspaceFilesTabProps = {
   onTitleChange?: (title: string | undefined) => void;
   /** 当前打开文件脏状态变化时通知父层，用于选项卡未保存指示 */
   onDirtyChange?: (dirty: boolean) => void;
+  /** 当前选项卡已有未保存打开文件时，从文件树打开另一文件应新建 files 选项卡 */
+  onOpenWorkspaceFileInNewTab?: (
+    relativePath: string,
+    options?: { viewMode?: WorkspaceEditorViewMode },
+  ) => void;
   onFileSnippetAddToSession?: (attachment: FileSnippetAttachment) => void;
   onWorkspaceFileAddToSession?: (relativePath: string) => void;
   gitRevision?: number;
@@ -260,6 +265,7 @@ export function WorkspaceFilesTab({
   fileRevealDirectoryOnly = false,
   onTitleChange,
   onDirtyChange,
+  onOpenWorkspaceFileInNewTab,
   onFileSnippetAddToSession,
   onWorkspaceFileAddToSession,
   gitRevision,
@@ -281,6 +287,7 @@ export function WorkspaceFilesTab({
   const [isResizingFileTree, setIsResizingFileTree] = useState(false);
   const [splitContainerWidthPx, setSplitContainerWidthPx] = useState(0);
   const [monacoEditor, setMonacoEditor] = useState<MonacoEditor | null>(null);
+  const [editorDirty, setEditorDirty] = useState(false);
   const editorRef = useRef<WorkspaceMonacoEditorHandle>(null);
   const previewScrollRef = useRef<ComponentRef<typeof ScrollArea>>(null);
   const previewRootRef = useRef<HTMLElement | null>(null);
@@ -376,6 +383,7 @@ export function WorkspaceFilesTab({
     prevSelectedEntryRef.current = selectedEntry;
     if (prev !== selectedEntry) {
       onDirtyChangeRef.current?.(false);
+      setEditorDirty(false);
     }
     if (!selectedEntry) {
       if (prev !== null) {
@@ -579,6 +587,7 @@ export function WorkspaceFilesTab({
   );
 
   const onMonacoDirtyChange = useCallback((dirty: boolean) => {
+    setEditorDirty(dirty);
     onDirtyChangeRef.current?.(dirty);
   }, []);
 
@@ -608,7 +617,9 @@ export function WorkspaceFilesTab({
     if (!isPreviewVisible || doc?.readOnly) {
       return;
     }
-    onDirtyChangeRef.current?.(draftText !== savedText);
+    const dirty = draftText !== savedText;
+    setEditorDirty(dirty);
+    onDirtyChangeRef.current?.(dirty);
   }, [draftText, doc?.readOnly, isPreviewVisible, savedText]);
 
   const selectionEnabled = doc?.status === "ready" && Boolean(onFileSnippetAddToSession && selectedPath);
@@ -685,7 +696,19 @@ export function WorkspaceFilesTab({
           expandDirectoryPath={fileRevealDirectoryOnly ? fileRevealPath : ""}
           expandDirectoryNonce={fileRevealDirectoryOnly ? autoRevealFileNonce : 0}
           onOpenFile={(relativePath) => {
-            setMarkdownViewMode(isMarkdownPath(relativePath) ? "preview" : "edit");
+            const viewMode = isMarkdownPath(relativePath) ? "preview" : "edit";
+            if (
+              selectedEntry?.kind === "workspace" &&
+              selectedEntry.relativePath === relativePath
+            ) {
+              setMarkdownViewMode(viewMode);
+              return;
+            }
+            if (selectedEntry !== null && editorDirty && onOpenWorkspaceFileInNewTab) {
+              onOpenWorkspaceFileInNewTab(relativePath, { viewMode });
+              return;
+            }
+            setMarkdownViewMode(viewMode);
             setSelectedEntry({ kind: "workspace", relativePath });
           }}
           onOpenPlan={() => {

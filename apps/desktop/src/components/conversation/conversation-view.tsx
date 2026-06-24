@@ -138,6 +138,10 @@ export type WorkspaceToolsSectionProps = {
     relativePath: string,
     options?: { viewMode?: WorkspaceEditorViewMode },
   ) => void;
+  onOpenWorkspaceFileInNewTab: (
+    relativePath: string,
+    options?: { viewMode?: WorkspaceEditorViewMode },
+  ) => void;
   workspaceToolTabs: WorkspaceToolTab[];
   activeWorkspaceToolTabId: string;
   onWorkspaceToolTabsChange: Dispatch<SetStateAction<WorkspaceToolTab[]>>;
@@ -406,6 +410,7 @@ export function ConversationView({
           prRevealTabId={workspaceTools.workspacePrRevealTargetId}
           prRevealRequest={workspaceTools.workspacePrRevealRequest}
           onOpenWorkspaceFile={workspaceTools.onOpenWorkspaceFile}
+          onOpenWorkspaceFileInNewTab={workspaceTools.onOpenWorkspaceFileInNewTab}
           tabs={workspaceTools.workspaceToolTabs}
           activeTabId={workspaceTools.activeWorkspaceToolTabId}
           onTabsChange={workspaceTools.onWorkspaceToolTabsChange}
