@@ -33,6 +33,7 @@ import {
 import { conversationMessageStableId } from "@/lib/conversation-list-scope";
 import { isSubagentStatusSurfaceMessage } from "@/lib/subagent-display";
 import { cn } from "@/lib/utils";
+import type { EditorFileTarget } from "@/lib/workspace-editor-navigation";
 import { canForkMessage, canShowForkMessage } from "@/lib/fork-eligibility";
 import {
   canCopyAssistantTurn,
@@ -92,6 +93,7 @@ export function MessageCard({
   readLocalVideoPreviewUrl,
   saveLocalImageAs,
   onOpenSubagentViewer,
+  onOpenReadFile,
   onAbortShell,
   queuedCanMoveUp = false,
   queueActionBusy = false,
@@ -104,6 +106,7 @@ export function MessageCard({
   onForkMessage,
   forkMenuAlwaysVisible = false,
   forkMenuHoverRevealed = false,
+  workspaceRoot = "",
   assistantTurnStartIndex = null,
   onAssistantTurnPointerEnter,
   onAssistantTurnPointerLeave,
@@ -152,6 +155,7 @@ export function MessageCard({
   readLocalVideoPreviewUrl: ReadLocalVideoPreview;
   saveLocalImageAs: SaveLocalImageAs;
   onOpenSubagentViewer?: (toolCallId: string) => void;
+  onOpenReadFile?: (target: EditorFileTarget) => void;
   onAbortShell?: (toolCallId: string) => void;
   queuedCanMoveUp?: boolean;
   queueActionBusy?: boolean;
@@ -164,6 +168,7 @@ export function MessageCard({
   onForkMessage?: (message: ConversationMessageSnapshot, listIndex: number) => void;
   forkMenuAlwaysVisible?: boolean;
   forkMenuHoverRevealed?: boolean;
+  workspaceRoot?: string;
   assistantTurnStartIndex?: number | null;
   onAssistantTurnPointerEnter?: (turnStart: number) => void;
   onAssistantTurnPointerLeave?: (event: ReactPointerEvent, turnStart: number) => void;
@@ -368,11 +373,13 @@ export function MessageCard({
         {!isUser && message.tool ? (
           <ToolCallCollapsible
             tool={message.tool}
+            workspaceRoot={workspaceRoot}
             readLocalImagePreviewDataUrl={readLocalImagePreviewDataUrl}
             readLocalVideoPreviewUrl={readLocalVideoPreviewUrl}
             readManagedVideoPreviewUrl={readManagedVideoPreviewUrl}
             saveLocalImageAs={saveLocalImageAs}
             onOpenSubagentViewer={onOpenSubagentViewer}
+            onOpenReadFile={onOpenReadFile}
             onAbortShell={onAbortShell}
           />
         ) : null}

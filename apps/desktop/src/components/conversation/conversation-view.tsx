@@ -69,6 +69,7 @@ export type ConversationListSectionProps = {
   rewindRichInputRef: RefObject<ComposerRichInputHandle | null>;
   models: DesktopSnapshot["config"]["models"];
   onOpenSubagentViewer: ((toolCallId: string) => void) | undefined;
+  onOpenReadFile: ((target: EditorFileTarget) => void) | undefined;
   onStartMessageRewind: (message: ConversationMessageSnapshot, listIndex: number) => void;
   onForkMessage: (message: ConversationMessageSnapshot, listIndex: number) => void;
   onSubmitMessageRewind: () => void;
@@ -313,6 +314,7 @@ export function ConversationView({
                   activeModel={list.runtime.settings.activeModel}
                   agentMode={list.runtime.settings.agentMode}
                   onOpenSubagentViewer={list.onOpenSubagentViewer}
+                  onOpenReadFile={list.onOpenReadFile}
                   onStartMessageRewind={list.onStartMessageRewind}
                   onForkMessage={list.onForkMessage}
                   onSubmitMessageRewind={list.onSubmitMessageRewind}

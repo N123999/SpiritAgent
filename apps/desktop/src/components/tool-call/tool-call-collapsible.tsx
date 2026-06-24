@@ -7,23 +7,28 @@ import type {
   SaveLocalImageAs,
 } from "@/components/tool-call/tool-call-types";
 import { VideoGenerationToolCard } from "@/components/tool-call/video-generation-tool-card";
+import type { EditorFileTarget } from "@/lib/workspace-editor-navigation";
 import type { ToolBlockSnapshot } from "@/types";
 
 export function ToolCallCollapsible({
   tool,
+  workspaceRoot = "",
   readLocalImagePreviewDataUrl,
   readLocalVideoPreviewUrl,
   readManagedVideoPreviewUrl,
   saveLocalImageAs,
   onOpenSubagentViewer,
+  onOpenReadFile,
   onAbortShell,
 }: {
   tool: ToolBlockSnapshot;
+  workspaceRoot?: string;
   readLocalImagePreviewDataUrl: ReadLocalImagePreview;
   readLocalVideoPreviewUrl: ReadLocalVideoPreview;
   readManagedVideoPreviewUrl: ReadManagedVideoPreview;
   saveLocalImageAs: SaveLocalImageAs;
   onOpenSubagentViewer?: (toolCallId: string) => void;
+  onOpenReadFile?: (target: EditorFileTarget) => void;
   onAbortShell?: (toolCallId: string) => void;
 }) {
   if (tool.toolName === "finish_task") {
@@ -53,7 +58,9 @@ export function ToolCallCollapsible({
   return (
     <MinimalToolCallCard
       tool={tool}
+      workspaceRoot={workspaceRoot}
       onOpenSubagentViewer={onOpenSubagentViewer}
+      onOpenReadFile={onOpenReadFile}
       onAbortShell={onAbortShell}
     />
   );

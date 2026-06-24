@@ -26,6 +26,7 @@ import {
   shouldClearAssistantTurnHover,
 } from "@/lib/message-turn-actions-ui";
 import { cn } from "@/lib/utils";
+import type { EditorFileTarget } from "@/lib/workspace-editor-navigation";
 import type {
   ConversationMessageSnapshot,
   DesktopSnapshot,
@@ -72,6 +73,7 @@ export type ConversationListProps = {
   activeModel: string;
   agentMode: DesktopAgentMode;
   onOpenSubagentViewer: ((toolCallId: string) => void) | undefined;
+  onOpenReadFile: ((target: EditorFileTarget) => void) | undefined;
   onStartMessageRewind: (message: ConversationMessageSnapshot, listIndex: number) => void;
   onSubmitMessageRewind: () => void;
   onRewindRemoveLocalFileAttachment: (path: string) => void;
@@ -110,6 +112,7 @@ export function ConversationList({
   activeModel,
   agentMode,
   onOpenSubagentViewer,
+  onOpenReadFile,
   onStartMessageRewind,
   onSubmitMessageRewind,
   onRewindRemoveLocalFileAttachment,
@@ -252,11 +255,13 @@ export function ConversationList({
                       renderToolBlock={(message) => (
                         <ToolCallCollapsible
                           tool={message.tool!}
+                          workspaceRoot={workspaceRoot}
                           readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
                           readLocalVideoPreviewUrl={runtime.readLocalVideoPreviewUrl}
                           readManagedVideoPreviewUrl={runtime.readManagedVideoPreviewUrl}
                           saveLocalImageAs={runtime.saveLocalImageAs}
                           onOpenSubagentViewer={onOpenSubagentViewer}
+                          onOpenReadFile={onOpenReadFile}
                           onAbortShell={(toolCallId) => {
                             void runtime.abortShellCommand(toolCallId);
                           }}
@@ -391,7 +396,9 @@ export function ConversationList({
                 readLocalImagePreviewDataUrl={runtime.readLocalImagePreviewDataUrl}
                 readLocalVideoPreviewUrl={runtime.readLocalVideoPreviewUrl}
                 saveLocalImageAs={runtime.saveLocalImageAs}
+                workspaceRoot={workspaceRoot}
                 onOpenSubagentViewer={onOpenSubagentViewer}
+                onOpenReadFile={onOpenReadFile}
                 onAbortShell={(toolCallId) => {
                   void runtime.abortShellCommand(toolCallId);
                 }}

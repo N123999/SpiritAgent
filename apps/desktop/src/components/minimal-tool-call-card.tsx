@@ -39,7 +39,9 @@ import {
   toolCardSecondaryTextClass,
 } from "@/lib/file-tool-lsp-diagnostics-display";
 import { instantHoverMotionClass } from "@/lib/desktop-chrome";
+import { resolveReadFileTargetFromTool } from "@/lib/read-file-tool-navigation";
 import { cn } from "@/lib/utils";
+import type { EditorFileTarget } from "@/lib/workspace-editor-navigation";
 import type { ToolBlockSnapshot } from "@/types";
 
 const summaryClass = "text-xs leading-relaxed text-muted-foreground";
@@ -486,11 +488,15 @@ function ShellToolExpandedBody({
 
 export function MinimalToolCallCard({
   tool,
+  workspaceRoot = "",
   onOpenSubagentViewer,
+  onOpenReadFile,
   onAbortShell,
 }: {
   tool: ToolBlockSnapshot;
+  workspaceRoot?: string;
   onOpenSubagentViewer?: (toolCallId: string) => void;
+  onOpenReadFile?: (target: EditorFileTarget) => void;
   onAbortShell?: (toolCallId: string) => void;
 }) {
   const summary = getToolCallSummaryParts(tool);
@@ -499,6 +505,11 @@ export function MinimalToolCallCard({
   const isSubagent = tool.toolName === "run_subagent";
   const subagentToolCallId = tool.toolCallId?.trim() ?? "";
   const canOpenSubagentViewer = Boolean(isSubagent && onOpenSubagentViewer && subagentToolCallId);
+  const readFileTarget = useMemo(
+    () => (tool.toolName === "read_file" ? resolveReadFileTargetFromTool(tool, workspaceRoot) : null),
+    [tool, workspaceRoot],
+  );
+  const canOpenReadFile = Boolean(readFileTarget && onOpenReadFile);
   const isFileDiff = isFileDiffTool(tool.toolName);
   const isResponsesBuiltIn = isResponsesBuiltInToolCard(tool.toolName);
   const shellCommand = useMemo(
@@ -527,10 +538,18 @@ export function MinimalToolCallCard({
       shimmerActive ? undefined : summaryClass,
       isShell && "min-w-0 overflow-hidden",
     );
-    const plainCard = canOpenSubagentViewer ? (
+    const plainCard = canOpenSubagentViewer || canOpenReadFile ? (
       <button
         type="button"
-        onClick={() => onOpenSubagentViewer?.(subagentToolCallId)}
+        onClick={() => {
+          if (canOpenSubagentViewer) {
+            onOpenSubagentViewer?.(subagentToolCallId);
+            return;
+          }
+          if (readFileTarget) {
+            onOpenReadFile?.(readFileTarget);
+          }
+        }}
         className={cn(
           "w-full min-w-0 overflow-hidden text-left outline-none",
           "cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/50",

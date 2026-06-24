@@ -537,6 +537,9 @@ export default function App() {
               rewindRichInputRef: messageRewind.rewindRichInputRef,
               models: conversation.models,
               onOpenSubagentViewer: subagentViewActive ? undefined : conversation.handleOpenSubagentViewer,
+              onOpenReadFile: (target) => {
+                workspaceTools.openEditorFile(target);
+              },
               onStartMessageRewind: messageRewind.startMessageRewind,
               onForkMessage: (message, listIndex) => {
                 void runtime.forkSession({ messageId: message.id, listIndex });
