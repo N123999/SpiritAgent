@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { TFunction } from "i18next";
@@ -48,6 +49,10 @@ import {
 import { canForkSession } from "@/lib/fork-eligibility";
 import { findLastForkableAssistantMessageId } from "@/lib/fork-session-utils";
 import { shouldPromptGitBranchCheckoutBeforeSend } from "@/lib/composer-branch-checkout-gate";
+import {
+  isComposerFileDropAccepted,
+  resolveComposerDropAbsolutePaths,
+} from "@/lib/composer-file-drop";
 import type {
   DesktopSnapshot,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -627,6 +632,46 @@ export function useComposerController({
     [activeSessionReadOnly, attachLocalFilePath, runtime],
   );
 
+  const handleComposerDragOver = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (activeSessionReadOnly || runtime.hostKind !== "electron") {
+        return;
+      }
+      if (!isComposerFileDropAccepted(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    },
+    [activeSessionReadOnly, runtime.hostKind],
+  );
+
+  const handleComposerDrop = useCallback(
+    (event: ReactDragEvent<HTMLElement>) => {
+      if (activeSessionReadOnly || runtime.hostKind !== "electron") {
+        return;
+      }
+      if (!isComposerFileDropAccepted(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      const paths = resolveComposerDropAbsolutePaths(event, {
+        workspaceRoot: snapshot?.workspaceRoot ?? "",
+        getPathForFile: runtime.getPathForDroppedFile,
+      });
+      for (const filePath of paths) {
+        void attachLocalFilePath(filePath);
+      }
+    },
+    [
+      activeSessionReadOnly,
+      attachLocalFilePath,
+      runtime.getPathForDroppedFile,
+      runtime.hostKind,
+      snapshot?.workspaceRoot,
+    ],
+  );
+
   const submitComposerMessage = useCallback(() => {
     const segs = composerRichInputRef.current?.getSegments() ?? [];
     const fullText = segmentsToMessageText(segs) || runtime.composer;
@@ -920,6 +965,8 @@ export function useComposerController({
     handleWorkspaceFileAddToSession,
     pickLocalFileFromPalette,
     handleComposerPaste,
+    handleComposerDragOver,
+    handleComposerDrop,
     submitComposerMessage,
     confirmBranchCheckoutAndSend,
     discardBranchChangesAndCheckoutSend,
