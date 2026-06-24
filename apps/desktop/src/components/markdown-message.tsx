@@ -1,19 +1,8 @@
-import { useMemo, memo } from "react";
-import ReactMarkdown from "react-markdown";
+import { memo } from "react";
 
-import { spiritRemarkPluginsForReactMarkdown } from "@/lib/markdown-remark-plugins";
-
-import {
-  createMarkdownMessageComponents,
-  markdownMessageRootClassName,
-  type MarkdownSize,
-  type MarkdownTone,
-} from "@/lib/markdown-message-components";
-import { useWorkspaceMarkdownLinkClick } from "@/components/workspace-markdown-link-context";
-import { reactMarkdownUrlTransform } from "@/lib/markdown-url-transform";
-import { githubHtmlRehypePlugins } from "@/lib/markdown-github-html";
-
+import { SpiritStreamdownMarkdown } from "@/components/spirit-streamdown-markdown";
 import type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
+import type { MarkdownSize, MarkdownTone } from "@/lib/markdown-message-components";
 
 export type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
 export type { MarkdownSize, MarkdownTone } from "@/lib/markdown-message-components";
@@ -33,30 +22,15 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   allowHtml?: boolean;
   readManagedImagePreviewDataUrl?: ReadManagedImagePreviewDataUrl;
 }) {
-  const onMarkdownLinkClick = useWorkspaceMarkdownLinkClick();
-  const markdownComponents = useMemo(
-    () =>
-      createMarkdownMessageComponents(
-        readManagedImagePreviewDataUrl,
-        tone,
-        undefined,
-        onMarkdownLinkClick,
-        size,
-        allowHtml,
-      ),
-    [allowHtml, onMarkdownLinkClick, readManagedImagePreviewDataUrl, size, tone],
-  );
-
   return (
-    <div className={markdownMessageRootClassName(tone, className, size)}>
-      <ReactMarkdown
-        remarkPlugins={spiritRemarkPluginsForReactMarkdown}
-        rehypePlugins={allowHtml ? githubHtmlRehypePlugins : undefined}
-        components={markdownComponents}
-        urlTransform={reactMarkdownUrlTransform}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
+    <SpiritStreamdownMarkdown
+      content={content}
+      streaming={false}
+      className={className}
+      tone={tone}
+      size={size}
+      allowHtml={allowHtml}
+      readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
+    />
   );
 });
