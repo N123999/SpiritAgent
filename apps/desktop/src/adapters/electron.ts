@@ -330,6 +330,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     pickLocalFile() {
       return bridge.pickLocalFile();
     },
+    getPathForDroppedFile(file) {
+      return bridge.getPathForDroppedFile(file);
+    },
     ingestClipboardImage() {
       return bridge.ingestClipboardImage();
     },

@@ -1,4 +1,4 @@
-import { clipboard, contextBridge, ipcRenderer } from 'electron';
+import { clipboard, contextBridge, ipcRenderer, webUtils } from 'electron';
 
 const newSessionSubscribers = new Set<() => void>();
 let pendingNewSessionFromMain = false;
@@ -376,6 +376,9 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   },
   pickLocalFile() {
     return ipcRenderer.invoke('desktop:pick-local-file');
+  },
+  getPathForDroppedFile(file: File) {
+    return webUtils.getPathForFile(file);
   },
   ingestClipboardImage() {
     return ipcRenderer.invoke('desktop:ingest-clipboard-image');
