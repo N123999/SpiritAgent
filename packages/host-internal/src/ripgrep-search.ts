@@ -27,7 +27,7 @@ export type RipgrepMatch = {
 
 type RipgrepMatchLine = {
   path: { text: string };
-  lines: { text: string };
+  lines: { text?: string; bytes?: string };
   line_number: number;
   submatches?: Array<{ start: number; end: number }>;
 };
@@ -45,6 +45,14 @@ type RipgrepJsonLine =
 /** 去掉 rg JSON 行尾换行；保留行首缩进，submatch 字节偏移与 lineText 对齐。 */
 export function normalizeSearchLine(line: string): string {
   return line.replace(/\r?\n$/u, '');
+}
+
+function readRipgrepMatchLineText(lines: RipgrepMatchLine['lines']): string | undefined {
+  if (typeof lines.text === 'string') {
+    return lines.text;
+  }
+  // 二进制命中仅有 lines.bytes（如 --hidden 下 .git/objects）；工作区文本搜索跳过
+  return undefined;
 }
 
 function appendQueryArgs(args: string[], options: RipgrepSearchOptions): void {
@@ -171,10 +179,14 @@ export async function runRipgrepSearch(options: RipgrepSearchOptions): Promise<R
     }
 
     const matchData = (parsed as { type: 'match'; data: RipgrepMatchLine }).data;
+    const rawLineText = readRipgrepMatchLineText(matchData.lines);
+    if (rawLineText === undefined || !matchData.path?.text) {
+      continue;
+    }
     matches.push({
       relativePath: toRelativePath(options.workspaceRoot, matchData.path.text),
       lineNumber: matchData.line_number,
-      lineText: normalizeSearchLine(matchData.lines.text),
+      lineText: normalizeSearchLine(rawLineText),
       submatches: (matchData.submatches ?? []).map((item) => ({
         start: item.start,
         end: item.end,

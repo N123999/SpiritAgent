@@ -277,6 +277,22 @@ test('runRipgrepSearch keeps submatch byte offsets aligned for indented CJK line
   });
 });
 
+test('runRipgrepSearch supports single-character text queries', async () => {
+  await withTempWorkspace(async (root) => {
+    await writeFile(join(root, 'alpha.txt'), 'alphabet\n', 'utf8');
+    await writeFile(join(root, 'noise.bin'), Buffer.from([0x00, 0x61, 0x62, 0x00]));
+
+    const matches = await runRipgrepSearch({
+      workspaceRoot: root,
+      query: 'a',
+    });
+
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0]?.relativePath, 'alpha.txt');
+    assert.equal(matches[0]?.lineText, 'alphabet');
+  });
+});
+
 test('formatGrepToolOutput reports empty results', () => {
   const output = formatGrepToolOutput({
     query: 'needle',
