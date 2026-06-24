@@ -120,6 +120,17 @@ export function modSlashShortcutLabel(): string {
   return isMacDesktopPlatform() ? keys.join("") : keys.join("+");
 }
 
+/** Cmd/Ctrl + , shortcut keys for tooltip Kbd chips. */
+export function modCommaShortcutKbdKeys(): readonly string[] {
+  return isMacDesktopPlatform() ? ["⌘", ","] : ["Ctrl", ","];
+}
+
+/** Cmd/Ctrl + , shortcut label for opening settings. */
+export function settingsShortcutLabel(): string {
+  const keys = modCommaShortcutKbdKeys();
+  return isMacDesktopPlatform() ? keys.join("") : keys.join("+");
+}
+
 type KeyboardModifierState = Pick<KeyboardEvent, "altKey" | "ctrlKey" | "metaKey">;
 
 /** Whether the platform primary shortcut modifier (⌘ on macOS, Ctrl elsewhere) is held. */

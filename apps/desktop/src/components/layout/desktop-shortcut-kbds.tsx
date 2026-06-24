@@ -2,6 +2,7 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import {
   isMacDesktopPlatform,
   modAltLetterShortcutKbdKeys,
+  modCommaShortcutKbdKeys,
   modLetterShortcutKbdKeys,
 } from "@/lib/desktop-shell";
 
@@ -55,6 +56,24 @@ export function WorkspaceToolsShortcutKbd() {
           <Kbd>Alt</Kbd>
           <span>+</span>
           <Kbd>B</Kbd>
+        </>
+      )}
+    </KbdGroup>
+  );
+}
+
+export function SettingsShortcutKbd() {
+  const keys = modCommaShortcutKbdKeys();
+
+  return (
+    <KbdGroup>
+      {isMacDesktopPlatform() ? (
+        keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+      ) : (
+        <>
+          <Kbd>Ctrl</Kbd>
+          <span>+</span>
+          <Kbd>,</Kbd>
         </>
       )}
     </KbdGroup>
