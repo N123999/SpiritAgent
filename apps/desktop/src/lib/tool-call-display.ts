@@ -311,6 +311,23 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
   };
 }
 
+/** Plain one-line tool summary for clipboard export (matches MinimalToolSummary text). */
+export function formatToolCallSummaryPlainText(tool: ToolBlockSnapshot): string {
+  const summary = getToolCallSummaryParts(tool);
+  let text: string;
+  if (summary.shellSummary) {
+    text = summary.detail
+      ? `${summary.shellSummary.verb} ${summary.shellSummary.reason} ${summary.detail}`
+      : `${summary.shellSummary.verb} ${summary.shellSummary.reason}`;
+  } else {
+    text = summary.detail ? `${summary.headline} ${summary.detail}` : summary.headline;
+  }
+  if (tool.phase === 'failed') {
+    text = `${text} ${i18n.t('settings.failed')}`;
+  }
+  return text;
+}
+
 function fileDiffToolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
   if (!FILE_DIFF_TOOL_NAMES.has(tool.toolName)) {
     return false;
