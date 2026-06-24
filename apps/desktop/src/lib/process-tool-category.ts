@@ -54,7 +54,6 @@ const DELETE_TOOLS = new Set(['delete_file', 'dream_delete']);
 export const PROCESS_GROUP_EXCLUDED_TOOL_NAMES = new Set([
   'finish_task',
   'todo_write',
-  'todo_list',
 ]);
 
 export function isProcessGroupExcludedToolName(toolName: string): boolean {

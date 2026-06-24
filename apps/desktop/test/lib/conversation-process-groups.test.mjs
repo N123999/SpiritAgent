@@ -78,7 +78,7 @@ test('isProcessEligibleMetaMessage accepts tools and standalone thinking', () =>
       pending: false,
       tool: { toolName: 'todo_list', phase: 'succeeded', headline: 'List TODO', detailLines: [] },
     }),
-    false,
+    true,
   );
 });
 
@@ -347,7 +347,7 @@ test('buildConversationRenderItems keeps multi-thinking process group before bod
   assert.equal(isMessageHiddenByProcessGroup(items, 4), false);
 });
 
-test('buildConversationRenderItems keeps todo_write and todo_list outside process groups', () => {
+test('buildConversationRenderItems keeps todo_write outside process groups', () => {
   const messages = [
     { id: 1, role: 'user', content: 'hi', pending: false },
     {
@@ -390,10 +390,10 @@ test('buildConversationRenderItems keeps todo_write and todo_list outside proces
   const items = buildConversationRenderItems(messages, scopeKey);
   assert.deepEqual(
     items.map((item) => item.kind),
-    ['message', 'process-group', 'message', 'process-group', 'message', 'message'],
+    ['message', 'process-group', 'message', 'process-group', 'message'],
   );
   assert.equal(isMessageHiddenByProcessGroup(items, 3), false);
-  assert.equal(isMessageHiddenByProcessGroup(items, 5), false);
+  assert.equal(isMessageHiddenByProcessGroup(items, 5), true);
   const firstGroup = items[1];
   const secondGroup = items[3];
   assert.equal(firstGroup.kind, 'process-group');
@@ -403,6 +403,7 @@ test('buildConversationRenderItems keeps todo_write and todo_list outside proces
   }
   assert.deepEqual(firstGroup.messageIndices, [1, 2]);
   assert.equal(firstGroup.toolCounts.explore, 1);
-  assert.deepEqual(secondGroup.messageIndices, [4]);
+  assert.deepEqual(secondGroup.messageIndices, [4, 5]);
   assert.equal(secondGroup.toolCounts.edit, 1);
+  assert.equal(secondGroup.toolCounts.explore, 1);
 });
