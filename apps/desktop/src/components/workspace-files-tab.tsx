@@ -8,6 +8,7 @@ import { MarkdownMessage } from "@/components/markdown-message";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { WorkspaceFilesPanel } from "@/components/workspace-files-panel";
 import { WorkspaceFilesSearchPanel } from "@/components/workspace-files-search-panel";
@@ -125,7 +126,12 @@ function WorkspaceFilesExplorerToolbar({
 }: WorkspaceFilesExplorerToolbarProps) {
   const { t } = useTranslation();
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const fileSearchLabel = fileSearchOpen
+  const fileTreeTooltip = fileSearchOpen
+    ? t("workspace.showFileTree")
+    : fileTreeOpen
+      ? t("workspace.hideFileTree")
+      : t("workspace.showFileTree");
+  const fileSearchTooltip = fileSearchOpen
     ? fileTreeOpen
       ? t("workspace.hideContentSearch")
       : t("workspace.showContentSearch")
@@ -152,49 +158,49 @@ function WorkspaceFilesExplorerToolbar({
       aria-label={t("workspace.fileExplorerToolbar")}
     >
       <div className="flex min-w-0 items-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            DESKTOP_CHROME_TOGGLE_ICON_BTN,
-            fileTreeOpen && !fileSearchOpen && "bg-muted/60",
-          )}
-          onClick={onToggleFileTree}
-          aria-label={
-            fileSearchOpen
-              ? t("workspace.showFileTree")
-              : fileTreeOpen
-                ? t("workspace.hideFileTree")
-                : t("workspace.showFileTree")
-          }
-          aria-expanded={fileTreeOpen}
-          aria-pressed={fileTreeOpen && !fileSearchOpen}
-          title={
-            fileSearchOpen
-              ? t("workspace.showFileTree")
-              : fileTreeOpen
-                ? t("workspace.hideFileTree")
-                : t("workspace.showFileTree")
-          }
-        >
-          <ListTree className="size-3.5" aria-hidden />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={cn(
-            DESKTOP_CHROME_TOGGLE_ICON_BTN,
-            fileSearchOpen && fileTreeOpen && "bg-muted/60",
-          )}
-          onClick={onToggleFileSearch}
-          aria-label={fileSearchLabel}
-          aria-pressed={fileSearchOpen && fileTreeOpen}
-          title={fileSearchLabel}
-        >
-          <Search className="size-3.5" aria-hidden />
-        </Button>
+        <Tooltip delayDuration={300} disableHoverableContent>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                DESKTOP_CHROME_TOGGLE_ICON_BTN,
+                fileTreeOpen && !fileSearchOpen && "bg-muted/60",
+              )}
+              onClick={onToggleFileTree}
+              aria-label={fileTreeTooltip}
+              aria-expanded={fileTreeOpen}
+              aria-pressed={fileTreeOpen && !fileSearchOpen}
+            >
+              <ListTree className="size-3.5" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {fileTreeTooltip}
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={300} disableHoverableContent>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                DESKTOP_CHROME_TOGGLE_ICON_BTN,
+                fileSearchOpen && fileTreeOpen && "bg-muted/60",
+              )}
+              onClick={onToggleFileSearch}
+              aria-label={fileSearchTooltip}
+              aria-pressed={fileSearchOpen && fileTreeOpen}
+            >
+              <Search className="size-3.5" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={4}>
+            {fileSearchTooltip}
+          </TooltipContent>
+        </Tooltip>
         {fileOpen ? (
           <span
             className="min-w-0 truncate text-xs font-medium text-foreground/95"
