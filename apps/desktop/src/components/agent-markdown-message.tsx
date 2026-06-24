@@ -6,35 +6,17 @@ import {
   useRef,
   type MutableRefObject,
 } from "react";
-import { createCodePlugin } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { Block, parseMarkdownIntoBlocks, Streamdown, type BlockProps } from "streamdown";
+import { Block, parseMarkdownIntoBlocks, type BlockProps } from "streamdown";
 import type { Pluggable } from "unified";
 
 import type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
 import type { ReadManagedVideoPreviewUrl } from "@/components/markdown-video";
 import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
-import { useTheme } from "@/hooks/useTheme";
+import type { MarkdownTone } from "@/lib/markdown-message-components";
 import {
-  createStreamdownMessageComponents,
-  markdownMessageRootClassName,
-  type MarkdownTone,
-} from "@/lib/markdown-message-components";
-import { streamdownRehypePlugins } from "@/lib/markdown-streamdown-plugins";
-import { spiritRemarkPluginsForStreamdown } from "@/lib/markdown-remark-plugins";
-import { streamdownUrlTransform } from "@/lib/markdown-url-transform";
-import { createSpiritMermaidPlugin } from "@/lib/markdown-mermaid-theme";
-import { createMarkdownMermaidRenderer } from "@/components/markdown-mermaid-block";
-import { useWorkspaceMarkdownLinkClick } from "@/components/workspace-markdown-link-context";
-
-const streamdownMathPlugin = math;
-
-/** VS Code Default Light+ / Dark+（Shiki bundled） */
-const STREAMDOWN_SHIKI_THEMES = ["light-plus", "dark-plus"] as const;
-
-const spiritStreamdownCodePlugin = createCodePlugin({
-  themes: [...STREAMDOWN_SHIKI_THEMES],
-});
+  SpiritStreamdownMarkdown,
+  type SpiritStreamdownMarkdownProps,
+} from "@/components/spirit-streamdown-markdown";
 
 /** Char-level + zero stagger: each stream delta animates in parallel (not serial / per-paragraph batch). */
 const streamingAnimateOptions = {
@@ -113,45 +95,30 @@ function StreamingAnimateBlock(props: BlockProps) {
   );
 }
 
+export type AgentMarkdownMessageProps = Pick<
+  SpiritStreamdownMarkdownProps,
+  | "content"
+  | "className"
+  | "tone"
+  | "size"
+  | "allowHtml"
+  | "readManagedImagePreviewDataUrl"
+  | "readManagedVideoPreviewUrl"
+> & {
+  streaming?: boolean;
+};
+
 export function AgentMarkdownMessage({
   content,
   streaming = false,
   className,
   tone = "default",
+  size = "default",
+  allowHtml = false,
   readManagedImagePreviewDataUrl,
   readManagedVideoPreviewUrl,
-}: {
-  content: string;
-  streaming?: boolean;
-  className?: string;
-  tone?: MarkdownTone;
-  readManagedImagePreviewDataUrl?: ReadManagedImagePreviewDataUrl;
-  readManagedVideoPreviewUrl?: ReadManagedVideoPreviewUrl;
-}) {
+}: AgentMarkdownMessageProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
-  const { resolvedDark } = useTheme();
-  const onMarkdownLinkClick = useWorkspaceMarkdownLinkClick();
-  const streamdownPlugins = useMemo(
-    () => ({
-      code: spiritStreamdownCodePlugin,
-      math: streamdownMathPlugin,
-      mermaid: createSpiritMermaidPlugin(resolvedDark),
-      renderers: [createMarkdownMermaidRenderer(resolvedDark)],
-    }),
-    [resolvedDark],
-  );
-
-  const components = useMemo(
-    () =>
-      createStreamdownMessageComponents(
-        readManagedImagePreviewDataUrl,
-        tone,
-        readManagedVideoPreviewUrl,
-        onMarkdownLinkClick,
-      ),
-    [onMarkdownLinkClick, readManagedImagePreviewDataUrl, readManagedVideoPreviewUrl, tone],
-  );
-
   const motionActive = streaming && !prefersReducedMotion;
 
   const streamBlocks = useMemo(() => {
@@ -186,27 +153,21 @@ export function AgentMarkdownMessage({
 
   return (
     <StreamBlockAnimateContext.Provider value={streamBlockAnimateContext}>
-      <Streamdown
-        className={markdownMessageRootClassName(tone, className)}
-        mode={streaming ? "streaming" : "static"}
-        plugins={streamdownPlugins}
-        remarkPlugins={spiritRemarkPluginsForStreamdown}
-        components={components}
-        urlTransform={streamdownUrlTransform}
-        rehypePlugins={streamdownRehypePlugins}
-        controls={{
-          code: { copy: false, download: false },
-          mermaid: { copy: false, download: false, fullscreen: false, panZoom: true },
-          table: { copy: true, download: true, fullscreen: true },
-        }}
-        lineNumbers={false}
-        parseIncompleteMarkdown={streaming}
+      <SpiritStreamdownMarkdown
+        content={content}
+        streaming={streaming}
+        className={className}
+        tone={tone}
+        size={size}
+        allowHtml={allowHtml}
+        readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
+        readManagedVideoPreviewUrl={readManagedVideoPreviewUrl}
+        BlockComponent={motionActive ? StreamingAnimateBlock : undefined}
         isAnimating={motionActive}
         animated={motionActive ? streamingAnimateOptions : false}
-        BlockComponent={motionActive ? StreamingAnimateBlock : undefined}
-      >
-        {content}
-      </Streamdown>
+      />
     </StreamBlockAnimateContext.Provider>
   );
 }
+
+export type { MarkdownTone };
