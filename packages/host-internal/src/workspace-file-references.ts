@@ -210,6 +210,20 @@ export async function workspaceFileReferenceAttachmentFromPath(
   return localFileAttachmentFromAbsolutePath(absolutePath, relativePath, options);
 }
 
+export type LocalFileComposerRoute = 'media' | 'reference';
+
+export async function classifyLocalFileComposerRoute(
+  absolutePath: string,
+): Promise<LocalFileComposerRoute> {
+  try {
+    const attachment = await localFileAttachmentFromPath(absolutePath);
+    return attachment.kind === 'image' || attachment.kind === 'video' ? 'media' : 'reference';
+  } catch {
+    // 二进制/校验失败等同 @ 引用：UI 仍展示 chip，发送时静默忽略（与现有 @ 行为一致）
+    return 'reference';
+  }
+}
+
 export async function localFileAttachmentFromPath(
   absolutePath: string,
   options: ResolveWorkspaceFileReferenceAttachmentsOptions = {},
@@ -373,8 +387,16 @@ async function resolveWorkspaceFileReferencePath(
   if (!normalizedReferencePath) {
     throw new Error('未指定文件路径');
   }
-  if (isAbsolute(referencePath) || normalizedReferencePath.startsWith('/')) {
-    throw new Error(`不支持引用工作区外文件: ${referencePath}`);
+  if (
+    isAbsolute(referencePath)
+    || isAbsolute(normalizedReferencePath)
+    || normalizedReferencePath.startsWith('/')
+  ) {
+    const canonicalTarget = await realpath(normalizedReferencePath);
+    return {
+      absolutePath: canonicalTarget,
+      relativePath: normalizedReferencePath,
+    };
   }
 
   const segments = normalizedReferencePath.split('/').filter((segment) => segment.length > 0);

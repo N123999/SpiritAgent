@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  classifyLocalFileComposerRoute,
   clearWorkspaceFileReferenceIndexCache,
   collectWorkspaceFileReferenceIndex,
   listCachedWorkspaceFileReferenceSuggestions,
@@ -228,5 +229,85 @@ test('resolve workspace file attachments keeps validated images and ignores fake
     assert.equal(attachments[0]?.path, 'diagram.png');
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('resolve workspace file attachments resolves absolute external text paths', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-ws-'));
+  const externalRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-ext-'));
+  try {
+    await writeFile(join(workspaceRoot, 'README.md'), '# workspace\n');
+    const externalFile = join(externalRoot, 'notes.txt');
+    await writeFile(externalFile, 'external note content\n');
+    const externalRef = externalFile.replace(/\\/gu, '/');
+
+    const attachments = await resolveWorkspaceFileReferenceAttachmentsFromInput(
+      workspaceRoot,
+      `@${externalRef}`,
+    );
+    assert.equal(attachments.length, 1);
+    assert.equal(attachments[0]?.kind, 'text');
+    assert.equal(attachments[0]?.path, externalRef);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('resolve workspace file attachments resolves absolute external image and video paths', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-ws-abs-media-'));
+  const externalRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-ext-media-'));
+  try {
+    await writeFile(join(workspaceRoot, 'README.md'), '# workspace\n');
+    const pngPath = join(externalRoot, 'diagram.png');
+    const mp4Path = join(externalRoot, 'clip.mp4');
+    await writeFile(
+      pngPath,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Zp1cAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    );
+    await writeFile(mp4Path, MINIMAL_MP4_HEADER);
+    const pngRef = pngPath.replace(/\\/gu, '/');
+    const mp4Ref = mp4Path.replace(/\\/gu, '/');
+
+    const attachments = await resolveWorkspaceFileReferenceAttachmentsFromInput(
+      workspaceRoot,
+      `@${pngRef} @${mp4Ref}`,
+    );
+    assert.equal(attachments.length, 2);
+    const kinds = attachments.map((item) => item.kind).sort();
+    assert.deepEqual(kinds, ['image', 'video']);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('classifyLocalFileComposerRoute routes validated media and reference files', async () => {
+  const externalRoot = await mkdtemp(join(tmpdir(), 'spirit-host-internal-classify-'));
+  try {
+    const textPath = join(externalRoot, 'notes.txt');
+    const pngPath = join(externalRoot, 'diagram.png');
+    const mp4Path = join(externalRoot, 'clip.mp4');
+    const fakePngPath = join(externalRoot, 'fake.png');
+    await writeFile(textPath, 'hello\n');
+    await writeFile(
+      pngPath,
+      Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Zp1cAAAAASUVORK5CYII=',
+        'base64',
+      ),
+    );
+    await writeFile(mp4Path, MINIMAL_MP4_HEADER);
+    await writeFile(fakePngPath, 'not a png');
+
+    assert.equal(await classifyLocalFileComposerRoute(textPath), 'reference');
+    assert.equal(await classifyLocalFileComposerRoute(pngPath), 'media');
+    assert.equal(await classifyLocalFileComposerRoute(mp4Path), 'media');
+    assert.equal(await classifyLocalFileComposerRoute(fakePngPath), 'reference');
+  } finally {
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });
