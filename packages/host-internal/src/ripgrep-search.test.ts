@@ -108,7 +108,7 @@ test('runRipgrepSearch parses submatch column ranges', async () => {
   await withTempWorkspace(async (root) => {
     await writeFile(join(root, 'alpha.txt'), 'foo NEEDLE bar\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'NEEDLE',
       isRegexp: false,
@@ -126,7 +126,7 @@ test('runRipgrepSearch finds case-insensitive text matches', async () => {
   await withTempWorkspace(async (root) => {
     await writeFile(join(root, 'alpha.txt'), 'NEEDLE here\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'needle',
       isRegexp: false,
@@ -144,7 +144,7 @@ test('runRipgrepSearch supports case-insensitive regular expressions', async () 
     await writeFile(join(root, 'alpha.txt'), 'Runtime    parity\n', 'utf8');
     await writeFile(join(root, 'beta.txt'), 'no match here\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'runtime\\s+parity',
       isRegexp: true,
@@ -163,7 +163,7 @@ test('runRipgrepSearch limits search to glob pattern', async () => {
     await writeFile(join(root, 'src', 'app.ts'), 'needle here\n', 'utf8');
     await writeFile(join(root, 'docs', 'readme.md'), 'needle here\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'needle',
       globPattern: 'src/**/*.ts',
@@ -178,7 +178,7 @@ test('runRipgrepSearch returns no matches for missing query hits', async () => {
   await withTempWorkspace(async (root) => {
     await writeFile(join(root, 'alpha.txt'), 'nothing here\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'needle',
     });
@@ -210,7 +210,7 @@ test('runRipgrepSearch skips files matched by .gitignore', async () => {
     await writeFile(join(root, 'ignored.txt'), 'needle here\n', 'utf8');
     await writeFile(join(root, 'tracked.txt'), 'needle here\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'needle',
     });
@@ -225,7 +225,7 @@ test('runRipgrepSearch searches hidden directories in full-workspace mode', asyn
     await mkdir(join(root, '.cursor'), { recursive: true });
     await writeFile(join(root, '.cursor', 'rules.md'), 'needle in hidden dir\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'needle',
     });
@@ -241,7 +241,7 @@ test('runRipgrepSearch excludes .git directory at any path', async () => {
     await writeFile(join(root, 'tracked.txt'), 'needle in tracked file\n', 'utf8');
     await writeFile(join(root, '.git', 'spirit-test-needle'), 'needle in git dir\n', 'utf8');
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'needle',
     });
@@ -284,7 +284,7 @@ test('runRipgrepSearch keeps submatch byte offsets aligned for indented CJK line
       'utf8',
     );
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: '你好',
     });
@@ -304,7 +304,7 @@ test('runRipgrepSearch supports single-character text queries', async () => {
     await writeFile(join(root, 'alpha.txt'), 'alphabet\n', 'utf8');
     await writeFile(join(root, 'noise.bin'), Buffer.from([0x00, 0x61, 0x62, 0x00]));
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: root,
       query: 'a',
     });
@@ -312,6 +312,23 @@ test('runRipgrepSearch supports single-character text queries', async () => {
     assert.equal(matches.length, 1);
     assert.equal(matches[0]?.relativePath, 'alpha.txt');
     assert.equal(matches[0]?.lineText, 'alphabet');
+  });
+});
+
+test('runRipgrepSearch stops at maxMatches and reports truncated', async () => {
+  await withTempWorkspace(async (root) => {
+    for (let index = 0; index < 20; index += 1) {
+      await writeFile(join(root, `file-${index}.txt`), 'needle\n', 'utf8');
+    }
+
+    const { matches, truncated } = await runRipgrepSearch({
+      workspaceRoot: root,
+      query: 'needle',
+      maxMatches: 5,
+    });
+
+    assert.equal(matches.length, 5);
+    assert.equal(truncated, true);
   });
 });
 

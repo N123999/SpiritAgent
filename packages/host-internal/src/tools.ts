@@ -1603,7 +1603,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         ? normalizeWorkspaceGlobPattern(inputGlob)
         : null;
 
-    const matches = await runRipgrepSearch({
+    const { matches } = await runRipgrepSearch({
       workspaceRoot: this.workspaceRoot,
       query: needle,
       isRegexp,

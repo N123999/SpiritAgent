@@ -6,6 +6,7 @@ import {
   listWorkspaceFileReferenceSuggestions as listWorkspaceFileReferenceSuggestionsFromHostInternal,
   primeWorkspaceFileReferenceIndexCache,
   runRipgrepSearch,
+  WORKSPACE_CONTENT_SEARCH_MAX_MATCHES,
   type WorkLocationKind,
   type WorkspaceFileReferenceIndexSnapshot,
 } from '@spirit-agent/host-internal';
@@ -520,13 +521,14 @@ export async function searchWorkspaceContentCommand(
     return { matches: [] };
   }
 
-  const matches = await runRipgrepSearch({
+  const { matches, truncated } = await runRipgrepSearch({
     workspaceRoot: state.workspaceRoot,
     query,
     isRegexp: request.isRegexp === true,
     caseSensitive: request.caseSensitive === true,
     wholeWord: request.wholeWord === true,
+    maxMatches: WORKSPACE_CONTENT_SEARCH_MAX_MATCHES,
   });
 
-  return { matches };
+  return { matches, truncated };
 }

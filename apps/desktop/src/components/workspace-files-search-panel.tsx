@@ -71,6 +71,7 @@ export function WorkspaceFilesSearchPanel({
   const [wholeWord, setWholeWord] = useState(false);
   const [isRegexp, setIsRegexp] = useState(false);
   const [matches, setMatches] = useState<WorkspaceContentSearchMatch[]>([]);
+  const [resultsTruncated, setResultsTruncated] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(() => new Set());
@@ -85,6 +86,7 @@ export function WorkspaceFilesSearchPanel({
   useEffect(() => {
     if (!debouncedQuery) {
       setMatches([]);
+      setResultsTruncated(false);
       setSearchError("");
       setSearching(false);
       onSearchSessionChange?.(null);
@@ -106,6 +108,7 @@ export function WorkspaceFilesSearchPanel({
           return;
         }
         setMatches(result.matches);
+        setResultsTruncated(result.truncated === true);
         const matchesByPath = new Map<string, WorkspaceContentSearchMatch[]>();
         for (const group of groupWorkspaceSearchMatches(result.matches)) {
           matchesByPath.set(group.relativePath, group.matches);
@@ -118,6 +121,7 @@ export function WorkspaceFilesSearchPanel({
           return;
         }
         setMatches([]);
+        setResultsTruncated(false);
         onSearchSessionChange?.(null);
         setSearchError(error instanceof Error ? error.message : String(error));
       })
@@ -229,6 +233,13 @@ export function WorkspaceFilesSearchPanel({
         ) : null}
         {searchError ? (
           <p className="px-3 py-2 text-xs text-destructive/90">{searchError}</p>
+        ) : null}
+        {!searching && !searchError && resultsTruncated ? (
+          <p className="px-3 py-1.5 text-xs text-muted-foreground">
+            {t("workspace.fileSearchResultsTruncated", {
+              shown: matches.length,
+            })}
+          </p>
         ) : null}
         {!searching && !searchError && debouncedQuery && groups.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">{t("workspace.fileSearchNoResults")}</p>

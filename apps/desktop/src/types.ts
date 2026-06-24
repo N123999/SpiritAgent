@@ -716,6 +716,7 @@ export type WorkspaceContentSearchMatch = {
 
 export type WorkspaceContentSearchResult = {
   matches: WorkspaceContentSearchMatch[];
+  truncated?: boolean;
 };
 
 export interface HostTextFileStatResult {

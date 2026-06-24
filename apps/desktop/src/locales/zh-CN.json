@@ -699,6 +699,7 @@
     "matchWholeWord": "全字匹配",
     "useRegex": "正则表达式",
     "fileSearchNoResults": "无匹配结果",
+    "fileSearchResultsTruncated": "仅显示前 {{shown}} 条结果（已达上限）",
     "fileSearchSearching": "搜索中…",
     "resizeFileTreeWidth": "调整文件树宽度",
     "shellExited": "已退出，代码 {{exitCode}}",

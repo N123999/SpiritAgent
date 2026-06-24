@@ -702,6 +702,7 @@
     "matchWholeWord": "Match whole word",
     "useRegex": "Use regular expression",
     "fileSearchNoResults": "No results",
+    "fileSearchResultsTruncated": "Showing first {{shown}} results (limit reached)",
     "fileSearchSearching": "Searching…",
     "resizeFileTreeWidth": "Resize file tree width",
     "shellExited": "Exited with code {{exitCode}}",
