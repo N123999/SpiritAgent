@@ -697,7 +697,7 @@
     "hideContentSearch": "Hide content search",
     "showContentSearch": "Show content search",
     "exitFileSearch": "Exit content search",
-    "fileSearchPlaceholder": "Search workspace…",
+    "fileSearchPlaceholder": "Search",
     "matchCase": "Match case",
     "matchWholeWord": "Match whole word",
     "useRegex": "Use regular expression",
