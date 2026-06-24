@@ -4,6 +4,9 @@ import { rgPath } from '@vscode/ripgrep';
 
 const MAX_SEARCH_FILE_SIZE = '1M';
 
+/** 任意路径下的 .git 目录均不参与搜索（含 --hidden 全文模式） */
+const RIPGREP_EXCLUDED_GLOBS = ['!**/.git/**'] as const;
+
 export type RipgrepSearchOptions = {
   workspaceRoot: string;
   query: string;
@@ -51,7 +54,7 @@ function readRipgrepMatchLineText(lines: RipgrepMatchLine['lines']): string | un
   if (typeof lines.text === 'string') {
     return lines.text;
   }
-  // 二进制命中仅有 lines.bytes（如 --hidden 下 .git/objects）；工作区文本搜索跳过
+  // 二进制命中仅有 lines.bytes；工作区文本搜索跳过
   return undefined;
 }
 
@@ -92,6 +95,10 @@ export function buildRipgrepArgs(options: RipgrepSearchOptions): string[] {
     '--max-filesize',
     MAX_SEARCH_FILE_SIZE,
   ];
+
+  for (const excludedGlob of RIPGREP_EXCLUDED_GLOBS) {
+    args.push('-g', excludedGlob);
+  }
 
   if (globPattern === null || globPattern === undefined) {
     args.push('--hidden');

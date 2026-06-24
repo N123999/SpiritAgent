@@ -42,6 +42,8 @@ test('buildRipgrepArgs maps text query to fixed-string case-insensitive search',
     '--line-number',
     '--max-filesize',
     '1M',
+    '-g',
+    '!**/.git/**',
     '--hidden',
     '-F',
     '-i',
@@ -66,6 +68,8 @@ test('buildRipgrepArgs maps case-sensitive whole-word text search', () => {
     '--line-number',
     '--max-filesize',
     '1M',
+    '-g',
+    '!**/.git/**',
     '--hidden',
     '-w',
     '-F',
@@ -89,6 +93,8 @@ test('buildRipgrepArgs maps regexp query without --hidden when glob is set', () 
     '--line-number',
     '--max-filesize',
     '1M',
+    '-g',
+    '!**/.git/**',
     '-g',
     'src/**/*.ts',
     '-i',
@@ -226,6 +232,22 @@ test('runRipgrepSearch searches hidden directories in full-workspace mode', asyn
 
     assert.equal(matches.length, 1);
     assert.equal(matches[0]?.relativePath, '.cursor/rules.md');
+  });
+});
+
+test('runRipgrepSearch excludes .git directory at any path', async () => {
+  await withTempWorkspace(async (root) => {
+    await initGitRepo(root);
+    await writeFile(join(root, 'tracked.txt'), 'needle in tracked file\n', 'utf8');
+    await writeFile(join(root, '.git', 'spirit-test-needle'), 'needle in git dir\n', 'utf8');
+
+    const matches = await runRipgrepSearch({
+      workspaceRoot: root,
+      query: 'needle',
+    });
+
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0]?.relativePath, 'tracked.txt');
   });
 });
 
