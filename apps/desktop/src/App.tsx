@@ -133,20 +133,9 @@ export default function App() {
   );
 
   const openIntegrationsSettings = useCallback(() => {
-    surfaceNav.sessionSidebarChromeApiRef.current?.openSidebar();
-    if (surfaceNav.activeSurface !== "settings") {
-      surfaceNav.setLastNonSettingsSurface(
-        surfaceNav.activeSurface === "marketplace"
-          ? "marketplace"
-          : surfaceNav.activeSurface === "automations" ||
-              surfaceNav.activeSurface === "automation-detail"
-            ? "automations"
-            : "conversation",
-      );
-    }
+    surfaceNav.handleOpenSettings();
     surfaceNav.setExtensionSettingsId(null);
     surfaceNav.setSettingsTab("integrations");
-    surfaceNav.setActiveSurface("settings");
   }, [surfaceNav]);
 
   const composer = useComposerController({
@@ -186,6 +175,8 @@ export default function App() {
     conversationAbortShortcutEligibleRef: conversation.conversationAbortShortcutEligibleRef,
     sessionSidebarChromeApiRef: surfaceNav.sessionSidebarChromeApiRef,
     handleNewSession: surfaceNav.handleNewSession,
+    handleOpenSettings: surfaceNav.handleOpenSettings,
+    handleCloseSettings: surfaceNav.handleCloseSettings,
     setActionPickerOpen: composer.setActionPickerOpen,
     setFilePickerOpen: composer.setFilePickerOpen,
     uiLayoutScaleApi: uiLayoutScale,
@@ -303,20 +294,8 @@ export default function App() {
               surfaceNav.setSelectedAutomationId(null);
               surfaceNav.setActiveSurface("automations");
             }}
-            onOpenSettings={() => {
-              surfaceNav.sessionSidebarChromeApiRef.current?.openSidebar();
-              if (surfaceNav.activeSurface !== "settings") {
-                surfaceNav.setLastNonSettingsSurface(
-                  surfaceNav.activeSurface === "marketplace"
-                    ? "marketplace"
-                    : surfaceNav.activeSurface === "automations" || surfaceNav.activeSurface === "automation-detail"
-                      ? "automations"
-                      : "conversation",
-                );
-              }
-              surfaceNav.setActiveSurface("settings");
-            }}
-            onBackToSessions={() => surfaceNav.setActiveSurface(surfaceNav.lastNonSettingsSurface)}
+            onOpenSettings={surfaceNav.handleOpenSettings}
+            onBackToSessions={surfaceNav.handleCloseSettings}
             marketplaceActive={surfaceNav.marketplaceMode}
             automationsActive={surfaceNav.automationsMode}
             settingsTab={surfaceNav.settingsTab}

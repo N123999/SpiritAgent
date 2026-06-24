@@ -6,9 +6,11 @@ import {
   isModAltShortcutPressed,
   isModShortcutPressed,
   modAltLetterShortcutKbdKeys,
+  modCommaShortcutKbdKeys,
   modLetterShortcutKbdKeys,
   modSlashShortcutKbdKeys,
   modSlashShortcutLabel,
+  settingsShortcutLabel,
   shortcutLabel,
 } from "../../src/lib/desktop-shell.ts";
 
@@ -90,6 +92,30 @@ test("modSlashShortcutLabel formats slash shortcut per platform", () => {
   });
   withDesktopPlatform("linux", () => {
     assert.equal(modSlashShortcutLabel(), "Ctrl+/");
+  });
+});
+
+test("modCommaShortcutKbdKeys returns comma shortcut chips per platform", () => {
+  withDesktopPlatform("darwin", () => {
+    assert.deepEqual(modCommaShortcutKbdKeys(), ["⌘", ","]);
+  });
+  withDesktopPlatform("win32", () => {
+    assert.deepEqual(modCommaShortcutKbdKeys(), ["Ctrl", ","]);
+  });
+  withDesktopPlatform("linux", () => {
+    assert.deepEqual(modCommaShortcutKbdKeys(), ["Ctrl", ","]);
+  });
+});
+
+test("settingsShortcutLabel formats comma shortcut per platform", () => {
+  withDesktopPlatform("darwin", () => {
+    assert.equal(settingsShortcutLabel(), "⌘,");
+  });
+  withDesktopPlatform("win32", () => {
+    assert.equal(settingsShortcutLabel(), "Ctrl+,");
+  });
+  withDesktopPlatform("linux", () => {
+    assert.equal(settingsShortcutLabel(), "Ctrl+,");
   });
 });
 

@@ -75,7 +75,8 @@ import { resolveWorkspaceGroupingRoot } from "@/lib/workspace-grouping";
 import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { isViteDev } from "@/lib/vite-dev";
 import { cn } from "@/lib/utils";
-import { shortcutLabel } from "@/lib/desktop-shell";
+import { SettingsShortcutKbd } from "@/components/layout/desktop-shortcut-kbds";
+import { shortcutLabel, settingsShortcutLabel } from "@/lib/desktop-shell";
 import i18n from "@/lib/i18n";
 import { useHostApi } from "@/hooks/useHostApi";
 import type { SessionListItem } from "@/types";
@@ -87,6 +88,7 @@ import {
 
 /** 平台快捷键提示，模块加载时计算（平台不会运行时变化）。 */
 const newSessionShortcutLabel = shortcutLabel("N");
+const settingsShortcutLabelText = settingsShortcutLabel();
 
 
 function samePath(a: string, b: string): boolean {
@@ -1734,21 +1736,50 @@ function SessionSidebarInner({
             narrow && "mt-auto flex flex-col items-center py-2",
           )}
         >
-          <Button
-            type="button"
-            variant="ghost"
-            size={narrow ? "icon" : "sm"}
-            className={cn(
-              sidebarItemDefaultTextClass,
-              sidebarInteractionMotionClass,
-              sidebarItemHoverClass(micaStyle),
-              narrow ? "size-8" : "h-8 w-full justify-start gap-2",
-            )}
-            onClick={onOpenSettings}
-          >
-            <Settings className="size-4" aria-hidden />
-            <span className={cn(narrow && "sr-only")}>{t('settings.title')}</span>
-          </Button>
+          {narrow ? (
+            <Tooltip delayDuration={300} disableHoverableContent>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    sidebarItemDefaultTextClass,
+                    sidebarInteractionMotionClass,
+                    sidebarItemHoverClass(micaStyle),
+                    "size-8",
+                  )}
+                  onClick={onOpenSettings}
+                  aria-label={t("settings.title")}
+                >
+                  <Settings className="size-4" aria-hidden />
+                  <span className="sr-only">{t("settings.title")}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={4}>
+                {t("settings.title")} <SettingsShortcutKbd />
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                sidebarItemDefaultTextClass,
+                sidebarInteractionMotionClass,
+                sidebarItemHoverClass(micaStyle),
+                "h-8 w-full justify-start gap-2",
+              )}
+              onClick={onOpenSettings}
+            >
+              <Settings className="size-4" aria-hidden />
+              <span>{t("settings.title")}</span>
+              <span className="ml-auto text-[0.65rem] text-sidebar-item-foreground" aria-hidden>
+                {settingsShortcutLabelText}
+              </span>
+            </Button>
+          )}
         </div>
       ) : null}
 

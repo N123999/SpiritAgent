@@ -167,6 +167,28 @@ export function useAppSurfaceNavigation({
     });
   }, [composerAutomationApiRef, runtime, t]);
 
+  const handleOpenSettings = useCallback(() => {
+    sessionSidebarChromeApiRef.current?.openSidebar();
+    const current = activeSurfaceRef.current;
+    if (current !== "settings") {
+      setLastNonSettingsSurface(
+        current === "marketplace"
+          ? "marketplace"
+          : current === "automations" || current === "automation-detail"
+            ? "automations"
+            : "conversation",
+      );
+    }
+    setActiveSurface("settings");
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    if (activeSurfaceRef.current !== "settings") {
+      return;
+    }
+    setActiveSurface(lastNonSettingsSurface);
+  }, [lastNonSettingsSurface]);
+
   const extensionSettingsItems = useMemo(
     () =>
       (snapshot?.extensionsList ?? [])
@@ -206,6 +228,8 @@ export function useAppSurfaceNavigation({
     handleNewSession,
     handleNewSessionInWorkspace,
     handleGenerateAutomation,
+    handleOpenSettings,
+    handleCloseSettings,
     extensionSettingsItems,
   };
 }

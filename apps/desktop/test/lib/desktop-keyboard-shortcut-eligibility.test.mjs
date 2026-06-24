@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  resolveModCommaSettingsShortcutAction,
   resolveModPShortcutAction,
   shouldTriggerConversationAbortShortcut,
+  shouldTriggerSettingsEscapeShortcut,
 } from '../../src/lib/desktop-keyboard-shortcut-eligibility.ts';
 
 const conversationContext = {
@@ -143,4 +145,140 @@ test('shouldTriggerConversationAbortShortcut rejects xterm targets', () => {
     ),
     false,
   );
+});
+
+test('resolveModCommaSettingsShortcutAction opens settings from conversation', () => {
+  assert.equal(
+    resolveModCommaSettingsShortcutAction(
+      {
+        defaultPrevented: false,
+        key: ',',
+        shiftKey: false,
+        altKey: false,
+        modPressed: true,
+        target: { tagName: 'DIV' },
+      },
+      { activeSurface: 'conversation' },
+    ),
+    'open-settings',
+  );
+});
+
+test('resolveModCommaSettingsShortcutAction ignores when already on settings', () => {
+  assert.equal(
+    resolveModCommaSettingsShortcutAction(
+      {
+        defaultPrevented: false,
+        key: ',',
+        shiftKey: false,
+        altKey: false,
+        modPressed: true,
+        target: { tagName: 'DIV' },
+      },
+      { activeSurface: 'settings' },
+    ),
+    null,
+  );
+});
+
+test('resolveModCommaSettingsShortcutAction ignores textarea targets', () => {
+  assert.equal(
+    resolveModCommaSettingsShortcutAction(
+      {
+        defaultPrevented: false,
+        key: ',',
+        shiftKey: false,
+        altKey: false,
+        modPressed: true,
+        target: { tagName: 'TEXTAREA' },
+      },
+      { activeSurface: 'conversation' },
+    ),
+    null,
+  );
+});
+
+test('shouldTriggerSettingsEscapeShortcut accepts escape on settings surface', () => {
+  assert.equal(
+    shouldTriggerSettingsEscapeShortcut(
+      {
+        defaultPrevented: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        code: 'Escape',
+        key: 'Escape',
+        target: { tagName: 'DIV', isContentEditable: false, closest: () => null },
+      },
+      { activeSurface: 'settings' },
+    ),
+    true,
+  );
+});
+
+test('shouldTriggerSettingsEscapeShortcut rejects non-settings surface', () => {
+  assert.equal(
+    shouldTriggerSettingsEscapeShortcut(
+      {
+        defaultPrevented: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        code: 'Escape',
+        key: 'Escape',
+        target: null,
+      },
+      { activeSurface: 'conversation' },
+    ),
+    false,
+  );
+});
+
+test('shouldTriggerSettingsEscapeShortcut rejects textarea targets', () => {
+  assert.equal(
+    shouldTriggerSettingsEscapeShortcut(
+      {
+        defaultPrevented: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+        code: 'Escape',
+        key: 'Escape',
+        target: { tagName: 'TEXTAREA', isContentEditable: false, closest: () => null },
+      },
+      { activeSurface: 'settings' },
+    ),
+    false,
+  );
+});
+
+test('shouldTriggerSettingsEscapeShortcut rejects when a Radix dialog is open', () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = {
+    querySelector: (selector) =>
+      selector.includes('data-slot="dialog-content"][data-open') ? {} : null,
+  };
+  try {
+    assert.equal(
+      shouldTriggerSettingsEscapeShortcut(
+        {
+          defaultPrevented: false,
+          ctrlKey: false,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          code: 'Escape',
+          key: 'Escape',
+          target: { tagName: 'DIV', isContentEditable: false, closest: () => null },
+        },
+        { activeSurface: 'settings' },
+      ),
+      false,
+    );
+  } finally {
+    globalThis.document = previousDocument;
+  }
 });
