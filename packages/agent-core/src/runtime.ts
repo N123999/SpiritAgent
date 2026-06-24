@@ -269,6 +269,8 @@ export class AgentRuntime<
   private pendingSubagentBatchContinuation:
     | PendingSubagentBatchContinuation<State, ToolRequest>
     | undefined;
+  /** 同步 await performToolExecution 期间 pendingToolCallContinuation 已清空，需单独计数 */
+  private inFlightSynchronousToolExecutionsStore = 0;
   private completedTurnResultStore:
     | RuntimeTurnResult<State, ToolRequest, TrustTarget>
     | undefined;
@@ -675,6 +677,7 @@ export class AgentRuntime<
 
   isBusy(): boolean {
     return (
+      this.inFlightSynchronousToolExecutionsStore > 0 ||
       this.pendingStreamingRound !== undefined ||
       this.pendingToolAgentRound !== undefined ||
       this.pendingToolCallContinuation !== undefined ||
@@ -2470,12 +2473,17 @@ export class AgentRuntime<
     failed: boolean;
     backgroundExecution: boolean;
   }> {
-    return performToolExecutionInternal(
-      this as unknown as ToolExecutionRuntime<Config, State, ToolRequest, TrustTarget>,
-      request,
-      toolName,
-      toolCallId,
-    );
+    this.inFlightSynchronousToolExecutionsStore += 1;
+    try {
+      return await performToolExecutionInternal(
+        this as unknown as ToolExecutionRuntime<Config, State, ToolRequest, TrustTarget>,
+        request,
+        toolName,
+        toolCallId,
+      );
+    } finally {
+      this.inFlightSynchronousToolExecutionsStore -= 1;
+    }
   }
 
   private async tryPerformEarlyInternalToolCall(
