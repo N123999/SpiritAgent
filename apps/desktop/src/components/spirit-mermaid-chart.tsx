@@ -157,7 +157,7 @@ function MermaidPanZoom({
         >
           <button
             type="button"
-            className="flex items-center justify-center rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center justify-center rounded p-1.5 text-foreground transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={zoom >= maxZoom}
             onClick={() => adjustZoom(zoomStep)}
             title={zoomInLabel}
@@ -167,7 +167,7 @@ function MermaidPanZoom({
           </button>
           <button
             type="button"
-            className="flex items-center justify-center rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center justify-center rounded p-1.5 text-foreground transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={zoom <= minZoom}
             onClick={() => adjustZoom(-zoomStep)}
             title={zoomOutLabel}
@@ -177,7 +177,7 @@ function MermaidPanZoom({
           </button>
           <button
             type="button"
-            className="flex items-center justify-center rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="flex items-center justify-center rounded p-1.5 text-foreground transition-colors hover:bg-muted/50"
             onClick={resetView}
             title={zoomResetLabel}
             aria-label={zoomResetLabel}
