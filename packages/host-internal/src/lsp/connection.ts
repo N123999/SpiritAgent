@@ -30,6 +30,13 @@ export function buildLanguageServerSpawnOptions(
   return options;
 }
 
+function waitForChildSpawn(child: ReturnType<typeof spawn>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('spawn', () => resolve());
+  });
+}
+
 export interface LspConnectionOptions {
   command: string;
   args: string[];
@@ -88,6 +95,8 @@ export class LspConnection {
         console.error(`[lsp] ${text}`);
       }
     });
+
+    await waitForChildSpawn(child);
 
     if (!child.stdout || !child.stdin) {
       throw new Error('Language server child process is missing stdio pipes');
