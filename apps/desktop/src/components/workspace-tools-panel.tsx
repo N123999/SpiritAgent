@@ -211,6 +211,8 @@ export type WorkspaceToolsDockProps = {
   className?: string;
   /** Windows 云母 / macOS Vibrancy：工作区面板使用半透明主题底色。 */
   useMicaBackdrop?: boolean;
+  /** 工作区 Monaco 编辑器 AI 补全；缺省为 true。 */
+  codeCompletionEnabled?: boolean;
 };
 
 type WorkspaceToolsDockContentProps = Omit<
@@ -501,6 +503,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   readGitCommitMessage,
   submitGitChip,
   useMicaBackdrop = false,
+  codeCompletionEnabled = true,
   isResizing,
 }: WorkspaceToolsDockContentProps) {
   const { t } = useTranslation();
@@ -904,6 +907,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                         onFileSnippetAddToSession={onFileSnippetAddToSession}
                         onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
                         useMicaBackdrop={useMicaBackdrop}
+                        codeCompletionEnabled={codeCompletionEnabled}
                       />
                     </div>
                   ) : item.kind === "shell" ? (

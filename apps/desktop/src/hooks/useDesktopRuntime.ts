@@ -213,6 +213,9 @@ function updateConfigFromSettingsForm(
       lsp: {
         enabled: s.lspEnabled,
       },
+      codeCompletion: {
+        enabled: s.codeCompletionEnabled,
+      },
     },
     networks: {
       llmHttpVersion: s.llmHttpVersion,
@@ -333,6 +336,7 @@ export function useDesktopRuntime() {
     dreamEnabled: false,
     dreamDebugMode: false,
     lspEnabled: true,
+    codeCompletionEnabled: true,
     llmHttpVersion: "http2",
   });
   const [busyAction, setBusyAction] = useState<BusyAction>("");
@@ -564,6 +568,7 @@ export function useDesktopRuntime() {
         dreamEnabled: next.dreams.settings.enabled,
         dreamDebugMode: next.dreams.settings.debugMode,
         lspEnabled: next.lsp.userEnabled,
+        codeCompletionEnabled: next.codeCompletion.userEnabled,
         llmHttpVersion: next.config.networks.llmHttpVersion,
       };
     });

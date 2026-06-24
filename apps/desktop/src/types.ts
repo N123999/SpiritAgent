@@ -99,6 +99,10 @@ export interface DesktopLspSnapshot {
   providers: DesktopLspProviderSnapshot[];
 }
 
+export interface DesktopCodeCompletionSnapshot {
+  userEnabled: boolean;
+}
+
 export interface DesktopWebHostConfigUpdate {
   enabled?: boolean;
   host?: string;
@@ -794,6 +798,7 @@ export interface DesktopSnapshot {
   mcpServers: DesktopMcpServerListItem[];
   hooksList: DesktopHookListItem[];
   lsp: DesktopLspSnapshot;
+  codeCompletion: DesktopCodeCompletionSnapshot;
   conversation: ConversationSnapshot;
   /** 从磁盘打开的会话；未从文件打开时为 `undefined`（新会话/未保存）。 */
   activeSession?: ActiveSessionSnapshot;

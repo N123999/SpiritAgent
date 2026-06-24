@@ -441,6 +441,7 @@ export function ConversationView({
           getGitHubPullRequestChecks={list.runtime.getGitHubPullRequestChecks}
           mergeGitHubPullRequest={list.runtime.mergeGitHubPullRequest}
           markGitHubPullRequestReady={list.runtime.markGitHubPullRequestReady}
+          codeCompletionEnabled={snapshot?.codeCompletion?.userEnabled !== false}
           widthPx={workspaceTools.workspaceToolsWidthPx}
           onWidthPxChange={workspaceTools.onWorkspaceToolsWidthPxChange}
           gitSnapshot={snapshot?.git}

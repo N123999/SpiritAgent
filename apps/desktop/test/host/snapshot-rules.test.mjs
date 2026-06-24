@@ -70,13 +70,15 @@ test('buildDesktopSnapshot maps rulesList from metadata entries', () => {
     activeApiKeyConfigured: false,
     mcpStatus: { servers: [] },
     mcpServers: [],
-    lsp: { providers: [] },
+    hooksList: [],
+    lsp: { userEnabled: true, active: false, providers: [] },
     conversation: {
       messages: [],
       isBusy: false,
       isBlocked: false,
     },
     composerSessionKey: 'test',
+    automationsList: [],
   });
 
   assert.equal(snapshot.rulesList.length, 2);
