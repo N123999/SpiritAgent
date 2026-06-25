@@ -665,7 +665,7 @@ export function buildAgentModeSystemMessage(
     lines.push(
       'When the user reports a bug, do not attempt a fix immediately. Instead:',
       '',
-      '1. Propose at least 5 hypotheses about the root cause, ranked by likelihood.',
+      '1. Propose hypotheses about the root cause, ranked by likelihood.',
       '2. Embed structured log points to test each hypothesis.',
       '',
       'Log format and location:',
