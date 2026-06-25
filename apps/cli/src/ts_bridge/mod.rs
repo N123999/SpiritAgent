@@ -1,6 +1,5 @@
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, VecDeque},
@@ -10,7 +9,6 @@ use std::{
 };
 
 use crate::{
-    ask_questions::AskQuestionsRequest,
     host_runtime::{
         RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message,
         tool_approval_block, tool_failed_block,
@@ -34,21 +32,31 @@ use crate::{
         McpStatusSnapshot, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
     rewind::{self, DesktopRewindCheckpointSnapshot, RewindRestoreOutcome},
-    rules::{EnabledRule, RuleEntry},
+    rules::EnabledRule,
     runtime_handle::RuntimeExportState,
-    session::{PendingMcpResource, SessionModel},
-    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry, SkillEntry},
+    session::SessionModel,
+    skills::{ActiveSkillPayload, EnabledSkillCatalogEntry},
     view::{ChatMessage, MessageRole, PendingAssistantAux, PendingSubagentApprovalView},
 };
 
 mod constants;
 mod json_rpc;
+mod types;
 
 use constants::{ENV_API_BASE, ENV_API_KEY};
 #[cfg(test)]
 pub(crate) use constants::ENV_RUNTIME_BACKEND_NODE_PATH;
 pub(crate) use json_rpc::resolve_bridge_script;
 use json_rpc::{is_json_rpc_response, JsonRpcProcess};
+pub use types::*;
+pub(crate) use types::bridge::{
+    BridgeChatArchive, BridgeDrainEventsResult, BridgeExportState,
+    BridgeManualToolCommandStartResult, BridgePendingApproval, BridgeRuntimeEvent,
+    BridgeRuntimeSnapshot, BridgeSubagentSessionArchiveEntry, BridgeSubagentSessionSummary,
+    BridgeToolExecution,
+    BridgeWorkspaceFileReferenceSuggestions, LocalMcpToolFailedEvent, LocalMcpToolRequest,
+    LocalMcpToolResultEvent,
+};
 
 pub struct TsBridgeRuntime {
     process: JsonRpcProcess,
@@ -81,421 +89,6 @@ enum PendingApprovalKind {
     Manual,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalMcpToolRequest {
-    kind: String,
-    name: String,
-    server: String,
-    display_name: String,
-    tool_name: String,
-    arguments: Value,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalMcpToolResultEvent {
-    request: LocalMcpToolRequest,
-    output: String,
-    tool_call_id: Option<String>,
-    tool_name: String,
-    subagent_session_id: Option<String>,
-    subagent_title: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LocalMcpToolFailedEvent {
-    request: LocalMcpToolRequest,
-    error: String,
-    tool_call_id: Option<String>,
-    tool_name: String,
-    subagent_session_id: Option<String>,
-    subagent_title: Option<String>,
-}
-
-fn default_bridge_approval_level() -> String {
-    "default".to_string()
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeRuntimeSnapshot {
-    pending_user_turn: Option<String>,
-    pending_image_paths: Vec<String>,
-    pending_mcp_resources: Vec<PendingMcpResource>,
-    pending_aux_state: Option<PendingAssistantAux>,
-    has_pending_approval: bool,
-    has_pending_manual_approval: bool,
-    has_pending_questions: bool,
-    current_pending_approval: Option<BridgePendingApproval>,
-    #[serde(default)]
-    child_sessions: Vec<BridgeSubagentSessionSummary>,
-    current_pending_questions: Option<BridgePendingQuestions>,
-    is_busy: bool,
-    #[serde(default)]
-    loop_enabled: bool,
-    #[serde(default = "default_bridge_approval_level")]
-    approval_level: String,
-    background_tool_status: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeExportState {
-    api_messages: Vec<Value>,
-    request_trace: Vec<Value>,
-    system_prompts: Value,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeChatArchive {
-    messages: Vec<BridgeChatMessage>,
-    assistant_aux: Vec<BridgeAssistantAuxEntry>,
-    llm_history: Vec<ArchivedLlmMessage>,
-    #[serde(default)]
-    loop_enabled: bool,
-    #[serde(default = "default_bridge_approval_level")]
-    approval_level: String,
-    #[serde(default)]
-    subagent_sessions: Vec<BridgeSubagentSessionArchiveEntry>,
-    #[serde(default)]
-    rewind: Option<Value>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeSubagentSessionSummary {
-    session_id: String,
-    parent_tool_call_id: String,
-    title: String,
-    status: crate::ports::SubagentSessionStatus,
-    started_at_unix_ms: u64,
-    updated_at_unix_ms: u64,
-    completed_at_unix_ms: Option<u64>,
-    latest_message: Option<String>,
-    final_output: Option<String>,
-    error: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeSubagentSessionArchiveEntry {
-    summary: BridgeSubagentSessionSummary,
-    #[serde(default)]
-    llm_history: Vec<ArchivedLlmMessage>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeAssistantAuxEntry {
-    message_index: usize,
-    thinking: Option<String>,
-    compaction: Option<String>,
-    #[serde(default)]
-    finish_task_notice: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgePendingApproval {
-    prompt: String,
-    request: Value,
-    trust_target: Option<Value>,
-    tool_call_id: Option<String>,
-    tool_name: String,
-    subagent_session_id: Option<String>,
-    subagent_title: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgePendingQuestions {
-    request: Value,
-    tool_call_id: String,
-    tool_name: String,
-    questions: AskQuestionsRequest,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeWorkspaceFileReferenceQuery {
-    start: usize,
-    end: usize,
-    raw: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeWorkspaceFileReferenceSuggestions {
-    query: BridgeWorkspaceFileReferenceQuery,
-    suggestions: Vec<String>,
-    #[serde(default)]
-    index_ready: Option<bool>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeToolExecution {
-    tool_call_id: String,
-    tool_name: String,
-    request: Value,
-    output: String,
-    failed: bool,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeDrainEventsResult {
-    events: Vec<BridgeRuntimeEvent>,
-    snapshot: BridgeRuntimeSnapshot,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-enum BridgeManualToolCommandStartResult {
-    #[serde(rename = "completed")]
-    Completed {
-        request: Value,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        output: String,
-        failed: bool,
-        #[serde(alias = "backgroundExecution")]
-        background_execution: bool,
-    },
-    #[serde(rename = "started-background")]
-    StartedBackground {
-        request: Value,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        #[serde(alias = "statusText")]
-        status_text: Option<String>,
-    },
-    #[serde(rename = "started-user-turn")]
-    StartedUserTurn {
-        #[serde(alias = "userMessage")]
-        user_message: String,
-    },
-    #[serde(rename = "requires-approval")]
-    RequiresApproval { approval: BridgePendingApproval },
-    #[serde(rename = "denied")]
-    Denied {
-        request: Value,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        message: String,
-    },
-    #[serde(rename = "failed")]
-    Failed {
-        error: String,
-        request: Option<Value>,
-    },
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliHostMetadataSnapshot {
-    pub rule_entries: Vec<RuleEntry>,
-    pub skill_entries: Vec<SkillEntry>,
-    pub plan_metadata: PlanMetadata,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionToolEntry {
-    pub name: String,
-    pub description: String,
-    pub approval_mode: Option<String>,
-    pub execution_mode: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionSettingOptionEntry {
-    pub value: String,
-    pub label: String,
-    pub description: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionDesktopCssEntry {
-    pub path: String,
-    pub media: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionCliUiHookTokensEntry {
-    pub foreground: Option<String>,
-    pub border: Option<String>,
-    pub accent: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionCliUiHookEntry {
-    pub slot: String,
-    pub variant: Option<String>,
-    pub tokens: Option<CliExtensionCliUiHookTokensEntry>,
-    pub prefix: Option<String>,
-    pub suffix: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionDesktopContributes {
-    pub css: Option<Vec<CliExtensionDesktopCssEntry>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionCliContributes {
-    pub hooks: Option<Vec<CliExtensionCliUiHookEntry>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionSettingEntry {
-    pub key: String,
-    pub r#type: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub placeholder: Option<String>,
-    pub required: Option<bool>,
-    pub default_value: Option<Value>,
-    pub options: Option<Vec<CliExtensionSettingOptionEntry>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionSecretSlotEntry {
-    pub key: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub required: Option<bool>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionContributes {
-    pub tools: Option<Vec<CliExtensionToolEntry>>,
-    pub desktop: Option<CliExtensionDesktopContributes>,
-    pub cli: Option<CliExtensionCliContributes>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliExtensionEntry {
-    pub id: String,
-    pub display_name: String,
-    pub version: String,
-    pub description: Option<String>,
-    pub author: Option<String>,
-    pub homepage: Option<String>,
-    pub main: Option<String>,
-    pub supported_hosts: Vec<String>,
-    pub activation_events: Option<Vec<String>>,
-    pub requested_capabilities: Option<Vec<String>>,
-    pub contributes: Option<CliExtensionContributes>,
-    pub settings_schema: Option<Vec<CliExtensionSettingEntry>>,
-    pub secret_slots: Option<Vec<CliExtensionSecretSlotEntry>>,
-    pub archive_file_name: Option<String>,
-    pub installed_at_unix_ms: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliMarketplaceCatalogItem {
-    pub extension_id: String,
-    pub package_name: String,
-    pub status: String,
-    pub featured: bool,
-    pub default_version: String,
-    pub default_channel: String,
-    pub default_review_status: String,
-    pub detail_path: String,
-    pub display_name: String,
-    pub description: String,
-    pub author: Option<String>,
-    pub homepage_url: Option<String>,
-    pub repository_url: Option<String>,
-    pub keywords: Vec<String>,
-    pub supported_hosts: Vec<String>,
-    pub requested_capabilities: Vec<String>,
-    pub icon_url: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliMarketplaceVersionChangelog {
-    pub summary: String,
-    pub body: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliMarketplaceDetailVersion {
-    pub version: String,
-    pub channel: String,
-    pub review_status: String,
-    pub display_name: String,
-    pub description: String,
-    pub author: Option<String>,
-    pub homepage_url: Option<String>,
-    pub repository_url: Option<String>,
-    pub keywords: Vec<String>,
-    pub supported_hosts: Vec<String>,
-    pub requested_capabilities: Vec<String>,
-    pub icon_url: Option<String>,
-    pub published_at: Option<String>,
-    pub tarball_url: Option<String>,
-    pub integrity: Option<String>,
-    pub shasum: Option<String>,
-    pub changelog: Option<CliMarketplaceVersionChangelog>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliMarketplaceDetail {
-    pub extension_id: String,
-    pub package_name: String,
-    pub status: String,
-    pub featured: bool,
-    pub default_version: String,
-    pub readme_path: String,
-    pub versions: Vec<CliMarketplaceDetailVersion>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliMarketplacePreparedInstall {
-    pub extension_id: String,
-    pub package_name: String,
-    pub display_name: String,
-    pub description: String,
-    pub version: String,
-    pub channel: String,
-    pub review_status: String,
-    pub supported_hosts: Vec<String>,
-    pub supports_current_host: bool,
-    pub tarball_url: Option<String>,
-    pub integrity: Option<String>,
-    pub shasum: Option<String>,
-    pub source_file_name: String,
-    pub catalog_item: CliMarketplaceCatalogItem,
-    pub detail: CliMarketplaceDetail,
-}
-
 fn bootstrap_plan_metadata() -> PlanMetadata {
     PlanMetadata {
         path: PathBuf::new(),
@@ -503,98 +96,6 @@ fn bootstrap_plan_metadata() -> PlanMetadata {
         agent_mode: "agent".to_string(),
         plan_mode: false,
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BridgeLlmTokenUsage {
-    input_tokens: u64,
-    output_tokens: u64,
-    total_tokens: u64,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "kind")]
-enum BridgeRuntimeEvent {
-    #[serde(rename = "begin-assistant-response")]
-    BeginAssistantResponse,
-    #[serde(rename = "update-pending-assistant-thinking")]
-    UpdatePendingAssistantThinking { text: String },
-    #[serde(rename = "assistant-thinking-segment-finalized")]
-    AssistantThinkingSegmentFinalized { text: String },
-    #[serde(rename = "update-pending-assistant-compaction")]
-    UpdatePendingAssistantCompaction { text: String },
-    #[serde(rename = "assistant-chunk")]
-    AssistantChunk { text: String },
-    #[serde(rename = "replace-pending-assistant")]
-    ReplacePendingAssistant { text: String },
-    #[serde(rename = "assistant-response-completed")]
-    AssistantResponseCompleted,
-    #[serde(rename = "remove-pending-assistant")]
-    RemovePendingAssistant,
-    #[serde(rename = "approval-requested")]
-    ApprovalRequested { approval: BridgePendingApproval },
-    #[serde(rename = "questions-requested")]
-    QuestionsRequested { questions: BridgePendingQuestions },
-    #[serde(rename = "tool-call-started")]
-    ToolCallStarted {
-        #[serde(alias = "toolCallId")]
-        tool_call_id: String,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        request: Value,
-    },
-    #[serde(rename = "streaming-tool-preview")]
-    StreamingToolPreview {
-        #[serde(alias = "toolCallId")]
-        tool_call_id: String,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        #[serde(alias = "argumentsJson")]
-        arguments_json: String,
-    },
-    #[serde(rename = "approval-resolved")]
-    ApprovalResolved {
-        #[serde(alias = "toolCallId")]
-        tool_call_id: String,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        request: Value,
-        #[serde(alias = "decisionKind")]
-        decision_kind: String,
-    },
-    #[serde(rename = "history-compacted")]
-    HistoryCompacted {
-        #[serde(alias = "droppedMessages")]
-        dropped_messages: usize,
-        #[serde(alias = "summaryPreview")]
-        summary_preview: Option<String>,
-    },
-    #[serde(rename = "background-tool-status")]
-    BackgroundToolStatus {
-        phase: String,
-        #[serde(alias = "toolName")]
-        tool_name: Option<String>,
-        request: Option<Value>,
-        #[serde(alias = "statusText")]
-        status_text: Option<String>,
-        failed: Option<bool>,
-    },
-    #[serde(rename = "tool-execution-finished")]
-    ToolExecutionFinished { execution: BridgeToolExecution },
-    /// Incremental shell stdout/stderr while `run_shell_command` runs in the background.
-    /// CLI TUI does not render chunks yet; Desktop projects them into tool cards.
-    #[serde(rename = "tool-execution-output-chunk")]
-    ToolExecutionOutputChunk {
-        #[serde(alias = "toolCallId")]
-        tool_call_id: String,
-        #[serde(alias = "toolName")]
-        tool_name: String,
-        request: Value,
-        chunk: String,
-    },
-    #[serde(rename = "context-usage-updated")]
-    ContextUsageUpdated { usage: BridgeLlmTokenUsage },
 }
 
 impl TsBridgeRuntime {
