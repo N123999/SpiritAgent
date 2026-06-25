@@ -394,10 +394,15 @@ export async function resumePendingQuestions<
     execution: questionsExecution,
   });
 
+  const preparedContent = await prepareAndSyncRuntimeToolResultToHistory(
+    runtime,
+    pending.toolCallId,
+    output,
+  );
   const resumedState = runtime.options.appendToolResultMessage(
     pending.state,
     pending.toolCallId,
-    output,
+    preparedContent,
   );
 
   if (pending.remainingCalls.length > 0) {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { AgentRuntime } from '../runtime.js';
+import { llmMessageTextContent } from '../ports.js';
 import { assistantToolCallMessageFromState } from '../tool-agent.js';
 import { createTurnContext, repairMissingToolResultsInHistory } from './helpers.js';
 import type { HookRunner } from '../hooks/types.js';
@@ -311,6 +312,93 @@ test('resumePendingQuestions forwards argumentsJson to postToolUse hook', async 
   await resumePendingQuestions(runtime, { status: 'answered', answers: [] });
 
   assert.deepEqual(capturedToolInput, { command: 'echo hi' });
+});
+
+test('resumePendingQuestions syncs native ask_questions answers into historyStore', async () => {
+  const state = { messages: [] as Array<{ role: string; content: string }>, steps: 0 };
+  const turn = createTurnContext<{ name: string }>();
+  const request = { name: 'ask_questions' };
+  const answersResult = {
+    status: 'answered' as const,
+    answers: [{ questionId: 'q1', title: 'Q1', kind: 'text' as const, answered: true, text: 'alpha' }],
+  };
+  const historyStore = [
+    {
+      role: 'assistant' as const,
+      content: [],
+      toolCalls: [{ id: 'call_q', name: 'ask_questions', argumentsJson: '{}' }],
+    },
+  ];
+  const runtime = {
+    options: {
+      config: {},
+      llmTransport: {
+        startToolAgentRound: async () => ({
+          kind: 'success',
+          result: {
+            state,
+            step: { kind: 'final-response-ready' },
+            requestTrace: [],
+          },
+        }),
+      },
+      toolExecutor: {
+        toolDefinitionsJson: () => [],
+        continueAfterQuestions: async () => undefined,
+      },
+      appendToolResultMessage: (
+        currentState: typeof state,
+        toolCallId: string,
+        content: string,
+      ) => ({
+        messages: [...currentState.messages, { role: 'tool', content, toolCallId }],
+        steps: currentState.steps,
+      }),
+      createContinuationState: (messages: unknown[]) => ({ messages, steps: 0 }),
+      extractAssistantText: () => 'done',
+    },
+    historyStore,
+    requestTraceStore: [],
+    pendingUserTurnStore: undefined,
+    pendingApproval: undefined,
+    pendingQuestions: {
+      pendingUserInput: 'ask me',
+      state,
+      request,
+      questions: [],
+      toolCallId: 'call_q',
+      toolName: 'ask_questions',
+      argumentsJson: '{}',
+      remainingCalls: [],
+      turn,
+      resumeAsStreaming: false,
+      streamingEmitBeginResponse: true,
+    },
+    pendingToolAgentRound: undefined,
+    appendTrace: () => {},
+    clearStreamingUiState: () => {},
+    completeTurn: () => {},
+    emitEvent: () => {},
+    performToolExecution: async () => {
+      throw new Error('native ask_questions should not execute');
+    },
+    startBackgroundToolExecutionAsync: () => {},
+    startHistoryCompactionAsync: () => {},
+    loopEnabled: () => false,
+    queuePendingToolCallContinuation: () => {},
+    takeCompletedTurnResult: () => undefined,
+    compactHistoryImmediate: async () => ({ droppedMessages: 0, beforeLength: 0, afterLength: 0 }),
+    isBusy: () => false,
+    poll: async () => {},
+  } as unknown as TurnMachineRuntime<{}, typeof state, typeof request>;
+
+  await resumePendingQuestions(runtime, answersResult);
+
+  const toolMessage = runtime.historyStore.find(
+    (message) => message.role === 'tool' && message.toolCallId === 'call_q',
+  );
+  assert.ok(toolMessage);
+  assert.equal(llmMessageTextContent(toolMessage.content), JSON.stringify(answersResult));
 });
 
 test('executeAuthorizedToolCall runs postToolUse after internal tool completion', async () => {

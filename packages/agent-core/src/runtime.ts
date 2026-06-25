@@ -1462,7 +1462,7 @@ export class AgentRuntime<
     pending.turn.toolExecutions.push(questionsFinished);
     this.emitEvent({ kind: 'tool-execution-finished', execution: questionsFinished });
 
-    const resumedState = this.options.appendToolResultMessage(
+    const resumedState = await this.appendToolResultMessageWithOutputTruncation(
       pending.state,
       pending.toolCallId,
       output,
