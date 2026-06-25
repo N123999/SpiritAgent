@@ -272,7 +272,7 @@ test('toolCallSummaryForPhase: read_file tool-output-archives uses tool output d
 
 test('toolCallSummaryCopyForRequest: shell reason and command', () => {
   assert.deepEqual(
-    toolCallSummaryCopyForRequest('run_shell_command', {
+    toolCallSummaryCopyForRequest('shell', {
       reason: 'Install dependencies',
       command: 'npm install',
     }),

@@ -45,11 +45,11 @@ test('streaming-tool-preview → tool_call with proper kind and title', () => {
   assert.equal(update.locations.length, 1);
 });
 
-test('streaming-tool-preview: run_shell_command → execute kind', () => {
+test('streaming-tool-preview: shell → execute kind', () => {
   const event: RuntimeEvent<JsonValue> = {
     kind: 'streaming-tool-preview',
     toolCallId: 'call_2',
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     argumentsJson: JSON.stringify({ command: 'npm test' }),
   };
   const result = map(event);
@@ -101,7 +101,7 @@ test('tool-execution-finished: failure → failed', () => {
     kind: 'tool-execution-finished',
     execution: {
       toolCallId: 'call_2',
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       request: {} as JsonValue,
       output: 'exit code 1',
       failed: true,

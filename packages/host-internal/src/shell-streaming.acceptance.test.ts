@@ -23,7 +23,7 @@ test('NodeHostToolService streams incremental shell output via attachRequestMeta
 
     assert.equal(
       service.shouldExecuteInBackground?.({
-        name: 'run_shell_command',
+        name: 'shell',
         command: 'printf "a\\n"; sleep 0.15; printf "b\\n"',
         reason: 'acceptance',
       }),
@@ -31,7 +31,7 @@ test('NodeHostToolService streams incremental shell output via attachRequestMeta
     );
 
     const request = {
-      name: 'run_shell_command' as const,
+      name: 'shell' as const,
       command: 'printf "a\\n"; sleep 0.15; printf "b\\n"',
       reason: 'acceptance',
     };
@@ -56,7 +56,7 @@ test('NodeHostToolService streams incremental shell output via attachRequestMeta
   }
 });
 
-test('NodeHostToolService.abortRunningShellCommands kills in-flight shell', async () => {
+test('NodeHostToolService.abortRunningShell kills in-flight shell', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-shell-abort-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
 
@@ -69,7 +69,7 @@ test('NodeHostToolService.abortRunningShellCommands kills in-flight shell', asyn
     );
 
     const request = {
-      name: 'run_shell_command' as const,
+      name: 'shell' as const,
       command: 'sleep 30',
       reason: 'abort-test',
     };
@@ -78,7 +78,7 @@ test('NodeHostToolService.abortRunningShellCommands kills in-flight shell', asyn
     await new Promise((resolve) => {
       setTimeout(resolve, 50);
     });
-    service.abortRunningShellCommands();
+    service.abortRunningShell();
     const output = await execution;
     assert.match(String(output), /"exitCode":-1/);
   } finally {

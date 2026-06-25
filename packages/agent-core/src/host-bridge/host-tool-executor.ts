@@ -61,7 +61,7 @@ export interface LocalHostToolService {
   saveGeneratedImage?(request: GeneratedImageSaveRequest): Promise<GeneratedImageFile>;
   saveGeneratedVideo?(request: import('../ports.js').GeneratedVideoSaveRequest): Promise<import('../ports.js').GeneratedVideoFile>;
   attachRequestMetadata?(request: JsonValue, metadata: ToolRequestExecutionMetadata): JsonValue;
-  abortRunningShellCommands?(): void;
+  abortRunningShell?(): void;
   setTodoScope?(scope: { sessionKey: string } | undefined): void;
 }
 
@@ -366,8 +366,8 @@ export class HostToolExecutorProxy implements ToolExecutor<JsonValue, JsonValue>
     return this.resolveRequestMetadata(request)?.backgroundStatusText;
   }
 
-  abortRunningShellCommands(): void {
-    this.localHostService?.abortRunningShellCommands?.();
+  abortRunningShell(): void {
+    this.localHostService?.abortRunningShell?.();
   }
 
   startMcpBackgroundRefresh(): void {
@@ -686,14 +686,14 @@ function parseBuiltinHostToolDefinitionEnvironment(
     typeof value.shellDisplayName === 'string' && value.shellDisplayName.trim().length > 0
       ? value.shellDisplayName.trim()
       : 'the current shell';
-  const shellCommandParameterDescription =
-    typeof value.shellCommandParameterDescription === 'string' &&
-    value.shellCommandParameterDescription.trim().length > 0
-      ? value.shellCommandParameterDescription.trim()
+  const commandParameterDescription =
+    typeof value.commandParameterDescription === 'string' &&
+    value.commandParameterDescription.trim().length > 0
+      ? value.commandParameterDescription.trim()
       : 'The command to execute in the current shell. Do not assume Bash-only syntax unless the shell is POSIX compatible.';
 
   return {
     shellDisplayName,
-    shellCommandParameterDescription,
+    commandParameterDescription,
   };
 }

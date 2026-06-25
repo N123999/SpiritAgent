@@ -93,10 +93,10 @@ test('formatToolCallSummaryPlainText: read_file uses headline and detail', () =>
   );
 });
 
-test('formatToolCallSummaryPlainText: run_shell_command with reason and command', () => {
+test('formatToolCallSummaryPlainText: shell with reason and command', () => {
   assert.deepEqual(
     formatToolCallSummaryPlainText({
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       phase: 'running',
       headline: '执行并发命令',
       headlineDetail: 'echo abc',

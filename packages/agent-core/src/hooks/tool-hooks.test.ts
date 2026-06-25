@@ -109,12 +109,12 @@ test('runPreToolUseGate maps hook allow to bypass approval', async () => {
           model: 'm',
         },
         toolExecutor: {
-          requestFromFunctionCall: async () => ({ name: 'run_shell_command' }),
+          requestFromFunctionCall: async () => ({ name: 'shell' }),
         },
       },
     } as never,
-    { id: 'tc1', name: 'run_shell_command', argumentsJson: '{"command":"echo hi"}' },
-    { name: 'run_shell_command' },
+    { id: 'tc1', name: 'shell', argumentsJson: '{"command":"echo hi"}' },
+    { name: 'shell' },
   );
 
   assert.equal(gate.kind, 'ready');

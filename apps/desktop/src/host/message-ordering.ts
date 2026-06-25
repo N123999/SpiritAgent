@@ -161,7 +161,7 @@ export function truncateOneLineForDebug(s: string, max: number): string {
 const SHELL_REASON_PREFIX = i18n.t('tool.reasonPrefix');
 
 export function reasonForShellTool(toolName: string, request: unknown): string | undefined {
-  if (toolName !== 'run_shell_command' || !request || typeof request !== 'object') {
+  if (toolName !== 'shell' || !request || typeof request !== 'object') {
     return undefined;
   }
 
@@ -179,7 +179,7 @@ export function displayTitleForTool(toolName: string, request: unknown): string 
 }
 
 export function stripReasonLineFromShellPrompt(toolName: string, prompt: string): string {
-  if (toolName !== 'run_shell_command') {
+  if (toolName !== 'shell') {
     return prompt;
   }
 
@@ -234,7 +234,7 @@ export function toolCallSummaryCopyForRequest(
   const tOpts = ctx ? { context: ctx } : {};
 
   switch (toolName) {
-    case 'run_shell_command': {
+    case 'shell': {
       const reason = reasonForShellTool(toolName, request);
       const command = typeof record.command === 'string' ? record.command.trim() : '';
       if (!reason && !command) {

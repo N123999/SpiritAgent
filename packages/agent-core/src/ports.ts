@@ -597,7 +597,7 @@ export interface ToolExecutor<
   continueAfterQuestions?(request: ToolRequest, result: AskQuestionsResult): Promise<ToolRequest | undefined>;
   shouldExecuteInBackground?(request: ToolRequest): boolean;
   backgroundStatusText?(request: ToolRequest): string | undefined;
-  abortRunningShellCommands?(): void;
+  abortRunningShell?(): void;
   startMcpBackgroundRefresh(): void;
   mcpStatusSnapshot(): McpStatusSnapshot;
   addMcpServer(name: string, config: JsonValue): Promise<string>;

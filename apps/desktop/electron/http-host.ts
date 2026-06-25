@@ -939,7 +939,7 @@ async function handleApiRequest({
       request,
       response,
       200,
-      await runHostCommand('abortShellCommand', {
+      await runHostCommand('abortShell', {
         toolCallId: typeof jsonBody?.toolCallId === 'string' ? jsonBody.toolCallId : '',
       }),
     );

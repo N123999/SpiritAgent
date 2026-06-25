@@ -17,7 +17,7 @@ function toolNames(definitions: unknown[]): string[] {
 test('get_diagnostics remains available in Ask mode when merged', () => {
   const builtins = buildBuiltinHostToolDefinitions({
     shellDisplayName: 'cmd',
-    shellCommandParameterDescription: 'command',
+    commandParameterDescription: 'command',
   });
   const merged = filterHostToolDefinitionsForAgentMode(
     [...builtins, ...buildLspHostToolDefinitions()],

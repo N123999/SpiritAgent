@@ -369,7 +369,7 @@ export function HooksSettingsPanel({
                 id="hook-matcher"
                 value={matcher}
                 onChange={(e) => setMatcher(e.target.value)}
-                placeholder="run_shell_command"
+                placeholder="shell"
                 autoComplete="off"
               />
             </div>

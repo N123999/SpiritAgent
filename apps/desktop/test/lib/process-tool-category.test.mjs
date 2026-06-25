@@ -26,7 +26,7 @@ test('classifyProcessToolCategory maps known tools', () => {
   assert.equal(classifyProcessToolCategory('ask_questions'), 'ask');
   assert.equal(classifyProcessToolCategory('get_diagnostics'), 'diagnose');
   assert.equal(classifyProcessToolCategory('generate_image'), 'generate');
-  assert.equal(classifyProcessToolCategory('run_shell_command'), 'run');
+  assert.equal(classifyProcessToolCategory('shell'), 'run');
 });
 
 test('classifyProcessToolCategory: apply_patch uses headline verb', () => {
@@ -76,7 +76,7 @@ test('formatProcessSummary: empty counts returns empty string', () => {
   assert.equal(formatProcessSummary(i18n.t.bind(i18n), emptyProcessToolCounts()), '');
 });
 
-test('formatProcessSummary: run_shell_command uses ran label', async () => {
+test('formatProcessSummary: shell uses ran label', async () => {
   await i18n.changeLanguage('zh-CN');
   assert.equal(
     formatProcessSummary(i18n.t.bind(i18n), { ...emptyProcessToolCounts(), run: 1 }),

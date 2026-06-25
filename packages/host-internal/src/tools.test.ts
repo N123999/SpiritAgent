@@ -161,7 +161,7 @@ test('read_file still returns image part when model explicitly supports image in
   }
 });
 
-test('web_fetch executes in background like run_shell_command', () => {
+test('web_fetch executes in background like shell', () => {
   const service = new NodeHostToolService(
     { workspaceRoot: '/tmp', spiritDataDir: '/tmp/.spirit-data' },
     { getApprovalLevel: () => 'full-approval' },
@@ -702,7 +702,7 @@ test('requestFromFunctionCall parses grep is_regexp flag', async () => {
   }
 });
 
-test('abortShellCommand terminates a running shell by toolCallId', async () => {
+test('abortShell terminates a running shell by toolCallId', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-abort-shell-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
 
@@ -712,11 +712,11 @@ test('abortShellCommand terminates a running shell by toolCallId', async () => {
     const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
     const request = service.attachRequestMetadata!(
       {
-        name: 'run_shell_command',
+        name: 'shell',
         command: 'sleep 30',
         reason: 'test abort',
       },
-      { toolCallId: 'call_sleep_30', toolName: 'run_shell_command' },
+      { toolCallId: 'call_sleep_30', toolName: 'shell' },
     );
 
     const executePromise = service.execute(request);
@@ -724,9 +724,9 @@ test('abortShellCommand terminates a running shell by toolCallId', async () => {
       setTimeout(resolve, 50);
     });
 
-    assert.equal(service.abortShellCommand('call_sleep_30'), true);
-    assert.equal(service.abortShellCommand('call_sleep_30'), false);
-    assert.equal(service.abortShellCommand('unknown-id'), false);
+    assert.equal(service.abortShell('call_sleep_30'), true);
+    assert.equal(service.abortShell('call_sleep_30'), false);
+    assert.equal(service.abortShell('unknown-id'), false);
 
     const output = await executePromise;
     assertTextToolOutput(output);
@@ -749,7 +749,7 @@ test('authorize returns need-approval for shell commands under default approval 
       { getApprovalLevel: () => 'default' },
     );
     const decision = await service.authorize({
-      name: 'run_shell_command',
+      name: 'shell',
       command: 'echo hello',
       reason: 'test',
     });
@@ -772,7 +772,7 @@ test('authorize allows shell commands under full-approval approval level', async
       { getApprovalLevel: () => 'full-approval' },
     );
     const decision = await service.authorize({
-      name: 'run_shell_command',
+      name: 'shell',
       command: 'echo hello',
       reason: 'test',
     });

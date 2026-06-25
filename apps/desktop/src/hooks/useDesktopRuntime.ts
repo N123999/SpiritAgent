@@ -2072,8 +2072,8 @@ export function useDesktopRuntime() {
     }
   }, [api, applySnapshot, refreshSessions]);
 
-  const abortShellCommand = useCallback(async (toolCallId: string): Promise<boolean> => {
-    if (!api?.abortShellCommand) {
+  const abortShell = useCallback(async (toolCallId: string): Promise<boolean> => {
+    if (!api?.abortShell) {
       return false;
     }
 
@@ -2083,7 +2083,7 @@ export function useDesktopRuntime() {
     }
 
     try {
-      const next = await api.abortShellCommand(trimmed);
+      const next = await api.abortShell(trimmed);
       applySnapshot(next);
       setRuntimeError("");
       return true;
@@ -3074,7 +3074,7 @@ export function useDesktopRuntime() {
     deleteRule,
     inspectMcpServer,
     abortConversation,
-    abortShellCommand,
+    abortShell,
     setLoopEnabled,
     setSubagentViewerTarget,
     setApprovalLevel,

@@ -5,7 +5,7 @@ import { mapPendingToolApproval } from '../../dist-electron/src/host/snapshot-ma
 
 test('mapPendingToolApproval forwards subagentSessionId when present', () => {
   const mapped = mapPendingToolApproval({
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     request: { command: 'git status' },
     prompt: 'Run git status?',
     trustTarget: 'shell:git status',
@@ -13,7 +13,7 @@ test('mapPendingToolApproval forwards subagentSessionId when present', () => {
   });
 
   assert.equal(mapped.subagentSessionId, 'subagent-123');
-  assert.equal(mapped.toolName, 'run_shell_command');
+  assert.equal(mapped.toolName, 'shell');
 });
 
 test('mapPendingToolApproval omits blank subagentSessionId', () => {

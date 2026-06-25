@@ -751,10 +751,10 @@ fn completed_manual_tool_result_appends_tool_message() {
 
     runtime.handle_manual_tool_command_result(BridgeManualToolCommandStartResult::Completed {
         request: json!({
-            "name": "run_shell_command",
+            "name": "shell",
             "command": "echo hello"
         }),
-        tool_name: "run_shell_command".to_string(),
+        tool_name: "shell".to_string(),
         output: "hello".to_string(),
         failed: false,
         background_execution: false,
@@ -767,7 +767,7 @@ fn completed_manual_tool_result_appends_tool_message() {
             if message
                 .tool_block
                 .as_ref()
-                .is_some_and(|block| block.tool_name == "run_shell_command" && block.phase == crate::view::ToolUiPhase::Succeeded)
+                .is_some_and(|block| block.tool_name == "shell" && block.phase == crate::view::ToolUiPhase::Succeeded)
     )));
 }
 
@@ -780,7 +780,7 @@ fn failed_manual_tool_result_with_request_appends_failure_message() {
     runtime.handle_manual_tool_command_result(BridgeManualToolCommandStartResult::Failed {
         error: "boom".to_string(),
         request: Some(json!({
-            "name": "run_shell_command",
+            "name": "shell",
             "command": "echo hello"
         })),
     });
@@ -792,7 +792,7 @@ fn failed_manual_tool_result_with_request_appends_failure_message() {
             if message
                 .tool_block
                 .as_ref()
-                .is_some_and(|block| block.tool_name == "run_shell_command" && block.phase == crate::view::ToolUiPhase::Failed)
+                .is_some_and(|block| block.tool_name == "shell" && block.phase == crate::view::ToolUiPhase::Failed)
     )));
 }
 
@@ -802,9 +802,9 @@ fn tool_execution_finished_event_deserializes_host_request_shape() {
         "kind": "tool-execution-finished",
         "execution": {
             "toolCallId": "call_123",
-            "toolName": "run_shell_command",
+            "toolName": "shell",
             "request": {
-                "name": "run_shell_command",
+                "name": "shell",
                 "command": "echo hello"
             },
             "output": "hello",
@@ -816,11 +816,11 @@ fn tool_execution_finished_event_deserializes_host_request_shape() {
         serde_json::from_value(value).expect("event should deserialize");
     match event {
         BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
-            assert_eq!(execution.tool_name, "run_shell_command");
+            assert_eq!(execution.tool_name, "shell");
             assert_eq!(execution.tool_call_id, "call_123");
             assert_eq!(
                 execution.request.get("name").and_then(Value::as_str),
-                Some("run_shell_command")
+                Some("shell")
             );
         }
         other => panic!("unexpected event variant: {other:?}"),
@@ -832,9 +832,9 @@ fn tool_execution_output_chunk_event_deserializes() {
     let value = json!({
         "kind": "tool-execution-output-chunk",
         "toolCallId": "call_shell",
-        "toolName": "run_shell_command",
+        "toolName": "shell",
         "request": {
-            "name": "run_shell_command",
+            "name": "shell",
             "command": "npm install"
         },
         "chunk": "added 1 package\n"
@@ -850,7 +850,7 @@ fn tool_execution_output_chunk_event_deserializes() {
             ..
         } => {
             assert_eq!(tool_call_id, "call_shell");
-            assert_eq!(tool_name, "run_shell_command");
+            assert_eq!(tool_name, "shell");
             assert_eq!(chunk, "added 1 package\n");
         }
         other => panic!("unexpected event variant: {other:?}"),

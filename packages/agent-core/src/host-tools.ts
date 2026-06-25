@@ -12,7 +12,7 @@ export { enrichUnknownToolError, toolNamesFromDefinitions, unknownToolErrorMessa
 
 export interface BuiltinHostToolDefinitionEnvironment {
   shellDisplayName: string;
-  shellCommandParameterDescription: string;
+  commandParameterDescription: string;
 }
 
 export interface ContributedHostToolDefinition {
@@ -42,7 +42,7 @@ export type TodoHostToolName =
 export const FINISH_TASK_TOOL_NAME = 'finish_task';
 
 export const ASK_MODE_EXCLUDED_HOST_TOOL_NAMES = new Set<string>([
-  'run_shell_command',
+  'shell',
   'create_file',
   'edit_file',
   'delete_file',
@@ -131,7 +131,7 @@ export function buildBuiltinHostToolDefinitions(
   environment: BuiltinHostToolDefinitionEnvironment,
 ): JsonValue[] {
   return [
-    functionTool('run_shell_command', buildShellToolDescription(environment.shellDisplayName), {
+    functionTool('shell', buildShellToolDescription(environment.shellDisplayName), {
       type: 'object',
       properties: {
         reason: {
@@ -141,7 +141,7 @@ export function buildBuiltinHostToolDefinitions(
         },
         command: {
           type: 'string',
-          description: environment.shellCommandParameterDescription,
+          description: environment.commandParameterDescription,
         },
       },
       required: ['reason', 'command'],

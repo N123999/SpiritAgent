@@ -288,13 +288,13 @@ test('gateway sdk stream emits succeeded web_search preview on tool-result', asy
 test('gateway sdk stream aggregates tool-input/tool-call without Open Responses raw items', async () => {
   async function* stream(): AsyncGenerator<TextStreamPart<any>> {
     yield { type: 'reasoning-delta', id: 'reasoning-0', text: 'Plan to run shell.' };
-    yield { type: 'tool-input-start', id: 'call_gateway_shell', toolName: 'run_shell_command' };
+    yield { type: 'tool-input-start', id: 'call_gateway_shell', toolName: 'shell' };
     yield { type: 'tool-input-delta', id: 'call_gateway_shell', delta: '{"reason":"Echo","command":"echo nb"}' };
     yield { type: 'tool-input-end', id: 'call_gateway_shell' };
     yield {
       type: 'tool-call',
       toolCallId: 'call_gateway_shell',
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       input: { reason: 'Echo', command: 'echo nb' },
     };
   }
@@ -308,6 +308,6 @@ test('gateway sdk stream aggregates tool-input/tool-call without Open Responses 
 
   assert.equal(round.step.calls.length, 1);
   assert.equal(round.step.calls[0]?.id, 'call_gateway_shell');
-  assert.equal(round.step.calls[0]?.name, 'run_shell_command');
+  assert.equal(round.step.calls[0]?.name, 'shell');
   assert.equal(extractLastAssistantText(round.state), undefined);
 });

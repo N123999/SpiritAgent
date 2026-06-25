@@ -1683,10 +1683,10 @@ class DesktopHostService {
     return snapshot;
   }
 
-  async abortShellCommand(toolCallId: string): Promise<DesktopSnapshot> {
+  async abortShell(toolCallId: string): Promise<DesktopSnapshot> {
     const bundle = this.activeBundle();
     const toolExecutor = await this.ensureToolExecutor(bundle);
-    toolExecutor.abortShellCommand(toolCallId);
+    toolExecutor.abortShell(toolCallId);
     return this.buildSnapshot();
   }
 

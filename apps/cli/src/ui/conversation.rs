@@ -791,7 +791,7 @@ pub(in crate::ui) fn render_tool_card_lines(
 
     let mut out = Vec::new();
 
-    let shell_pending_reason = if tool.tool_name == "run_shell_command"
+    let shell_pending_reason = if tool.tool_name == "shell"
         && tool.phase == ToolUiPhase::PendingApproval
         && !tool.headline.trim().is_empty()
         && tool.headline != "待确认"

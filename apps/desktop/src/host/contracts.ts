@@ -77,7 +77,7 @@ export type HostCommandName =
   | 'mergeGitHubPullRequest'
   | 'markGitHubPullRequestReady'
   | 'abortConversation'
-  | 'abortShellCommand'
+  | 'abortShell'
   | 'continueAssistantCompletion'
   | 'poll'
   | 'listDreamsOverview'

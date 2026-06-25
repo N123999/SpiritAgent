@@ -45,7 +45,7 @@ function approvalNotificationPayload(
   isWindows: boolean,
 ): DesktopShowNotificationRequest {
   const body =
-    approval.toolName === 'run_shell_command'
+    approval.toolName === 'shell'
       ? shellApprovalNotificationBody(approval.prompt, i18n.t('tool.reasonPrefix'))
       : genericApprovalNotificationBody(approval.toolName, approval.prompt);
 

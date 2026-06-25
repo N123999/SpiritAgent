@@ -5,19 +5,19 @@ import { join } from 'node:path';
 import test from 'node:test';
 
 import {
-  buildRunShellCommandToolResult,
+  buildShellToolResult,
   combineShellToolOutput,
-  serializeRunShellCommandToolResult,
+  serializeShellToolResult,
 } from '@spirit-agent/core';
 
-import { runShellCommand } from './shell-execution.js';
+import { runShell } from './shell-execution.js';
 
-test('runShellCommand streams stdout chunks and returns combined output', async () => {
+test('runShell streams stdout chunks and returns combined output', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-shell-exec-'));
   const chunks: string[] = [];
 
   try {
-    const { result: resultPromise } = runShellCommand({
+    const { result: resultPromise } = runShell({
       workspaceRoot,
       command: 'printf "line1\\n"; printf "line2\\n"',
       onOutputChunk: (chunk) => {
@@ -32,8 +32,8 @@ test('runShellCommand streams stdout chunks and returns combined output', async 
     assert.ok(chunks.length > 0);
     assert.equal(chunks.join(''), 'line1\nline2\n');
 
-    const serialized = serializeRunShellCommandToolResult(
-      buildRunShellCommandToolResult({
+    const serialized = serializeShellToolResult(
+      buildShellToolResult({
         terminal: 'test',
         workspace: workspaceRoot,
         command: 'printf',
@@ -50,11 +50,11 @@ test('runShellCommand streams stdout chunks and returns combined output', async 
   }
 });
 
-test('runShellCommand reports non-zero exit code', async () => {
+test('runShell reports non-zero exit code', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-shell-exec-fail-'));
 
   try {
-    const { result: resultPromise } = runShellCommand({
+    const { result: resultPromise } = runShell({
       workspaceRoot,
       command: 'exit 7',
     });
@@ -67,12 +67,12 @@ test('runShellCommand reports non-zero exit code', async () => {
   }
 });
 
-test('runShellCommand merges stderr into streamed chunks', async () => {
+test('runShell merges stderr into streamed chunks', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-shell-exec-err-'));
   const chunks: string[] = [];
 
   try {
-    const { result: resultPromise } = runShellCommand({
+    const { result: resultPromise } = runShell({
       workspaceRoot,
       command: 'printf "out\\n" 1>&2; printf "ok\\n"',
       onOutputChunk: (chunk) => {
@@ -92,11 +92,11 @@ test('runShellCommand merges stderr into streamed chunks', async () => {
   }
 });
 
-test('runShellCommand kill terminates a long-running child', async () => {
+test('runShell kill terminates a long-running child', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-shell-exec-kill-'));
 
   try {
-    const handle = runShellCommand({
+    const handle = runShell({
       workspaceRoot,
       command: 'sleep 30',
     });

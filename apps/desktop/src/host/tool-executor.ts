@@ -429,12 +429,12 @@ export class DesktopToolExecutor
     return this.tools.backgroundStatusText?.(request);
   }
 
-  abortRunningShellCommands(): void {
-    this.tools.abortRunningShellCommands();
+  abortRunningShell(): void {
+    this.tools.abortRunningShell();
   }
 
-  abortShellCommand(toolCallId: string): boolean {
-    return this.tools.abortShellCommand(toolCallId);
+  abortShell(toolCallId: string): boolean {
+    return this.tools.abortShell(toolCallId);
   }
 
   startMcpBackgroundRefresh(): void {

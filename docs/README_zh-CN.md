@@ -65,7 +65,7 @@ Agent Core 在统一运行时背后路由多种推理传输层：
 内置工具在 Agent Core 中统一定义（名称、描述、JSON Schema），由宿主负责执行：
 
 - **工作区** — `read_file`、`write_file` / `create_file` / `edit_file` / `delete_file`、`apply_patch`（在支持的传输层上使用 V4A）、`glob`、`grep`、`list_directory_files`
-- **Shell** — `run_shell_command`，由宿主控制审批
+- **Shell** — `shell`，由宿主控制审批
 - **Web** — `web_fetch`；搜索通过提供商工具或已配置的宿主搜索实现
 - **委派** — `run_subagent`
 - **规划** — `create_plan`，会话 TODO 工具（`todo_list`、`todo_create`、`todo_update`、`todo_complete`）

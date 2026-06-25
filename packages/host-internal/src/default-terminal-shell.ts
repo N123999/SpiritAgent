@@ -12,7 +12,7 @@ function firstExistingFile(candidates: string[]): string | undefined {
 }
 
 /**
- * 宿主默认 Shell（集成终端、系统终端、run_shell_command 共用）。
+ * 宿主默认 Shell（集成终端、系统终端、shell 共用）。
  * Windows：优先 pwsh（PowerShell 7+），其次 Windows PowerShell，最后 cmd。
  * 可通过环境变量 SPIRIT_TERMINAL_SHELL 指定可执行文件完整路径。
  */
@@ -79,10 +79,10 @@ export function isWindowsCmdExecutable(file: string): boolean {
 }
 
 /**
- * 非交互子进程（run_shell_command）在 Windows 上默认不走 ConPTY，需显式对齐 UTF-8 输出。
+ * 非交互子进程（shell）在 Windows 上默认不走 ConPTY，需显式对齐 UTF-8 输出。
  * PowerShell：设置 OutputEncoding；cmd：保留 chcp 65001 前缀（输出解码见 {@link decodeShellHostOutput}）。
  */
-export function prepareShellCommandForHostExecution(shellFile: string, command: string): string {
+export function prepareShellForHostExecution(shellFile: string, command: string): string {
   if (process.platform !== 'win32') {
     return command;
   }
@@ -110,7 +110,7 @@ export function shellHostExecUsesBufferOutput(shellFile: string): boolean {
   return process.platform === 'win32' && isWindowsCmdExecutable(shellFile);
 }
 
-export function shellCommandParameterDescriptionForResolvedShell(file: string): string {
+export function commandParameterDescriptionForResolvedShell(file: string): string {
   const base = path.basename(file).toLowerCase();
   if (base === 'pwsh.exe' || base === 'powershell.exe') {
     return 'The command to execute in Windows PowerShell. Prefer PowerShell syntax such as Get-ChildItem, Select-String, Get-Content, Set-Location, and Test-Path. Do not assume Bash-only syntax or cmd.exe %VAR% expansion.';

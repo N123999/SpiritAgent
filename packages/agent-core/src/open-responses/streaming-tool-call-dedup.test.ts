@@ -23,7 +23,7 @@ async function* streamWithDuplicateToolCallParts(): AsyncGenerator<TextStreamPar
         type: 'function_call',
         id: 'fc_1',
         call_id: 'call_dup_test',
-        name: 'run_shell_command',
+        name: 'shell',
         arguments: '',
         status: 'in_progress',
       },
@@ -32,7 +32,7 @@ async function* streamWithDuplicateToolCallParts(): AsyncGenerator<TextStreamPar
   yield {
     type: 'tool-call',
     toolCallId: 'call_dup_test',
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     input: { command: 'sleep 5' },
   };
   yield {
@@ -43,7 +43,7 @@ async function* streamWithDuplicateToolCallParts(): AsyncGenerator<TextStreamPar
         type: 'function_call',
         id: 'fc_1',
         call_id: 'call_dup_test',
-        name: 'run_shell_command',
+        name: 'shell',
         arguments: '{"command":"sleep 5"}',
         status: 'completed',
       },
@@ -83,5 +83,5 @@ test('responses streaming does not duplicate tool calls when SDK emits raw and t
 
   assert.equal(result.result.step.calls.length, 1);
   assert.equal(result.result.step.calls[0]?.id, 'call_dup_test');
-  assert.equal(result.result.step.calls[0]?.name, 'run_shell_command');
+  assert.equal(result.result.step.calls[0]?.name, 'shell');
 });

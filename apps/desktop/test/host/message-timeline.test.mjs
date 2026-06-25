@@ -708,7 +708,7 @@ test('approval guidance user reply stays after pending tool within the same turn
   timeline.finalizeThinkingSegment('Running echo nb.');
   timeline.upsertToolMessage('shell-1', {
     toolCallId: 'shell-1',
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     phase: 'pending-approval',
     headline: 'Execute command',
     detailLines: ['echo nb'],
@@ -718,7 +718,7 @@ test('approval guidance user reply stays after pending tool within the same turn
   timeline.insertApprovalGuidanceUserReply('换成 echo nihao', 'shell-1');
   timeline.upsertToolMessage('shell-1', {
     toolCallId: 'shell-1',
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     phase: 'failed',
     headline: 'Execute command',
     detailLines: ['echo nb'],
@@ -727,7 +727,7 @@ test('approval guidance user reply stays after pending tool within the same turn
   timeline.finalizeThinkingSegment('Retry with echo nihao.');
   timeline.upsertToolMessage('shell-2', {
     toolCallId: 'shell-2',
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     phase: 'succeeded',
     headline: 'Execute command',
     detailLines: ['echo nihao'],
@@ -760,7 +760,7 @@ test('fromMessages hydrates mid-turn approval guidance without starting a new tu
   });
   source.upsertToolMessage('shell-1', {
     toolCallId: 'shell-1',
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     phase: 'pending-approval',
     headline: 'Execute command',
     detailLines: ['echo nb'],

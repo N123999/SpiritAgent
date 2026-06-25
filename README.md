@@ -66,7 +66,7 @@ Provider-native capabilities (for example web search on Open Responses, Alibaba 
 Built-in tools are defined once in Agent Core (name, description, JSON Schema). Hosts implement execution:
 
 - **Workspace** — `read_file`, `write_file` / `create_file` / `edit_file` / `delete_file`, `apply_patch` (V4A on supported transports), `glob`, `grep`, `list_directory_files`
-- **Shell** — `run_shell_command` with host-controlled approval
+- **Shell** — `shell` with host-controlled approval
 - **Web** — `web_fetch`; search via provider tools or host search where configured
 - **Delegation** — `run_subagent`
 - **Planning** — `create_plan`, session TODO tools (`todo_list`, `todo_create`, `todo_update`, `todo_complete`)

@@ -52,7 +52,7 @@ test('buildSubagentConversationSnapshots marks unresolved tools as running while
         toolCalls: [
           {
             id: 'call_shell_1',
-            name: 'run_shell_command',
+            name: 'shell',
             argumentsJson: '{"command":"git status"}',
           },
         ],
