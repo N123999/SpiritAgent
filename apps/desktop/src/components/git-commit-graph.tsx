@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Copy, LoaderCircle } from "lucide-react";
+import { Check, Copy, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipItem, useTooltipTriggerProps } from "@/components/ui/tooltip";
@@ -458,7 +458,7 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
       <p className="text-sm font-medium leading-snug text-foreground">{row.commit.subject}</p>
       <p className="text-[11px] text-muted-foreground">
         <span className="text-foreground/80">{row.commit.author}</span>
-        {" · "}
+        {" "}
         <span>{row.commit.authoredAt}</span>
       </p>
       {row.commit.refs.length > 0 ? (
@@ -466,28 +466,35 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
           {row.commit.refs.map((ref) => (
             <span
               key={`${row.commit.oid}:${ref}`}
-              className="rounded bg-primary/15 px-1 py-0 font-mono text-[10px] text-primary"
+              className="rounded bg-primary/15 px-1 py-0 text-[10px] text-primary"
             >
               {ref}
             </span>
           ))}
         </div>
       ) : null}
-      <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-        <span className="truncate" title={row.commit.oid}>
-          {shortOid}
-        </span>
-        <Button
+      <div className="group inline-flex w-fit cursor-default items-center gap-2 text-[11px] text-muted-foreground hover:cursor-pointer">
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="size-6 shrink-0"
+          className="truncate border-0 bg-transparent p-0 text-left text-[11px] text-muted-foreground"
+          title={row.commit.oid}
           onClick={() => void copySha()}
           aria-label={t("workspace.git.copySha")}
         >
-          <Copy className="size-3" aria-hidden />
-        </Button>
-        {copied ? <span className="text-[10px] text-foreground">{t("workspace.git.copiedSha")}</span> : null}
+          {shortOid}
+        </button>
+        <button
+          type="button"
+          className="hidden shrink-0 border-0 bg-transparent p-0 text-muted-foreground hover:text-foreground group-hover:inline-flex"
+          onClick={() => void copySha()}
+          aria-label={copied ? t("workspace.git.copiedSha") : t("workspace.git.copySha")}
+        >
+          {copied ? (
+            <Check className="size-[11px]" aria-hidden />
+          ) : (
+            <Copy className="size-[11px]" aria-hidden />
+          )}
+        </button>
       </div>
     </div>
   );
