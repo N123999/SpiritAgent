@@ -4,6 +4,7 @@ import {
   isGatewayAnthropicClaudeModel,
   resolveGatewayAnthropicClaudeCapabilities,
 } from './openai/gateway-anthropic-thinking.js';
+import { isGatewayGoogleGeminiModel } from './openai/gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openai/openrouter-anthropic-reasoning.js';
 import { resolveRoutedAnthropicClaudeCapabilities } from './openai/routed-anthropic-claude-capabilities.js';
 import type { OpenAiTransportConfig } from './openai/openai-compat.js';
@@ -338,7 +339,12 @@ export function isXaiReasoningEffortModel(
 export function isGoogleReasoningEffortModel(
   context?: ModelReasoningEffortContext,
 ): boolean {
-  return context?.provider === 'google' || context?.provider === 'google-vertex-ai';
+  return context?.provider === 'google'
+    || context?.provider === 'google-vertex-ai'
+    || isGatewayGoogleGeminiModel(
+      context?.provider === 'vercel-ai-gateway' ? 'vercel-ai-gateway' : undefined,
+      context?.model ?? '',
+    );
 }
 
 export function isAnthropicReasoningEffortModel(

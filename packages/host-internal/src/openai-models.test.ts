@@ -201,6 +201,40 @@ test('parseVercelAiGatewayModelEntriesPayload infers supportedReasoningEfforts f
   ]);
 });
 
+test('parseVercelAiGatewayModelEntriesPayload infers supportedReasoningEfforts for google gemini models', () => {
+  const entries = parseVercelAiGatewayModelEntriesPayload({
+    data: [
+      {
+        id: 'google/gemini-3.1-pro-preview',
+        type: 'language',
+      },
+      {
+        id: 'google/gemini-2.5-flash',
+        type: 'language',
+      },
+      {
+        id: 'google/imagen-4',
+        type: 'image',
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'google/gemini-3.1-pro-preview',
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
+    },
+    {
+      id: 'google/gemini-2.5-flash',
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
+    },
+    {
+      id: 'google/imagen-4',
+      supportsImageGeneration: true,
+    },
+  ]);
+});
+
 test('parseOpenAiCompatibleModelEntriesPayload routes vercel-ai-gateway to typed parser', () => {
   const entries = parseOpenAiCompatibleModelEntriesPayload({
     data: [

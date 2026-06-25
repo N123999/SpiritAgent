@@ -1,5 +1,8 @@
 import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-name';
-import { routedAnthropicClaudeSupportedEfforts } from '@spirit-agent/core';
+import {
+  gatewayGoogleGeminiSupportedEfforts,
+  routedAnthropicClaudeSupportedEfforts,
+} from '@spirit-agent/core';
 import type { ProviderListedModelEntry } from '@spirit-agent/host-internal';
 
 import type {
@@ -183,14 +186,21 @@ function resolvePreviewSupportedReasoningEffortsForEntry(
     return {};
   }
 
-  const inferred = routedAnthropicClaudeSupportedEfforts(entry.id);
-  if (inferred === undefined) {
-    return {};
+  const inferredAnthropic = routedAnthropicClaudeSupportedEfforts(entry.id);
+  if (inferredAnthropic !== undefined) {
+    return {
+      supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(inferredAnthropic),
+    };
   }
 
-  return {
-    supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(inferred),
-  };
+  const inferredGemini = gatewayGoogleGeminiSupportedEfforts(entry.id);
+  if (inferredGemini !== undefined) {
+    return {
+      supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(inferredGemini),
+    };
+  }
+
+  return {};
 }
 
 function normalizePreviewSupportedReasoningEfforts(

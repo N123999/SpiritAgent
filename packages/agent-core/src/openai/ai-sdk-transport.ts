@@ -86,7 +86,9 @@ import {
   isGatewayAnthropicClaudeModel,
 } from './gateway-anthropic-thinking.js';
 import {
+  buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
+  isGatewayGoogleGeminiModel,
 } from './gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openrouter-anthropic-reasoning.js';
 import { generateSiliconFlowImage } from '../image-generation/siliconflow-backend.js';
@@ -905,6 +907,10 @@ function buildAiSdkProviderOptions(
 ): Record<string, JsonObject> {
   if (isVercelAiGatewayProvider(config) && isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
     return buildGatewayAnthropicProviderOptions(config);
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayGoogleGeminiModel(config.llmVendor, config.model)) {
+    return buildGatewayGoogleProviderOptions(config, openAiReasoningEffort(config));
   }
 
   if (isOpenRouterAnthropicClaudeModel(config.llmVendor, config.model)) {

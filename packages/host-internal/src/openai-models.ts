@@ -2,7 +2,11 @@
  * OpenAI-compatible `GET /v1/models` listing (host-side; no secrets stored here).
  */
 
-import { gatewayAnthropicClaudeSupportedEfforts, routedAnthropicClaudeSupportedEfforts } from '@spirit-agent/core';
+import {
+  gatewayAnthropicClaudeSupportedEfforts,
+  gatewayGoogleGeminiSupportedEfforts,
+  routedAnthropicClaudeSupportedEfforts,
+} from '@spirit-agent/core';
 
 import type { ModelProviderId, ProviderModelTransportKind } from './model-provider-presets.js';
 import { resolveProviderConnectApiBase } from './model-provider-presets.js';
@@ -493,6 +497,28 @@ function attachGatewayAnthropicReasoningEfforts(
   };
 }
 
+function attachGatewayGeminiReasoningEfforts(
+  modelEntry: ProviderListedModelEntry,
+): ProviderListedModelEntry {
+  const supportedReasoningEfforts = gatewayGoogleGeminiSupportedEfforts(modelEntry.id);
+  if (supportedReasoningEfforts === undefined) {
+    return modelEntry;
+  }
+
+  return {
+    ...modelEntry,
+    supportedReasoningEfforts: [...supportedReasoningEfforts],
+  };
+}
+
+function attachGatewayModelReasoningEfforts(
+  modelEntry: ProviderListedModelEntry,
+): ProviderListedModelEntry {
+  return attachGatewayGeminiReasoningEfforts(
+    attachGatewayAnthropicReasoningEfforts(modelEntry),
+  );
+}
+
 function readOpenRouterSupportedReasoningEfforts(
   record: Record<string, unknown>,
 ): string[] | undefined {
@@ -605,7 +631,7 @@ export function parseVercelAiGatewayModelEntriesPayload(body: unknown): Provider
       attachListedModelMetadata({ id: id.trim() }, record, readVercelGatewayPricing(record)),
     );
   }
-  return entries.map(attachGatewayAnthropicReasoningEfforts);
+  return entries.map(attachGatewayModelReasoningEfforts);
 }
 
 function readOpenRouterModalities(value: unknown): string[] {

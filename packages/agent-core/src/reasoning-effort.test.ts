@@ -132,6 +132,35 @@ test('anthropic supported efforts restrict unavailable levels', () => {
   );
 });
 
+test('gateway gemini models use google effort options', () => {
+  const geminiOptions = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'google/gemini-3.1-pro-preview',
+    transportKind: 'open-responses',
+  });
+  assert.deepEqual(
+    geminiOptions.map((option) => option.value),
+    ['default', 'none', 'low', 'medium', 'high'],
+  );
+
+  assert.equal(
+    resolveModelReasoningEffortForContext('minimal', {
+      provider: 'vercel-ai-gateway',
+      model: 'google/gemini-3.1-pro-preview',
+      transportKind: 'open-responses',
+    }),
+    'low',
+  );
+  assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('medium', {
+      provider: 'vercel-ai-gateway',
+      model: 'google/gemini-2.5-flash',
+      transportKind: 'openai-compatible',
+    }),
+    'medium',
+  );
+});
+
 test('gateway claude models use anthropic effort options filtered by model capabilities', () => {
   const sonnetOptions = modelReasoningEffortOptions({
     provider: 'vercel-ai-gateway',
