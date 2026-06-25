@@ -13,7 +13,10 @@ import {
   previewRequestFromStreamingArguments,
 } from '@spirit-agent/core';
 
-import { isStandaloneThinkingMessage } from '../lib/conversation-thinking-ui.js';
+import {
+  hasAssistantToolLaterInTurn,
+  isStandaloneThinkingMessage,
+} from '../lib/conversation-thinking-ui.js';
 import { listDirectoryToolDisplayPath } from '@spirit-agent/host-internal/skill-paths';
 
 import {
@@ -985,6 +988,8 @@ export function shouldDropEmptyAssistantMessage(
 export function shouldHideEmptyPendingAssistantSnapshot(
   message: ConversationMessageSnapshot,
   livePendingAux?: PendingAssistantAux,
+  messages?: readonly ConversationMessageSnapshot[],
+  messageIndex?: number,
 ): boolean {
   const isEmptyPending =
     message.role === 'assistant' &&
@@ -1000,6 +1005,15 @@ export function shouldHideEmptyPendingAssistantSnapshot(
   // Keep the pending row visible while runtime reports thinking/compressing so the
   // conversation UI can show the Thinking label before detailText is synced.
   if (isLivePendingReasoningAux(livePendingAux)) {
+    // 仅当后续已有工具、Thinking 占位 UI 会被 suppress 时隐藏空行，避免 pb-3 幽灵占位。
+    // 工具批次之间（pending 在末尾、后面尚无工具）仍保留 Thinking 加载指示。
+    if (
+      messages !== undefined &&
+      messageIndex !== undefined &&
+      hasAssistantToolLaterInTurn(messages, messageIndex)
+    ) {
+      return true;
+    }
     return false;
   }
 

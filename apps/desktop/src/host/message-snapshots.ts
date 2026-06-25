@@ -42,7 +42,12 @@ export function buildVisibleMessageSnapshots(input: {
       livePendingAux: input.livePendingAux,
       rewind: input.rewind,
     });
-    return snapshot && !shouldHideEmptyPendingAssistantSnapshot(snapshot, input.livePendingAux)
+    return snapshot && !shouldHideEmptyPendingAssistantSnapshot(
+      snapshot,
+      input.livePendingAux,
+      input.messages,
+      messageIndex,
+    )
       ? [snapshot]
       : [];
   });
