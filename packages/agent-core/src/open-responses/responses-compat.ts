@@ -5,6 +5,7 @@ import type {
   OpenAiLlmVendor,
   OpenAiVideoGenerationConfig,
 } from '../openai/openai-compat.js';
+import { isGatewayAnthropicClaudeModel } from '../openai/gateway-anthropic-thinking.js';
 import { resolveOpenAiTransportReasoningEffortForContext } from '../reasoning-effort.js';
 import { extractAzureResourceNameFromApiBase } from '../azure-resource.js';
 import { cloneJsonValue } from '../tool-agent.js';
@@ -208,6 +209,10 @@ export function openResponsesReasoningTrace(
     'llmVendor' | 'model' | 'reasoningEffort' | 'reasoningSummary'
   >,
 ): JsonObject | undefined {
+  if (isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
+    return undefined;
+  }
+
   const effort = openResponsesReasoningEffort(config);
   const summary = resolveOpenResponsesReasoningSummary(config);
   if (effort === undefined && summary === undefined) {
