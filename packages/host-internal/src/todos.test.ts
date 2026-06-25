@@ -26,28 +26,33 @@ test('todo_list and todo_write replace the full session list', async () => {
           { title: 'Second', status: 'pending' },
         ],
       }) as string,
-    ) as { todos: Array<{ title: string; status: string }> };
-    assert.deepEqual(written.todos, [
-      { title: 'First', status: 'pending' },
-      { title: 'Second', status: 'pending' },
-    ]);
-    assert.equal(Object.keys(written.todos[0]!).sort().join(','), 'status,title');
+    ) as { todos: Array<{ id: string; title: string; status: string }> };
+    assert.equal(written.todos.length, 2);
+    assert.equal(Object.keys(written.todos[0]!).sort().join(','), 'id,status,title');
+    assert.equal(written.todos[0]?.title, 'First');
+    assert.equal(written.todos[0]?.status, 'pending');
+    assert.equal(written.todos[1]?.title, 'Second');
+    assert.equal(written.todos[1]?.status, 'pending');
+    assert.match(written.todos[0]!.id, /^[0-9a-f]{8}$/i);
 
     const listed = JSON.parse(
       await service.execute({ name: 'todo_list', include_completed: true }) as string,
-    ) as { todos: Array<{ title: string; status: string }> };
+    ) as { todos: Array<{ id: string; title: string; status: string }> };
     assert.deepEqual(listed.todos, written.todos);
 
+    const firstId = written.todos[0]!.id;
+    const secondId = written.todos[1]!.id;
     const replaced = JSON.parse(
       await service.execute({
         name: 'todo_write',
         todos: [
-          { title: 'First renamed', status: 'completed' },
-          { title: 'Second', status: 'pending' },
+          { id: firstId, title: 'First renamed', status: 'completed' },
+          { id: secondId, title: 'Second', status: 'pending' },
         ],
       }) as string,
-    ) as { todos: Array<{ title: string; status: string }> };
+    ) as { todos: Array<{ id: string; title: string; status: string }> };
     assert.equal(replaced.todos.length, 2);
+    assert.equal(replaced.todos[0]?.id, firstId);
     assert.equal(replaced.todos[0]?.title, 'First renamed');
     assert.equal(replaced.todos[0]?.status, 'completed');
 
@@ -79,17 +84,21 @@ test('todo_write stores in_progress status and lists it when include_completed i
     ]);
 
     const all = await store.listItems({ includeCompleted: true });
-    assert.deepEqual(all, [
-      { title: 'Pending task', status: 'pending' },
-      { title: 'Active task', status: 'in_progress' },
-      { title: 'Done task', status: 'completed' },
-    ]);
+    assert.equal(all.length, 3);
+    assert.equal(all[0]?.title, 'Pending task');
+    assert.equal(all[0]?.status, 'pending');
+    assert.match(all[0]!.id!, /^[0-9a-f]{8}$/i);
+    assert.equal(all[1]?.title, 'Active task');
+    assert.equal(all[1]?.status, 'in_progress');
+    assert.equal(all[2]?.title, 'Done task');
+    assert.equal(all[2]?.status, 'completed');
 
     const withoutCompleted = await store.listItems({ includeCompleted: false });
-    assert.deepEqual(withoutCompleted, [
-      { title: 'Pending task', status: 'pending' },
-      { title: 'Active task', status: 'in_progress' },
-    ]);
+    assert.equal(withoutCompleted.length, 2);
+    assert.equal(withoutCompleted[0]?.title, 'Pending task');
+    assert.equal(withoutCompleted[0]?.status, 'pending');
+    assert.equal(withoutCompleted[1]?.title, 'Active task');
+    assert.equal(withoutCompleted[1]?.status, 'in_progress');
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }
@@ -199,6 +208,49 @@ test('todo-scope draft keys are not rewritten by path.resolve', async () => {
     const listed = await store.listItems({ includeCompleted: true });
     assert.equal(listed.length, 1);
     assert.equal(listed[0]?.title, 'Draft task');
+    assert.match(listed[0]!.id!, /^[0-9a-f]{8}$/i);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('todo_write preserves agent-provided ids across writes', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-todos-id-roundtrip-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const sessionKey = join(workspaceRoot, 'session-id.json');
+
+  try {
+    const store = createHostTodoStore({ spiritDataDir, scope: { sessionKey } });
+    const first = await store.write([{ id: 'setup-auth', title: 'Setup auth', status: 'pending' }]);
+    assert.deepEqual(first, [{ id: 'setup-auth', title: 'Setup auth', status: 'pending' }]);
+
+    const listed = await store.listItems({ includeCompleted: true });
+    assert.deepEqual(listed, first);
+
+    const updated = await store.write([
+      { id: 'setup-auth', title: 'Setup auth', status: 'in_progress' },
+    ]);
+    assert.deepEqual(updated, [{ id: 'setup-auth', title: 'Setup auth', status: 'in_progress' }]);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('todo_write rejects duplicate ids in one batch', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-todos-dup-id-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const sessionKey = join(workspaceRoot, 'session-dup.json');
+
+  try {
+    const store = createHostTodoStore({ spiritDataDir, scope: { sessionKey } });
+    await assert.rejects(
+      () =>
+        store.write([
+          { id: 'same-id', title: 'First', status: 'pending' },
+          { id: 'same-id', title: 'Second', status: 'pending' },
+        ]),
+      /会话 TODO id 重复/,
+    );
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }

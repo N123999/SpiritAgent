@@ -2144,7 +2144,11 @@ function parseTodoWriteItems(parsed: HostJsonObject): HostTodoItem[] {
     ) {
       throw new Error(`todos[${index}].status 无效: ${statusRaw}`);
     }
+    const idRaw = entry.id;
+    const id =
+      typeof idRaw === 'string' && idRaw.trim().length > 0 ? idRaw.trim() : undefined;
     return {
+      ...(id ? { id } : {}),
       title: requiredString(entry, 'title'),
       status: statusRaw,
     };

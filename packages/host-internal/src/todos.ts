@@ -13,6 +13,7 @@ export type HostTodoStatus = 'pending' | 'in_progress' | 'completed';
 
 /** Model-visible todo item (tool list/write payloads). */
 export interface HostTodoItem {
+  id?: string;
   title: string;
   status: HostTodoStatus;
 }
@@ -49,7 +50,7 @@ export function createHostTodoStore(input: {
 }
 
 export function hostTodoItemsFromRecords(records: HostTodoRecord[]): HostTodoItem[] {
-  return records.map(({ title, status }) => ({ title, status }));
+  return records.map(({ id, title, status }) => ({ id, title, status }));
 }
 
 export class HostTodoStore {
@@ -79,6 +80,10 @@ export class HostTodoStore {
       throw new Error(`会话 TODO 数量不能超过 ${HOST_TODO_MAX_ITEMS} 条。`);
     }
 
+    const existingById = new Map(
+      (await this.loadFile()).records.map((record) => [record.id, record]),
+    );
+    const seenIds = new Set<string>();
     const now = Date.now();
     const records: HostTodoRecord[] = items.map((item) => {
       const status: HostTodoStatus =
@@ -87,15 +92,25 @@ export class HostTodoStore {
           : item.status === 'in_progress'
             ? 'in_progress'
             : 'pending';
+      const id = item.id?.trim() || randomUUID().slice(0, 8);
+      if (seenIds.has(id)) {
+        throw new Error(`会话 TODO id 重复: ${id}`);
+      }
+      seenIds.add(id);
+
+      const previous = existingById.get(id);
       const record: HostTodoRecord = {
-        id: randomUUID().slice(0, 8),
+        id,
         title: normalizeNonEmpty(item.title, 'title'),
         status,
-        createdAtUnixMs: now,
+        createdAtUnixMs: previous?.createdAtUnixMs ?? now,
         updatedAtUnixMs: now,
       };
       if (status === 'completed') {
-        record.completedAtUnixMs = now;
+        const wasCompleted = previous?.status === 'completed';
+        record.completedAtUnixMs = wasCompleted
+          ? (previous.completedAtUnixMs ?? previous.updatedAtUnixMs)
+          : now;
       }
       return record;
     });

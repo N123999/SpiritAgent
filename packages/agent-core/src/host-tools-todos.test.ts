@@ -48,6 +48,9 @@ test('todo_write schema requires todos with title and status', () => {
   assert.deepEqual(items.required, ['title', 'status']);
   const itemProperties = items.properties;
   assert.ok(isJsonObject(itemProperties));
+  const id = itemProperties.id;
+  assert.ok(isJsonObject(id));
+  assert.equal(id.type, 'string');
   const status = itemProperties.status;
   assert.ok(isJsonObject(status));
   assert.deepEqual(status.enum, ['pending', 'in_progress', 'completed']);

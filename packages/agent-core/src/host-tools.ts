@@ -645,6 +645,11 @@ export function buildTodoHostToolDefinitions(): JsonValue[] {
   const todoItemSchema: JsonObject = {
     type: 'object',
     properties: {
+      id: {
+        type: 'string',
+        description:
+          'Stable todo identifier. Reuse ids from todo_list when updating items; omit for new items to let the host assign one.',
+      },
       title: {
         type: 'string',
         description: 'Human-readable todo title.',
