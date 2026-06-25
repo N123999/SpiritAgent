@@ -1,5 +1,5 @@
 export const SKILL_CHIP_CLASS =
-  "inline-flex items-center bg-yellow-50 px-0.5 py-0.5 text-xs font-medium leading-none text-yellow-900 select-none align-middle mx-0.5 dark:bg-yellow-950 dark:text-yellow-300";
+  "inline-flex items-center px-0.5 py-0.5 text-xs font-medium leading-none text-amber-700 select-none align-middle mx-0.5 dark:text-amber-400";
 
 export function makeSkillChipNode(alias: string, doc: Document): HTMLElement {
   const span = doc.createElement("span");
