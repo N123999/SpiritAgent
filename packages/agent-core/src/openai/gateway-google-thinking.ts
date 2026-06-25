@@ -6,7 +6,8 @@ import type { OpenAiLlmVendor, OpenAiTransportConfig } from './openai-compat.js'
 export function isGatewayGoogleGeminiModel(
   llmVendor: OpenAiLlmVendor | undefined,
   model: string,
-): boolean {  if (llmVendor !== 'vercel-ai-gateway') {
+): boolean {
+  if (llmVendor !== 'vercel-ai-gateway') {
     return false;
   }
 
