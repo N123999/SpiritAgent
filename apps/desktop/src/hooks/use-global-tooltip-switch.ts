@@ -9,6 +9,13 @@ import {
 } from "react";
 
 import {
+  isTooltipAnchorSlot,
+  isTooltipItemHighlighted,
+  setTooltipActiveHighlightSlot,
+  setTooltipAnchorSlot,
+  setTooltipPointerHighlightSlot,
+} from "@/hooks/tooltip-item-interaction-store";
+import {
   DEFAULT_ANCHORED_ITEM_SWITCH_ANCHOR_LINGER_MS,
   DEFAULT_ANCHORED_ITEM_SWITCH_CLOSE_DELAY_MS,
   DEFAULT_ANCHORED_ITEM_SWITCH_OPEN_DELAY_MS,
@@ -17,7 +24,6 @@ import {
 import {
   GlobalTooltipSwitchStateModel,
   TOOLTIP_SWITCH_CONTENT_LINGER_MS,
-  isActiveTooltipAnchorSlot,
   isPointerOverTooltipCompanionOverlays,
   isWithinGlobalTooltipRelatedTarget,
   tooltipSwitchSlotKey,
@@ -94,7 +100,6 @@ export function useGlobalTooltipSwitch({
 }: UseGlobalTooltipSwitchOptions = {}): UseGlobalTooltipSwitchResult {
   const [activeSlot, setActiveSlot] = useState<GlobalTooltipSwitchStateModel["activeSlot"]>(null);
   const [activeItem, setActiveItem] = useState<unknown | null>(null);
-  const [pointerSlot, setPointerSlot] = useState<GlobalTooltipSwitchStateModel["pointerSlot"]>(null);
   const [lingerAnchorSlot, setLingerAnchorSlot] =
     useState<GlobalTooltipSwitchStateModel["lingerAnchorSlot"]>(null);
   const [lingerActiveItem, setLingerActiveItem] =
@@ -126,8 +131,24 @@ export function useGlobalTooltipSwitch({
 
   activeItemRef.current = activeItem;
   activeSlotRef.current = activeSlot;
-  pointerSlotRef.current = pointerSlot;
   lingerActiveItemRef.current = lingerActiveItem;
+
+  const applyActiveSlot = useCallback((slot: GlobalTooltipSwitchStateModel["activeSlot"]) => {
+    activeSlotRef.current = slot;
+    setActiveSlot(slot);
+    setTooltipAnchorSlot(slot);
+    setTooltipActiveHighlightSlot(slot);
+  }, []);
+
+  const applyPointerSlot = useCallback((slot: GlobalTooltipSwitchStateModel["pointerSlot"]) => {
+    pointerSlotRef.current = slot;
+    setTooltipPointerHighlightSlot(slot);
+  }, []);
+
+  const clearPointerSlot = useCallback(() => {
+    pointerSlotRef.current = null;
+    setTooltipPointerHighlightSlot(null);
+  }, []);
 
   const setRegistrationTiming = useCallback(
     (
@@ -161,11 +182,11 @@ export function useGlobalTooltipSwitch({
     const next = new GlobalTooltipSwitchStateModel();
     next.activeSlot = activeSlot;
     next.activeItem = activeItem;
-    next.pointerSlot = pointerSlot;
+    next.pointerSlot = pointerSlotRef.current;
     next.lingerAnchorSlot = lingerAnchorSlot;
     next.lingerActiveItem = lingerActiveItem;
     return next;
-  }, [activeItem, activeSlot, lingerActiveItem, lingerAnchorSlot, pointerSlot]);
+  }, [activeItem, activeSlot, lingerActiveItem, lingerAnchorSlot]);
 
   const open = model.open;
   const anchorSlot = model.anchorSlot;
@@ -232,13 +253,15 @@ export function useGlobalTooltipSwitch({
         });
       }
       clearHoverOpenTimer();
-      pointerSlotRef.current = null;
-      setPointerSlot(null);
+      clearPointerSlot();
       setLingerAnchorSlot(closingSlot);
       setLingerActiveItem(closingItem);
+      activeSlotRef.current = null;
       setActiveSlot(null);
       setActiveItem(null);
       setOpenKind("closed");
+      setTooltipActiveHighlightSlot(null);
+      setTooltipAnchorSlot(closingSlot);
       // 锚点保留到 linger 结束，避免 Popper 在退出动画期间漂到 (0,0)
       const anchorLingerMs = getAnchorLingerMs(closingRegistrationId);
       if (lingerClearTimerRef.current !== undefined) {
@@ -249,6 +272,7 @@ export function useGlobalTooltipSwitch({
         setLingerAnchorSlot(null);
         setLingerAnchorScreenRect(null);
         activeAnchorElementRef.current = null;
+        setTooltipAnchorSlot(null);
       }, anchorLingerMs);
 
       if (lingerContentClearTimerRef.current !== undefined) {
@@ -260,7 +284,7 @@ export function useGlobalTooltipSwitch({
         setLingerContentScreenRect(null);
       }, TOOLTIP_SWITCH_CONTENT_LINGER_MS);
     },
-    [clearHoverOpenTimer, getAnchorLingerMs],
+    [clearHoverOpenTimer, clearPointerSlot, getAnchorLingerMs],
   );
 
   const scheduleHoverClose = useCallback(() => {
@@ -268,8 +292,7 @@ export function useGlobalTooltipSwitch({
     clearHoverCloseTimer();
     const closingRegistrationId = activeSlot?.registrationId ?? null;
     if (!activeItemRef.current || !closingRegistrationId) {
-      pointerSlotRef.current = null;
-      setPointerSlot(null);
+      clearPointerSlot();
       return;
     }
     const closeDelayMs = getCloseDelayMs(closingRegistrationId);
@@ -293,8 +316,7 @@ export function useGlobalTooltipSwitch({
     clearHoverOpenTimer();
     clearHoverCloseTimer();
     if (!activeItemRef.current || !closingRegistrationId) {
-      pointerSlotRef.current = null;
-      setPointerSlot(null);
+      clearPointerSlot();
       return;
     }
     commitClose(closingRegistrationId);
@@ -327,8 +349,7 @@ export function useGlobalTooltipSwitch({
         pointer.registrationId === registrationId &&
         pointer.itemId === itemId
       ) {
-        pointerSlotRef.current = null;
-        setPointerSlot(null);
+        clearPointerSlot();
       }
     },
     [clearHoverCloseTimer, clearHoverOpenTimer, commitClose],
@@ -434,8 +455,7 @@ export function useGlobalTooltipSwitch({
       setLingerContentScreenRect(null);
 
       const slot = tooltipSwitchSlotKey(registrationId, itemId);
-      pointerSlotRef.current = slot;
-      setPointerSlot(slot);
+      applyPointerSlot(slot);
 
       if (
         activeItemRef.current !== null &&
@@ -449,7 +469,7 @@ export function useGlobalTooltipSwitch({
 
       if (activeItemRef.current !== null) {
         clearHoverOpenTimer();
-        setActiveSlot(slot);
+        applyActiveSlot(slot);
         setActiveItem(item);
         setOpenKind("instant");
         reapplyCachedTriggerElement(registrationId);
@@ -458,7 +478,7 @@ export function useGlobalTooltipSwitch({
 
       if (hadDisplayedContent) {
         clearHoverOpenTimer();
-        setActiveSlot(slot);
+        applyActiveSlot(slot);
         setActiveItem(item);
         setOpenKind("instant");
         reapplyCachedTriggerElement(registrationId);
@@ -475,13 +495,13 @@ export function useGlobalTooltipSwitch({
         if (pointer.registrationId !== registrationId || pointer.itemId !== itemId) {
           return;
         }
-        setActiveSlot(slot);
+        applyActiveSlot(slot);
         setActiveItem(item);
         setOpenKind("delayed");
         reapplyCachedTriggerElement(registrationId);
       }, openDelayMs);
     },
-    [clearHoverCloseTimer, clearHoverOpenTimer, reapplyCachedTriggerElement],
+    [applyActiveSlot, applyPointerSlot, clearHoverCloseTimer, clearHoverOpenTimer, reapplyCachedTriggerElement],
   );
 
   const getTriggerProps = useCallback(
@@ -492,7 +512,6 @@ export function useGlobalTooltipSwitch({
       openDelayMs: number,
     ): AnchoredItemSwitchTriggerProps => {
       const itemId = getItemId(item);
-      const slot = tooltipSwitchSlotKey(registrationId, itemId);
       return {
         onPointerEnter: (event?: ReactPointerEvent) => {
           const enterTarget = event?.currentTarget;
@@ -501,17 +520,11 @@ export function useGlobalTooltipSwitch({
           }
           handleItemPointerEnter(registrationId, item, getItemId, openDelayMs);
         },
-        isHighlighted:
-          (pointerSlot !== null &&
-            pointerSlot.registrationId === registrationId &&
-            pointerSlot.itemId === itemId) ||
-          (activeSlot !== null &&
-            activeSlot.registrationId === registrationId &&
-            activeSlot.itemId === itemId),
-        isAnchor: isActiveTooltipAnchorSlot(anchorSlot, registrationId, itemId),
+        isHighlighted: isTooltipItemHighlighted(registrationId, itemId),
+        isAnchor: isTooltipAnchorSlot(registrationId, itemId),
       };
     },
-    [activeSlot, anchorSlot, handleItemPointerEnter, notePointerEnterTarget, pointerSlot],
+    [handleItemPointerEnter, notePointerEnterTarget],
   );
 
   const onTriggerZonePointerLeave = useCallback(
@@ -530,8 +543,7 @@ export function useGlobalTooltipSwitch({
           return;
         }
       }
-      pointerSlotRef.current = null;
-      setPointerSlot(null);
+      clearPointerSlot();
       pointerDismissedRegistrationsRef.current.delete(registrationId);
     },
     [isRelatedTarget],
@@ -563,9 +575,8 @@ export function useGlobalTooltipSwitch({
   }, []);
 
   const isAnchorSlot = useCallback(
-    (registrationId: string, itemId: string) =>
-      isActiveTooltipAnchorSlot(anchorSlot, registrationId, itemId),
-    [anchorSlot],
+    (registrationId: string, itemId: string) => isTooltipAnchorSlot(registrationId, itemId),
+    [],
   );
 
   useEffect(() => {

@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Copy, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipItem, useTooltipContext } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipItem, useTooltipTriggerProps } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkspaceGitCommitContextMenu } from "@/components/workspace-git-commit-context-menu";
 import { cn } from "@/lib/utils";
@@ -504,8 +504,7 @@ function CommitGraphRowWithHover({
   onAddCommitToSession?: (commit: GitCommitRecord) => void;
   addCommitToSessionDisabled?: boolean;
 }) {
-  const { getTriggerProps } = useTooltipContext<GitCommitGraphRow>();
-  const { onPointerEnter, isHighlighted } = getTriggerProps(row);
+  const { onPointerEnter, isHighlighted } = useTooltipTriggerProps(row);
 
   const rowButton = (
     <button

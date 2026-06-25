@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
@@ -15,7 +15,7 @@ import {
   TooltipContent,
   TooltipItem,
   TooltipTrigger,
-  useOptionalTooltipGlobalContext,
+  useOptionalTooltipStableActions,
 } from "@/components/ui/tooltip";
 import {
   DESKTOP_OVERLAY_LIST_DETAIL_SURFACE,
@@ -62,7 +62,7 @@ function ModelPickerShortcutKbd() {
   );
 }
 
-function ModelPickerRow({
+const ModelPickerRow = memo(function ModelPickerRow({
   model,
   displayTitle,
   isActive,
@@ -71,14 +71,14 @@ function ModelPickerRow({
   model: ModelPickerItem;
   displayTitle: string;
   isActive: boolean;
-  onSelectModel: () => void;
+  onSelectModel: (modelName: string) => void;
 }) {
   return (
     <TooltipItem item={model}>
       <DropdownMenuItem
         className={cn(isActive && "bg-accent/40")}
         onSelect={() => {
-          onSelectModel();
+          onSelectModel(model.name);
         }}
       >
         <span className={cn(DESKTOP_OVERLAY_LIST_ITEM_PRIMARY, "min-w-0 truncate")}>
@@ -87,7 +87,7 @@ function ModelPickerRow({
       </DropdownMenuItem>
     </TooltipItem>
   );
-}
+});
 
 export type ModelPickerMenuProps = {
   models: DesktopSnapshot["config"]["models"];
@@ -117,7 +117,7 @@ export function ModelPickerMenu({
   menuContentClassName,
 }: ModelPickerMenuProps) {
   const { t } = useTranslation();
-  const globalTooltip = useOptionalTooltipGlobalContext();
+  const tooltipActions = useOptionalTooltipStableActions();
   const [internalOpen, setInternalOpen] = useState(false);
   const [modelFilter, setModelFilter] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -167,21 +167,26 @@ export function ModelPickerMenu({
   }, [displayTitleByModelName, modelFilter, modelGroups]);
 
   const handleModelFilterChange = useCallback((next: string) => {
-    if (globalTooltip?.contentActiveItem != null && next !== modelFilter) {
+    if (next !== modelFilter) {
       flushSync(() => {
-        globalTooltip.dismissActiveItem();
+        tooltipActions?.dismissActiveItem();
       });
     }
     setModelFilter(next);
-  }, [globalTooltip, modelFilter]);
+  }, [modelFilter, tooltipActions]);
 
   const dismissOpenListTooltip = useCallback(() => {
-    if (globalTooltip?.open) {
-      flushSync(() => {
-        globalTooltip.dismissActiveItem();
-      });
-    }
-  }, [globalTooltip]);
+    flushSync(() => {
+      tooltipActions?.dismissActiveItem();
+    });
+  }, [tooltipActions]);
+
+  const handleSelectModel = useCallback((name: string) => {
+    dismissOpenListTooltip();
+    onModelSelect(name);
+    setModelFilter("");
+    setModelMenuOpen(false);
+  }, [dismissOpenListTooltip, onModelSelect, setModelMenuOpen]);
 
   const activeModelSummary = activeModelProfile
     ? formatModelPickerLabel(
@@ -289,12 +294,7 @@ export function ModelPickerMenu({
                           model={model}
                           displayTitle={displayTitle}
                           isActive={activeModelProfile?.name === model.name}
-                          onSelectModel={() => {
-                            dismissOpenListTooltip();
-                            onModelSelect(model.name);
-                            setModelFilter("");
-                            setModelMenuOpen(false);
-                          }}
+                          onSelectModel={handleSelectModel}
                         />
                       );
                     })}
