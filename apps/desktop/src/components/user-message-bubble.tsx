@@ -39,6 +39,7 @@ import {
 import type { PullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { workspaceFileBasename } from "@/lib/file-picker-path";
 import { resolveWorkspaceFileChipPresentation } from "@/lib/workspace-file-chip-styles";
+import { SKILL_CHIP_CLASS } from "@/lib/skill-chip-styles";
 import { workspaceExplorerIconForPath } from "@/lib/workspace-explorer-icon";
 import { cn } from "@/lib/utils";
 import type { ConversationMessageSnapshot } from "@/types";
@@ -63,6 +64,14 @@ function WorkspaceFileCard({ path }: { path: string }) {
     <span title={normalized} className={presentation.chipClass}>
       <Icon className={cn("size-[10px] shrink-0", presentation.iconClass)} aria-hidden />
       {workspaceFileBasename(normalized)}
+    </span>
+  );
+}
+
+function SkillCard({ alias }: { alias: string }) {
+  return (
+    <span title={alias} className={SKILL_CHIP_CLASS} aria-label={alias}>
+      {alias}
     </span>
   );
 }
@@ -175,10 +184,11 @@ function GitCommitCard({
 
 function isInlineChipPart(
   part: MessageContentPart | null | undefined,
-): part is Extract<MessageContentPart, { kind: "element" | "workspaceFile" | "prDiff" | "gitCommit" | "terminalSnippet" | "fileSnippet" }> {
+): part is Extract<MessageContentPart, { kind: "element" | "workspaceFile" | "prDiff" | "gitCommit" | "terminalSnippet" | "fileSnippet" | "skill" }> {
   return (
     part?.kind === "element"
     || part?.kind === "workspaceFile"
+    || part?.kind === "skill"
     || part?.kind === "prDiff"
     || part?.kind === "gitCommit"
     || part?.kind === "terminalSnippet"
@@ -233,6 +243,7 @@ export function UserMessageBubble({
         (p) =>
           p.kind === "element"
           || p.kind === "workspaceFile"
+          || p.kind === "skill"
           || p.kind === "prDiff"
           || p.kind === "gitCommit"
           || p.kind === "terminalSnippet"
@@ -277,6 +288,9 @@ export function UserMessageBubble({
               }
               if (part.kind === "workspaceFile") {
                 return <WorkspaceFileCard key={i} path={part.path} />;
+              }
+              if (part.kind === "skill") {
+                return <SkillCard key={i} alias={part.alias} />;
               }
               if (part.kind === "prDiff") {
                 return <PrDiffCard key={i} part={part} />;

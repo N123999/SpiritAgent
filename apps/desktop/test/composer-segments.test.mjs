@@ -206,6 +206,24 @@ test("messageContentToRichSegments rebuilds workspace file chips from wire text"
   assert.equal(segments[1]?.kind === "text" && segments[1].value, " 你好");
 });
 
+test("messageContentToRichSegments rebuilds skill chips from wire text", () => {
+  const segments = messageContentToRichSegments("/create-skill 你好", "msg-skill");
+  assert.equal(segments.length, 2);
+  assert.equal(segments[0]?.kind, "skill");
+  assert.equal(segments[0]?.kind === "skill" && segments[0].alias, "/create-skill");
+  assert.equal(segments[1]?.kind === "text" && segments[1].value, " 你好");
+});
+
+test("parseMessageContentParts parses skill and workspace file inline refs", () => {
+  const parts = parseMessageContentParts("/git-commit @README.md done");
+  assert.deepEqual(parts, [
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " " },
+    { kind: "workspaceFile", path: "README.md" },
+    { kind: "text", value: " done" },
+  ]);
+});
+
 test("messageContentToRichSegments rebuilds element chips from wire text", () => {
   const wire = segmentsToMessageText([
     { kind: "element", attachment: sampleAttachment },

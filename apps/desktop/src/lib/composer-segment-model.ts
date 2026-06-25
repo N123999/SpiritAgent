@@ -798,7 +798,8 @@ export type MessageContentPart =
       lineEnd: number;
       selectedText: string;
     }
-  | { kind: "workspaceFile"; path: string };
+  | { kind: "workspaceFile"; path: string }
+  | { kind: "skill"; alias: string };
 
 const ELEMENT_BLOCK_RE = /Selected element from ([^\n]*):\n```html\n[\s\S]*?\n```/g;
 
@@ -903,26 +904,31 @@ function findWireBlocks(content: string): ParsedWireBlock[] {
   blocks.sort((left, right) => left.index - right.index);
   return blocks;
 }
-const WORKSPACE_FILE_REF_IN_TEXT_RE = /@([^\s@]+)/gu;
+const INLINE_COMPOSER_REF_IN_TEXT_RE = /(@[^\s@]+|\/[a-zA-Z][a-zA-Z0-9_-]*)/gu;
 
-function expandTextWithWorkspaceFileRefs(text: string): MessageContentPart[] {
+function expandTextWithInlineComposerRefs(text: string): MessageContentPart[] {
   if (!text) {
     return [];
   }
 
   const parts: MessageContentPart[] = [];
   let last = 0;
+  const re = new RegExp(INLINE_COMPOSER_REF_IN_TEXT_RE.source, "gu");
   let match: RegExpExecArray | null;
-  const re = new RegExp(WORKSPACE_FILE_REF_IN_TEXT_RE.source, "gu");
   while ((match = re.exec(text)) !== null) {
     if (match.index > last) {
       parts.push({ kind: "text", value: text.slice(last, match.index) });
     }
-    parts.push({
-      kind: "workspaceFile",
-      path: normalizeWorkspaceFilePath(match[1] ?? ""),
-    });
-    last = match.index + match[0].length;
+    const token = match[0] ?? "";
+    if (token.startsWith("@")) {
+      parts.push({
+        kind: "workspaceFile",
+        path: normalizeWorkspaceFilePath(token.slice(1)),
+      });
+    } else {
+      parts.push({ kind: "skill", alias: token });
+    }
+    last = match.index + token.length;
   }
 
   if (last < text.length) {
@@ -933,7 +939,7 @@ function expandTextWithWorkspaceFileRefs(text: string): MessageContentPart[] {
 }
 
 function pushExpandedTextParts(parts: MessageContentPart[], text: string): void {
-  for (const part of expandTextWithWorkspaceFileRefs(text)) {
+  for (const part of expandTextWithInlineComposerRefs(text)) {
     parts.push(part);
   }
 }
@@ -946,7 +952,7 @@ export function parseMessageContentParts(content: string): MessageContentPart[] 
 
   const blocks = findWireBlocks(content);
   if (blocks.length === 0) {
-    return expandTextWithWorkspaceFileRefs(content);
+    return expandTextWithInlineComposerRefs(content);
   }
 
   const parts: MessageContentPart[] = [];
@@ -961,7 +967,7 @@ export function parseMessageContentParts(content: string): MessageContentPart[] 
   if (last < content.length) {
     pushExpandedTextParts(parts, content.slice(last));
   }
-  return parts.length > 0 ? parts : expandTextWithWorkspaceFileRefs(content);
+  return parts.length > 0 ? parts : expandTextWithInlineComposerRefs(content);
 }
 
 /** Rebuild composer segments from stored message content (e.g. message rewind). */
@@ -1054,6 +1060,11 @@ export function messageContentToRichSegments(
       continue;
     }
 
+    if (part.kind === "skill") {
+      segments.push({ kind: "skill", alias: part.alias });
+      continue;
+    }
+
     const display = trimMessageTextAroundElements(part.value, {
       afterElement:
         prev?.kind === "element"
@@ -1061,14 +1072,16 @@ export function messageContentToRichSegments(
         || prev?.kind === "gitCommit"
         || prev?.kind === "terminalSnippet"
         || prev?.kind === "fileSnippet"
-        || prev?.kind === "workspaceFile",
+        || prev?.kind === "workspaceFile"
+        || prev?.kind === "skill",
       beforeElement:
         next?.kind === "element"
         || next?.kind === "prDiff"
         || next?.kind === "gitCommit"
         || next?.kind === "terminalSnippet"
         || next?.kind === "fileSnippet"
-        || next?.kind === "workspaceFile",
+        || next?.kind === "workspaceFile"
+        || next?.kind === "skill",
     });
     if (display || segments.length === 0) {
       segments.push({ kind: "text", value: display });
