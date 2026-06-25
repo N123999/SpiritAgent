@@ -307,8 +307,41 @@ test('parseOpenRouterModelEntriesPayload extracts display metadata and pricing',
         outputPerTokenUsd: '0.000015',
         requestPerCallUsd: '0',
       },
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
     },
   ]);
+});
+
+test('parseOpenRouterModelEntriesPayload reads reasoning supported_efforts from api', () => {
+  const entries = parseOpenRouterModelEntriesPayload({
+    data: [
+      {
+        id: 'anthropic/claude-sonnet-4.6',
+        architecture: { output_modalities: ['text'] },
+        reasoning: { supported_efforts: ['high', 'medium', 'low'] },
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'anthropic/claude-sonnet-4.6',
+      supportedReasoningEfforts: ['high', 'medium', 'low'],
+    },
+  ]);
+});
+
+test('parseOpenRouterModelEntriesPayload infers claude efforts when api omits reasoning', () => {
+  const entries = parseOpenRouterModelEntriesPayload({
+    data: [
+      {
+        id: 'anthropic/claude-opus-4.8',
+        architecture: { output_modalities: ['text'] },
+      },
+    ],
+  });
+
+  assert.deepEqual(entries[0]?.supportedReasoningEfforts, ['low', 'medium', 'high', 'xhigh', 'max']);
 });
 
 test('parseXiaomiModelEntriesPayload marks multimodal allowlist models', () => {
@@ -500,7 +533,10 @@ test('parseOpenAiCompatibleModelEntriesPayload routes openrouter to typed parser
   }, 'openrouter');
 
   assert.deepEqual(entries, [
-    { id: 'anthropic/claude-sonnet-4' },
+    {
+      id: 'anthropic/claude-sonnet-4',
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
+    },
     { id: 'stability/sdxl', supportsImageGeneration: true },
   ]);
 });
@@ -520,6 +556,7 @@ test('parseOpenRouterModelEntriesPayload maps context_length', () => {
     {
       id: 'anthropic/claude-sonnet-4',
       contextLength: 200000,
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
     },
   ]);
 });

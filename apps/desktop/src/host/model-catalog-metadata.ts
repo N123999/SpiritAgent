@@ -1,5 +1,5 @@
 import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-name';
-import { gatewayAnthropicClaudeSupportedEfforts } from '@spirit-agent/core';
+import { routedAnthropicClaudeSupportedEfforts } from '@spirit-agent/core';
 import type { ProviderListedModelEntry } from '@spirit-agent/host-internal';
 
 import type {
@@ -179,11 +179,11 @@ function resolvePreviewSupportedReasoningEffortsForEntry(
     };
   }
 
-  if (provider !== 'vercel-ai-gateway') {
+  if (provider !== 'vercel-ai-gateway' && provider !== 'openrouter') {
     return {};
   }
 
-  const inferred = gatewayAnthropicClaudeSupportedEfforts(entry.id);
+  const inferred = routedAnthropicClaudeSupportedEfforts(entry.id);
   if (inferred === undefined) {
     return {};
   }
