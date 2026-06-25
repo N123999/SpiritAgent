@@ -102,6 +102,23 @@ export const WorkspaceMonacoEditor = forwardRef<
     onRevealConsumedRef.current?.();
   }, []);
 
+  const applySearchDecorations = useCallback((editor: monaco.editor.IStandaloneCodeEditor) => {
+    const ranges = searchMatchRangesRef.current;
+    searchDecorationsRef.current?.clear();
+    if (ranges.length === 0) {
+      searchDecorationsRef.current = null;
+      return;
+    }
+    searchDecorationsRef.current = editor.createDecorationsCollection(
+      ranges.map((range) => ({
+        range: new monaco.Range(range.line, range.startColumn, range.line, range.endColumn),
+        options: {
+          className: "spirit-monaco-search-match",
+        },
+      })),
+    );
+  }, []);
+
   const runSave = useCallback(async () => {
     const editor = editorRef.current;
     if (!editor) {
@@ -132,21 +149,8 @@ export const WorkspaceMonacoEditor = forwardRef<
     if (!editor) {
       return;
     }
-    const ranges = searchMatchRangesRef.current;
-    searchDecorationsRef.current?.clear();
-    if (ranges.length === 0) {
-      searchDecorationsRef.current = null;
-      return;
-    }
-    searchDecorationsRef.current = editor.createDecorationsCollection(
-      ranges.map((range) => ({
-        range: new monaco.Range(range.line, range.startColumn, range.line, range.endColumn),
-        options: {
-          className: "spirit-monaco-search-match",
-        },
-      })),
-    );
-  }, [searchMatchRanges]);
+    applySearchDecorations(editor);
+  }, [applySearchDecorations, searchMatchRanges]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -205,6 +209,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       if (revealLocationRef.current) {
         applyRevealLocation(editor);
       }
+      applySearchDecorations(editor);
 
       dirtyDisposable = editor.onDidChangeModelContent(() => {
         const value = editor!.getValue();
@@ -238,7 +243,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       editor?.dispose();
       editorRef.current = null;
     };
-  }, [applyRevealLocation, relativePath, readOnly, runSave]);
+  }, [applyRevealLocation, applySearchDecorations, relativePath, readOnly, runSave]);
 
   return <div ref={containerRef} className="h-full min-h-0 w-full min-w-0" />;
 });
