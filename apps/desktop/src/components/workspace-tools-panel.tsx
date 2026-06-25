@@ -512,6 +512,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
     () => new Set(),
   );
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
+  const [addToolTabMenuOpen, setAddToolTabMenuOpen] = useState(false);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId),
@@ -741,7 +742,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               })}
               </div>
             </ScrollArea>
-            <DropdownMenu modal>
+            <DropdownMenu modal onOpenChange={setAddToolTabMenuOpen}>
               <Tooltip delayDuration={300} disableHoverableContent>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
@@ -925,6 +926,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                         browserUrl={item.browserUrl}
                         browserTabEnabled={browserTabEnabled}
                         isActive={selected}
+                        nativeViewSuspended={addToolTabMenuOpen && selected}
                         useMicaBackdrop={useMicaBackdrop}
                         onBrowserUrlChange={(url) => handleBrowserUrlChange(item.id, url)}
                         onOpenUrlInNewTab={onBrowserOpenInNewTab}

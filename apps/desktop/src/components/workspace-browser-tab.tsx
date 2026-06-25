@@ -34,6 +34,8 @@ export type WorkspaceBrowserTabProps = {
   browserTabEnabled?: boolean;
   /** 当前浏览器工具标签是否为右侧工作区激活页 */
   isActive?: boolean;
+  /** 宿主 HTML 浮层（如工具标签栏下拉）打开时暂挂嵌入式 BrowserView，避免原生层挡住菜单 */
+  nativeViewSuspended?: boolean;
   /** Windows 云母 / macOS Vibrancy：页槽使用略高的半透明底色。 */
   useMicaBackdrop?: boolean;
 };
@@ -142,6 +144,32 @@ function readBrowserPageBounds(slot: HTMLElement): PageViewBounds | null {
 
   return { x, y, width, height };
 }
+
+/** BrowserView webContents 坐标：主页面区域（DevTools 打开时不含右侧面板）。 */
+function readPageCaptureRect(
+  slot: HTMLElement,
+  devtoolsOpen: boolean,
+  devtoolsWidthPx: number,
+): PageViewBounds | null {
+  const bounds = readBrowserPageBounds(slot);
+  if (!bounds) {
+    return null;
+  }
+  if (!devtoolsOpen) {
+    return { x: 0, y: 0, width: bounds.width, height: bounds.height };
+  }
+  const devtoolsWidth = clampDevtoolsWidthPx(bounds.width, devtoolsWidthPx);
+  const pageWidth = Math.max(
+    DEVTOOLS_MIN_WIDTH_PX,
+    bounds.width - devtoolsWidth - DEVTOOLS_SPLITTER_WIDTH_PX,
+  );
+  return { x: 0, y: 0, width: pageWidth, height: bounds.height };
+}
+
+type NativeViewSuspendSnapshot = {
+  dataUrl: string;
+  pageWidthPx: number;
+};
 
 function BrowserNewTabPage({
   onNavigate,
@@ -253,6 +281,7 @@ export function WorkspaceBrowserTab({
   onElementPicked,
   browserTabEnabled = false,
   isActive = false,
+  nativeViewSuspended = false,
   useMicaBackdrop = false,
 }: WorkspaceBrowserTabProps) {
   const { t } = useTranslation();
@@ -268,6 +297,9 @@ export function WorkspaceBrowserTab({
   const [devtoolsWidthPx, setDevtoolsWidthPx] = useState(readStoredDevtoolsWidthPx);
   const [isDevtoolsResizing, setIsDevtoolsResizing] = useState(false);
   const devtoolsDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const capturingSuspendSnapshotRef = useRef(false);
+  const [nativeViewSuspendSnapshot, setNativeViewSuspendSnapshot] =
+    useState<NativeViewSuspendSnapshot | null>(null);
   const [currentPageUrl, setCurrentPageUrl] = useState<string | undefined>(browserUrl);
   const onElementPickedRef = useRef(onElementPicked);
   useLayoutEffect(() => {
@@ -338,7 +370,7 @@ export function WorkspaceBrowserTab({
       return;
     }
 
-    if (!pageEmbeddable) {
+    if (!pageEmbeddable || (nativeViewSuspended && !capturingSuspendSnapshotRef.current)) {
       void bridge.syncBrowserPageView({
         tabId: browserTabId,
         bounds: { x: 0, y: 0, width: 0, height: 0 },
@@ -376,7 +408,74 @@ export function WorkspaceBrowserTab({
         ? { devtoolsWidthPx: syncedDevtoolsWidth }
         : {}),
     });
-  }, [browserTabId, browserUrl, devtoolsOpen, devtoolsWidthPx, pageEmbeddable]);
+  }, [browserTabId, browserUrl, devtoolsOpen, devtoolsWidthPx, nativeViewSuspended, pageEmbeddable]);
+
+  useLayoutEffect(() => {
+    if (!nativeViewSuspended) {
+      capturingSuspendSnapshotRef.current = false;
+      setNativeViewSuspendSnapshot(null);
+      syncPageView();
+      return;
+    }
+
+    if (!pageEmbeddable) {
+      syncPageView();
+      return;
+    }
+
+    let cancelled = false;
+    capturingSuspendSnapshotRef.current = true;
+
+    void (async () => {
+      const bridge = window.spiritDesktop;
+      const slot = pageSlotRef.current;
+      if (!bridge?.captureBrowserPageView || !slot) {
+        capturingSuspendSnapshotRef.current = false;
+        if (!cancelled) {
+          syncPageView();
+        }
+        return;
+      }
+
+      const captureRect = readPageCaptureRect(slot, devtoolsOpen, devtoolsWidthPx);
+      if (!captureRect) {
+        capturingSuspendSnapshotRef.current = false;
+        if (!cancelled) {
+          syncPageView();
+        }
+        return;
+      }
+
+      try {
+        const base64 = await bridge.captureBrowserPageView(browserTabId, captureRect);
+        if (cancelled) {
+          return;
+        }
+        setNativeViewSuspendSnapshot({
+          dataUrl: `data:image/png;base64,${base64}`,
+          pageWidthPx: captureRect.width,
+        });
+      } catch {
+        // 截帧失败时仍隐藏原生视图，只是无静态图垫层
+      } finally {
+        capturingSuspendSnapshotRef.current = false;
+        if (!cancelled) {
+          syncPageView();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    browserTabId,
+    devtoolsOpen,
+    devtoolsWidthPx,
+    nativeViewSuspended,
+    pageEmbeddable,
+    syncPageView,
+  ]);
 
   useEffect(() => {
     if (!canEmbed || showNewTab) {
@@ -781,6 +880,15 @@ export function WorkspaceBrowserTab({
                 isPickerActive && "cursor-crosshair",
               )}
             />
+            {nativeViewSuspendSnapshot ? (
+              <img
+                src={nativeViewSuspendSnapshot.dataUrl}
+                alt=""
+                aria-hidden
+                className="electron-no-drag pointer-events-none absolute top-0 left-0 z-10 h-full object-cover object-left"
+                style={{ width: nativeViewSuspendSnapshot.pageWidthPx }}
+              />
+            ) : null}
             {devtoolsOpen ? (
               <div
                 role="separator"
