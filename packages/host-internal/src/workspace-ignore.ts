@@ -280,6 +280,31 @@ export function shouldIgnoreWorkspacePath(
   return ignored;
 }
 
+export async function filterWorkspaceFilePathsByIgnore(
+  workspaceRoot: string,
+  relativePaths: readonly string[],
+): Promise<string[]> {
+  const matcherCache = new Map<string, IgnoreMatcherEntry[]>();
+  const kept: string[] = [];
+
+  for (const relativePath of relativePaths) {
+    const normalized = relativePath.replace(/\\/gu, '/');
+    const parentDirRelPath = normalized.includes('/')
+      ? normalized.slice(0, normalized.lastIndexOf('/'))
+      : '';
+    const matchers = await cachedIgnoreMatchersForRelativeDir(
+      workspaceRoot,
+      parentDirRelPath,
+      matcherCache,
+    );
+    if (!shouldIgnoreWorkspacePath(normalized, false, matchers)) {
+      kept.push(normalized);
+    }
+  }
+
+  return kept;
+}
+
 function relativePathFromMatcherBase(baseRelPath: string, targetRelativePath: string): string | undefined {
   if (!baseRelPath) {
     return targetRelativePath;

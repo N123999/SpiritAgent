@@ -85,6 +85,7 @@ import {
   parseManagedGeneratedAssetReference,
 } from './managed-generated-asset.js';
 import { detectSupportedVideoFile, hasSupportedVideoExtension } from './video-file-support.js';
+import { filterWorkspaceFilePathsByIgnore } from './workspace-ignore.js';
 import {
   buildRunShellCommandToolResult,
   serializeRunShellCommandToolResult,
@@ -1565,7 +1566,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
 
   private async executeGlob(inputPattern: string): Promise<string> {
     const pattern = normalizeWorkspaceGlobPattern(inputPattern);
-    const matches = (await globPaths(pattern, {
+    const rawMatches = (await globPaths(pattern, {
       cwd: this.workspaceRoot,
       absolute: false,
       nodir: true,
@@ -1575,6 +1576,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     }))
       .map((value) => value.replace(/\\/gu, '/'))
       .sort((left, right) => left.localeCompare(right));
+    const matches = await filterWorkspaceFilePathsByIgnore(this.workspaceRoot, rawMatches);
 
     let out = `[glob]\npattern: ${pattern}\nmatches: ${matches.length}\n\n`;
     if (matches.length === 0) {
