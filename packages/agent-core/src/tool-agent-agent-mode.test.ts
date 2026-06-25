@@ -50,6 +50,8 @@ test('buildAgentModeSystemMessage: Debug mode guidance', () => {
   assert.ok(message.includes('Propose hypotheses about the root cause'));
   assert.ok(message.includes('ranked by likelihood'));
   assert.ok(message.includes('Insert structured log points in the relevant source code'));
+  assert.ok(message.includes('#region agent log'));
+  assert.ok(message.includes('Remove entire regions after the bug is verified fixed'));
   assert.ok(message.includes('.spirit/logs/'));
   assert.ok(message.includes('kebab-case'));
   assert.ok(message.includes('"hypotheses"'));
