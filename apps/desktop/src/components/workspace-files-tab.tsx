@@ -22,7 +22,7 @@ import {
   type WorkspaceMonacoSearchMatchRange,
 } from "@/components/workspace-monaco-editor";
 import { cn } from "@/lib/utils";
-import { DESKTOP_CHROME_TOGGLE_ICON_BTN, DESKTOP_SHELL_LAYOUT_TRANSITION } from "@/lib/desktop-chrome";
+import { DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN, DESKTOP_SHELL_LAYOUT_TRANSITION } from "@/lib/desktop-chrome";
 import { desktopMicaFileDetailSurfaceClass } from "@/lib/desktop-mica-surface";
 import {
   WORKSPACE_FILES_TREE_MIN_WIDTH_PX,
@@ -165,7 +165,7 @@ function WorkspaceFilesExplorerToolbar({
               variant="ghost"
               size="icon"
               className={cn(
-                DESKTOP_CHROME_TOGGLE_ICON_BTN,
+                DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN,
                 fileTreeOpen && !fileSearchOpen && "bg-muted/60",
               )}
               onClick={onToggleFileTree}
@@ -187,7 +187,7 @@ function WorkspaceFilesExplorerToolbar({
               variant="ghost"
               size="icon"
               className={cn(
-                DESKTOP_CHROME_TOGGLE_ICON_BTN,
+                DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN,
                 fileSearchOpen && fileTreeOpen && "bg-muted/60",
               )}
               onClick={onToggleFileSearch}

@@ -32,6 +32,12 @@ export const DESKTOP_CHROME_TOGGLE_ICON_BTN = cn(
   instantHoverMotionClass,
 );
 
+/** 文件侧栏工具栏切换图标：字色对齐会话区 Thought（text-muted-foreground） */
+export const DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN = cn(
+  DESKTOP_CHROME_TOGGLE_ICON_BTN,
+  "text-muted-foreground hover:text-muted-foreground focus-visible:text-muted-foreground aria-expanded:text-muted-foreground aria-pressed:text-muted-foreground",
+);
+
 export const DESKTOP_CHROME_COMMIT_BTN = cn(
   "h-7 rounded-md px-2 text-xs font-medium text-foreground/90 hover:bg-foreground/[0.06] hover:text-foreground dark:hover:bg-foreground/10",
   instantHoverMotionClass,
