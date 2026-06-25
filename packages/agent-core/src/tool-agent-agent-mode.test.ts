@@ -47,7 +47,7 @@ test('buildAgentModeSystemMessage: Debug mode guidance', () => {
   const message = buildAgentModeSystemMessage({ path: '', exists: false, agentMode: 'debug' });
   assert.ok(message.includes('You are in Debug mode.'));
   assert.ok(message.includes('do not attempt a fix immediately'));
-  assert.ok(message.includes('at least 5 hypotheses'));
+  assert.ok(message.includes('Propose hypotheses about the root cause'));
   assert.ok(message.includes('ranked by likelihood'));
   assert.ok(message.includes('.spirit/logs/'));
   assert.ok(message.includes('kebab-case'));
