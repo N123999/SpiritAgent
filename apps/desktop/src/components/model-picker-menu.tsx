@@ -35,6 +35,7 @@ import {
   buildModelCatalogDisplayTitleMap,
   modelDisplayTitleFromMap,
 } from "@/lib/model-catalog-detail";
+import { toolCardSecondaryTextClass } from "@/lib/file-tool-lsp-diagnostics-display";
 import { modelReasoningEffortLabel } from "@spirit-agent/core/reasoning-effort";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
 import type { DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
@@ -188,12 +189,6 @@ export function ModelPickerMenu({
     setModelMenuOpen(false);
   }, [dismissOpenListTooltip, onModelSelect, setModelMenuOpen]);
 
-  const activeModelSummary = activeModelProfile
-    ? formatModelPickerLabel(
-        modelDisplayTitleFromMap(activeModelProfile.name, displayTitleByModelName),
-        activeReasoningEffort ?? activeModelProfile.reasoningEffort,
-      )
-    : activeModelName;
 
   useEffect(() => {
     const id = registerModelPicker({
@@ -261,9 +256,19 @@ export function ModelPickerMenu({
                     triggerClassName,
                   )}
                 >
-                  <span className="min-w-0 truncate">
-                    {activeModelSummary}
-                  </span>
+                  {activeModelProfile ? (
+                    <ModelPickerTriggerLabel
+                      name={modelDisplayTitleFromMap(
+                        activeModelProfile.name,
+                        displayTitleByModelName,
+                      )}
+                      reasoningEffort={
+                        activeReasoningEffort ?? activeModelProfile.reasoningEffort
+                      }
+                    />
+                  ) : (
+                    <span className="min-w-0 truncate">{activeModelName}</span>
+                  )}
                   <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
                 </button>
               </FilteredOverlayMenuTrigger>
@@ -349,6 +354,19 @@ export function ModelPickerMenu({
   );
 }
 
-function formatModelPickerLabel(name: string, reasoningEffort: DesktopModelReasoningEffort): string {
-  return `${name} · ${modelReasoningEffortLabel(reasoningEffort)}`;
+function ModelPickerTriggerLabel({
+  name,
+  reasoningEffort,
+}: {
+  name: string;
+  reasoningEffort: DesktopModelReasoningEffort;
+}) {
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5">
+      <span className="min-w-0 truncate">{name}</span>
+      <span className={cn("shrink-0", toolCardSecondaryTextClass)}>
+        {modelReasoningEffortLabel(reasoningEffort)}
+      </span>
+    </span>
+  );
 }
