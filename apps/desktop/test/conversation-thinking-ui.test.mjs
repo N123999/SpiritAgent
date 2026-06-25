@@ -201,6 +201,39 @@ test('shouldShowAssistantThinkingCollapsible hides placeholder when tool follows
   );
 });
 
+test('shouldShowAssistantThinkingCollapsible keeps placeholder between tool batches', () => {
+  const messages = [
+    { id: 1, role: 'user', content: 'hi', pending: false },
+    {
+      id: 2,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      tool: {
+        toolCallId: 't1',
+        toolName: 'read_file',
+        phase: 'succeeded',
+        headline: 'Read',
+        detailLines: [],
+      },
+    },
+    {
+      id: 3,
+      role: 'assistant',
+      content: '',
+      pending: true,
+    },
+  ];
+
+  assert.equal(
+    shouldShowAssistantThinkingCollapsible(messages[2], {
+      kind: 'thinking',
+      statusText: '| Thinking...',
+    }, messages, 2),
+    true,
+  );
+});
+
 test('shouldShowAssistantThinkingCollapsible keeps substantive thinking when tool follows and row has body text', () => {
   const messages = [
     { id: 1, role: 'user', content: 'hi', pending: false },

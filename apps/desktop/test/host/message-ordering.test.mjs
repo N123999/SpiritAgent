@@ -298,6 +298,76 @@ test('shouldHideEmptyPendingAssistantSnapshot keeps live thinking rows visible',
   );
 });
 
+test('shouldHideEmptyPendingAssistantSnapshot hides ghost row when tool follows', () => {
+  const messages = [
+    { id: 0, role: 'user', content: 'hi', pending: false },
+    {
+      id: 1,
+      role: 'assistant',
+      content: '',
+      pending: true,
+    },
+    {
+      id: 2,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      tool: {
+        toolCallId: 't1',
+        toolName: 'glob',
+        phase: 'running',
+        headline: 'Listed',
+        detailLines: [],
+      },
+    },
+  ];
+
+  assert.equal(
+    shouldHideEmptyPendingAssistantSnapshot(
+      messages[1],
+      { kind: 'thinking', statusText: '| Thinking...' },
+      messages,
+      1,
+    ),
+    true,
+  );
+});
+
+test('shouldHideEmptyPendingAssistantSnapshot keeps pending row between tool batches', () => {
+  const messages = [
+    { id: 0, role: 'user', content: 'hi', pending: false },
+    {
+      id: 1,
+      role: 'assistant',
+      content: '',
+      pending: false,
+      tool: {
+        toolCallId: 't1',
+        toolName: 'glob',
+        phase: 'succeeded',
+        headline: 'Listed',
+        detailLines: [],
+      },
+    },
+    {
+      id: 2,
+      role: 'assistant',
+      content: '',
+      pending: true,
+    },
+  ];
+
+  assert.equal(
+    shouldHideEmptyPendingAssistantSnapshot(
+      messages[2],
+      { kind: 'thinking', statusText: '| Thinking...' },
+      messages,
+      2,
+    ),
+    false,
+  );
+});
+
 test('finishTaskNoticePreviewFromArguments streams partial summary text', () => {
   assert.equal(
     finishTaskSummaryFromStreamingArguments('{"summary":"确认每条'),
