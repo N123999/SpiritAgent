@@ -208,7 +208,7 @@ export function buildBuiltinHostToolDefinitions(
     ),
     functionTool(
       'glob',
-      'Match workspace file paths with a glob pattern such as src/**/*.ts or **/*.{json,md}. Returns matching relative file paths only. Use grep to search file contents and list_directory_files for a single directory inventory.',
+      'Match workspace file paths with a glob pattern such as src/**/*.ts or **/*.{json,md}. Returns matching relative file paths only. Respects .gitignore. Use grep to search file contents and list_directory_files for a single directory inventory.',
       {
         type: 'object',
         properties: {

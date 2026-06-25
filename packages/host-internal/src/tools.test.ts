@@ -602,6 +602,40 @@ test('glob returns matching workspace files for a glob pattern', async () => {
   }
 });
 
+test('glob skips files matched by .gitignore including dist directories', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-glob-gitignore-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+
+  try {
+    await mkdir(join(workspaceRoot, 'src'), { recursive: true });
+    await mkdir(join(workspaceRoot, 'packages', 'host-internal', 'dist'), { recursive: true });
+    await mkdir(join(workspaceRoot, 'apps', 'desktop', 'dist-electron'), { recursive: true });
+    await writeFile(join(workspaceRoot, '.gitignore'), '**/dist/\n**/dist-electron/\n', 'utf8');
+    await writeFile(join(workspaceRoot, 'src', 'app.ts'), 'export const app = 1;\n');
+    await writeFile(
+      join(workspaceRoot, 'packages', 'host-internal', 'dist', 'index.js'),
+      'module.exports = {};\n',
+    );
+    await writeFile(
+      join(workspaceRoot, 'apps', 'desktop', 'dist-electron', 'main.js'),
+      'module.exports = {};\n',
+    );
+
+    const service = new NodeHostToolService({ workspaceRoot, spiritDataDir });
+    const output = await service.execute({
+      name: 'glob',
+      pattern: '**/*',
+    });
+
+    assertTextToolOutput(output);
+    assert.match(output, /\nsrc\/app\.ts\n/u);
+    assert.doesNotMatch(output, /packages\/host-internal\/dist\//u);
+    assert.doesNotMatch(output, /apps\/desktop\/dist-electron\//u);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('glob rejects patterns that escape the workspace', async () => {
   const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-glob-escape-'));
   const spiritDataDir = join(workspaceRoot, '.spirit-data');
