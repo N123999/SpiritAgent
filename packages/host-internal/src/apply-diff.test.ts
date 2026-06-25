@@ -8,6 +8,16 @@ test('applyDiff create mode', () => {
   assert.equal(applyDiff('', diff, 'create'), 'line one\nline two');
 });
 
+test('applyDiff create mode tolerates leading bare @@ anchor', () => {
+  const diff = ['@@', '+line one', '+line two', '*** End Patch'].join('\n');
+  assert.equal(applyDiff('', diff, 'create'), 'line one\nline two');
+});
+
+test('applyDiff create mode tolerates leading @@ anchor with context', () => {
+  const diff = ['@@ context line', '+line one', '*** End Patch'].join('\n');
+  assert.equal(applyDiff('', diff, 'create'), 'line one');
+});
+
 test('applyDiff update mode replaces one line', () => {
   const input = 'alpha\nbeta\ngamma';
   const diff = ['@@ ', ' alpha', '-beta', '+BETA', ' gamma', '*** End Patch'].join('\n');

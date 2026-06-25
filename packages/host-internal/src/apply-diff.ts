@@ -81,6 +81,10 @@ function parseCreateDiff(lines: string[], newline: string): string {
   while (!isDone(parser, SECTION_TERMINATORS)) {
     const line = parser.lines[parser.index] ?? '';
     parser.index += 1;
+    // 模型常在 create_file diff 首行带 bare @@ 锚（与 update 一致）；上游 parseCreateDiff 未跳过
+    if (line === '@@' || line.startsWith('@@ ')) {
+      continue;
+    }
     if (!line.startsWith('+')) {
       throw new Error(`Invalid Add File Line: ${line}`);
     }
