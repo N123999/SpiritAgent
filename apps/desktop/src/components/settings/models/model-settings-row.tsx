@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/ui/badge";
-import { TooltipItem, useTooltipContext } from "@/components/ui/tooltip";
+import { TooltipItem, useTooltipTriggerProps } from "@/components/ui/tooltip";
 import { modelSettingsRowAriaLabel } from "@/lib/model-catalog-detail";
 import { modelCapabilityLabel } from "@/lib/model-capability-label";
 import { cn } from "@/lib/utils";
@@ -97,8 +97,7 @@ export function ModelSettingsRowWithHover({
   disabled: boolean;
   onDefaultAction: () => void;
 }) {
-  const { getTriggerProps } = useTooltipContext<SettingsModelProfile>();
-  const { onPointerEnter, isHighlighted } = getTriggerProps(model);
+  const { onPointerEnter, isHighlighted } = useTooltipTriggerProps(model);
 
   return (
     <TooltipItem item={model}>

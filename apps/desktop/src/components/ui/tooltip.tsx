@@ -3,8 +3,14 @@
  * Each `<Tooltip>` registers triggers and content; no manual merging is required.
  */
 import * as React from "react"
+import { useSyncExternalStore } from "react"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
+import {
+  isTooltipAnchorSlot,
+  isTooltipItemHighlighted,
+  subscribeTooltipItemInteraction,
+} from "@/hooks/tooltip-item-interaction-store"
 import { useGlobalTooltipSwitch } from "@/hooks/use-global-tooltip-switch"
 import { getUiLayoutPortalContainer, viewportPointToScaleRootLocal } from "@/lib/ui-layout-scale"
 import { cn } from "@/lib/utils"
@@ -43,6 +49,30 @@ type TooltipGlobalContextValue = ReturnType<typeof useGlobalTooltipSwitch> & {
   ) => void
 }
 
+type TooltipStableActionsValue = Pick<
+  ReturnType<typeof useGlobalTooltipSwitch>,
+  | "getTriggerProps"
+  | "dismissIfOpen"
+  | "dismissActiveItem"
+  | "onTriggerPointerDown"
+  | "registerActiveAnchorElement"
+>
+
+type TooltipStableRegistrationValue = Pick<
+  ReturnType<typeof useGlobalTooltipSwitch>,
+  | "registerTriggerZone"
+  | "unregisterTriggerZone"
+  | "setRegistrationTiming"
+  | "onTriggerZonePointerLeave"
+> & {
+  registerContent: (registrationId: string, content: TooltipContentRegistration) => void
+  unregisterContent: (registrationId: string) => void
+  registerOpenChange: (
+    registrationId: string,
+    onOpenChange: ((open: boolean) => void) | undefined,
+  ) => void
+}
+
 type TooltipRegistrationContextValue<TItem = TooltipSwitchItem> = {
   registrationId: string
   getItemId: (item: TItem) => string
@@ -51,6 +81,9 @@ type TooltipRegistrationContextValue<TItem = TooltipSwitchItem> = {
 }
 
 const TooltipGlobalContext = React.createContext<TooltipGlobalContextValue | null>(null)
+const TooltipStableActionsContext = React.createContext<TooltipStableActionsValue | null>(null)
+const TooltipStableRegistrationContext =
+  React.createContext<TooltipStableRegistrationValue | null>(null)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const TooltipRegistrationContext =
@@ -66,6 +99,48 @@ function useTooltipGlobalContext(): TooltipGlobalContextValue {
 
 function useOptionalTooltipGlobalContext(): TooltipGlobalContextValue | null {
   return React.useContext(TooltipGlobalContext)
+}
+
+function useTooltipStableActions(): TooltipStableActionsValue {
+  const value = React.useContext(TooltipStableActionsContext)
+  if (!value) {
+    throw new Error("Tooltip components must be used within TooltipProvider")
+  }
+  return value
+}
+
+function useOptionalTooltipStableActions(): TooltipStableActionsValue | null {
+  return React.useContext(TooltipStableActionsContext)
+}
+
+function useTooltipStableRegistration(): TooltipStableRegistrationValue {
+  const value = React.useContext(TooltipStableRegistrationContext)
+  if (!value) {
+    throw new Error("Tooltip components must be used within TooltipProvider")
+  }
+  return value
+}
+
+export function useTooltipItemHighlighted(registrationId: string, itemId: string): boolean {
+  return useSyncExternalStore(
+    subscribeTooltipItemInteraction,
+    () => isTooltipItemHighlighted(registrationId, itemId),
+    () => false,
+  )
+}
+
+export function useTooltipTriggerProps<TItem>(item: TItem) {
+  const registration = useTooltipRegistrationContext<TItem>()
+  const actions = useTooltipStableActions()
+  const itemId = registration.getItemId(item)
+  const isHighlighted = useTooltipItemHighlighted(registration.registrationId, itemId)
+  const { onPointerEnter } = actions.getTriggerProps(
+    registration.registrationId,
+    item,
+    registration.getItemId,
+    registration.openDelayMs,
+  )
+  return { onPointerEnter, isHighlighted }
 }
 
 function useTooltipRegistrationContext<TItem = TooltipSwitchItem>(): TooltipRegistrationContextValue<TItem> {
@@ -361,6 +436,33 @@ function TooltipProvider({
     ],
   )
 
+  const globalSwitchRef = React.useRef(globalSwitch)
+  globalSwitchRef.current = globalSwitch
+  const stableActionsValue = React.useMemo(
+    (): TooltipStableActionsValue => ({
+      getTriggerProps: (...args) => globalSwitchRef.current.getTriggerProps(...args),
+      dismissIfOpen: () => globalSwitchRef.current.dismissIfOpen(),
+      dismissActiveItem: () => globalSwitchRef.current.dismissActiveItem(),
+      onTriggerPointerDown: (...args) => globalSwitchRef.current.onTriggerPointerDown(...args),
+      registerActiveAnchorElement: (...args) =>
+        globalSwitchRef.current.registerActiveAnchorElement(...args),
+    }),
+    [],
+  )
+  const stableRegistrationValue = React.useMemo(
+    (): TooltipStableRegistrationValue => ({
+      registerContent,
+      unregisterContent,
+      registerOpenChange,
+      registerTriggerZone: (...args) => globalSwitchRef.current.registerTriggerZone(...args),
+      unregisterTriggerZone: (...args) => globalSwitchRef.current.unregisterTriggerZone(...args),
+      setRegistrationTiming: (...args) => globalSwitchRef.current.setRegistrationTiming(...args),
+      onTriggerZonePointerLeave: (...args) =>
+        globalSwitchRef.current.onTriggerZonePointerLeave(...args),
+    }),
+    [registerContent, registerOpenChange, unregisterContent],
+  )
+
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
@@ -370,15 +472,19 @@ function TooltipProvider({
       {...props}
     >
       <TooltipGlobalContext.Provider value={globalContextValue}>
-        <TooltipPrimitive.Root
-          data-slot="tooltip-root-global"
-          open={effectiveOpen}
-          onOpenChange={handleRadixOpenChange}
-          delayDuration={0}
-        >
-          {children}
-          <GlobalTooltipContentHost />
-        </TooltipPrimitive.Root>
+        <TooltipStableActionsContext.Provider value={stableActionsValue}>
+          <TooltipStableRegistrationContext.Provider value={stableRegistrationValue}>
+            <TooltipPrimitive.Root
+              data-slot="tooltip-root-global"
+              open={effectiveOpen}
+              onOpenChange={handleRadixOpenChange}
+              delayDuration={0}
+            >
+              {children}
+              <GlobalTooltipContentHost />
+            </TooltipPrimitive.Root>
+          </TooltipStableRegistrationContext.Provider>
+        </TooltipStableActionsContext.Provider>
       </TooltipGlobalContext.Provider>
     </TooltipPrimitive.Provider>
   )
@@ -412,25 +518,32 @@ function TooltipRoot<TItem = TooltipSwitchItem>({
   void props;
 
   const registrationId = React.useId()
-  const global = useTooltipGlobalContext()
+  const stableRegistration = useTooltipStableRegistration()
   const resolvedGetItemId = React.useCallback(
     (item: TItem) => (getItemId ? getItemId(item) : (item as TooltipSwitchItem).id),
     [getItemId],
   )
 
   React.useEffect(() => {
-    global.setRegistrationTiming(registrationId, {
+    stableRegistration.setRegistrationTiming(registrationId, {
       closeDelayMs,
       anchorLingerMs,
       disableHoverableContent,
     })
-    global.registerOpenChange(registrationId, onOpenChange)
+    stableRegistration.registerOpenChange(registrationId, onOpenChange)
     return () => {
-      global.unregisterTriggerZone(registrationId)
-      global.unregisterContent(registrationId)
-      global.registerOpenChange(registrationId, undefined)
+      stableRegistration.unregisterTriggerZone(registrationId)
+      stableRegistration.unregisterContent(registrationId)
+      stableRegistration.registerOpenChange(registrationId, undefined)
     }
-  }, [anchorLingerMs, closeDelayMs, disableHoverableContent, global, onOpenChange, registrationId])
+  }, [
+    anchorLingerMs,
+    closeDelayMs,
+    disableHoverableContent,
+    onOpenChange,
+    registrationId,
+    stableRegistration,
+  ])
 
   const registrationValue = React.useMemo(
     (): TooltipRegistrationContextValue<TItem> => ({
@@ -469,20 +582,20 @@ function TooltipRoot<TItem = TooltipSwitchItem>({
 
 type TooltipZoneProps = React.ComponentProps<"div">
 
-function TooltipZone({
+const TooltipZone = React.memo(function TooltipZone({
   ref,
   className,
   onPointerLeave,
   ...props
 }: TooltipZoneProps) {
-  const global = useTooltipGlobalContext()
+  const stableRegistration = useTooltipStableRegistration()
   const { registrationId } = useTooltipRegistrationContext()
 
   return (
     <div
       data-slot={TOOLTIP_ZONE_SLOT}
       ref={(node) => {
-        global.registerTriggerZone(registrationId, node)
+        stableRegistration.registerTriggerZone(registrationId, node)
         if (typeof ref === "function") {
           ref(node)
         } else if (ref) {
@@ -491,13 +604,13 @@ function TooltipZone({
       }}
       className={className}
       onPointerLeave={(event) => {
-        global.onTriggerZonePointerLeave(registrationId, event)
+        stableRegistration.onTriggerZonePointerLeave(registrationId, event)
         onPointerLeave?.(event)
       }}
       {...props}
     />
   )
-}
+})
 TooltipZone.displayName = "TooltipZone"
 
 type TooltipItemProps<TItem> = {
@@ -514,19 +627,23 @@ function resolveConnectedOpenTooltipTrigger(): HTMLElement | null {
 }
 
 function TooltipItem<TItem>({ item, children, className }: TooltipItemProps<TItem>) {
-  const global = useTooltipGlobalContext()
+  const actions = useOptionalTooltipStableActions()
   const registration = useOptionalTooltipRegistrationContext<TItem>()
   const rowRef = React.useRef<HTMLDivElement | null>(null)
   const registrationId = registration?.registrationId
   const resolvedItemId =
     registration && item !== null ? registration.getItemId(item) : null
-  const isAnchor =
-    registrationId !== undefined &&
-    resolvedItemId !== null &&
-    global.isAnchorSlot(registrationId, resolvedItemId)
+  const isAnchor = useSyncExternalStore(
+    subscribeTooltipItemInteraction,
+    () =>
+      registrationId !== undefined && resolvedItemId !== null
+        ? isTooltipAnchorSlot(registrationId, resolvedItemId)
+        : false,
+    () => false,
+  )
 
   React.useLayoutEffect(() => {
-    if (!isAnchor || registrationId === undefined) {
+    if (!isAnchor || registrationId === undefined || !actions) {
       return;
     }
     const anchor =
@@ -534,11 +651,11 @@ function TooltipItem<TItem>({ item, children, className }: TooltipItemProps<TIte
         ? rowRef.current
         : resolveConnectedOpenTooltipTrigger();
     if (anchor) {
-      global.registerActiveAnchorElement(anchor);
+      actions.registerActiveAnchorElement(anchor);
     }
-  }, [global, isAnchor, registrationId, global.open])
+  }, [actions, isAnchor, registrationId, resolvedItemId])
 
-  if (!registration) {
+  if (!registration || !actions) {
     return children
   }
 
@@ -547,13 +664,13 @@ function TooltipItem<TItem>({ item, children, className }: TooltipItemProps<TIte
 
   if (item === null) {
     return (
-      <div className={rowClassName} onPointerEnter={global.dismissIfOpen}>
+      <div className={rowClassName} onPointerEnter={actions.dismissIfOpen}>
         {children}
       </div>
     )
   }
 
-  const { onPointerEnter } = global.getTriggerProps(
+  const { onPointerEnter } = actions.getTriggerProps(
     registration.registrationId,
     item,
     getItemId,
@@ -565,8 +682,8 @@ function TooltipItem<TItem>({ item, children, className }: TooltipItemProps<TIte
       className={rowClassName}
       onPointerEnter={onPointerEnter}
       onPointerDown={() => {
-        if (registration && resolvedItemId !== null) {
-          global.onTriggerPointerDown(registration.registrationId, resolvedItemId)
+        if (resolvedItemId !== null) {
+          actions.onTriggerPointerDown(registration.registrationId, resolvedItemId)
         }
       }}
     >
@@ -574,7 +691,7 @@ function TooltipItem<TItem>({ item, children, className }: TooltipItemProps<TIte
     </div>
   )
 
-  if (global.isAnchorSlot(registration.registrationId, getItemId(item))) {
+  if (isAnchor) {
     return (
       <TooltipPrimitive.Trigger data-slot="tooltip-trigger" asChild>
         {rowWrapper}
@@ -727,19 +844,22 @@ function TooltipContent({
 }: TooltipContentProps) {
   void ref;
 
-  const global = useTooltipGlobalContext()
+  const stableRegistration = useTooltipStableRegistration()
   const registration = useTooltipRegistrationContext()
   const { registrationId } = registration
+  const childrenRef = React.useRef(children)
+  childrenRef.current = children
 
   React.useEffect(() => {
     const render = (activeItem: unknown) => {
-      if (typeof children === "function") {
-        return children(activeItem ?? null)
+      const currentChildren = childrenRef.current
+      if (typeof currentChildren === "function") {
+        return currentChildren(activeItem ?? null)
       }
-      return activeItem ? children : null
+      return activeItem ? currentChildren : null
     }
 
-    global.registerContent(registrationId, {
+    stableRegistration.registerContent(registrationId, {
       side,
       sideOffset,
       align,
@@ -752,20 +872,19 @@ function TooltipContent({
     })
 
     return () => {
-      global.unregisterContent(registrationId)
+      stableRegistration.unregisterContent(registrationId)
     }
   }, [
     align,
     appearance,
-    children,
     className,
     collisionPadding,
-    global,
     onAnimationEnd,
     onEscapeKeyDown,
     registrationId,
     side,
     sideOffset,
+    stableRegistration,
   ])
 
   return null
@@ -785,4 +904,5 @@ export {
   TooltipTrigger,
   TooltipZone,
   useOptionalTooltipGlobalContext,
+  useOptionalTooltipStableActions,
 }
