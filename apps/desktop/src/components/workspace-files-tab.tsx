@@ -731,7 +731,6 @@ export function WorkspaceFilesTab({
   const onToggleFileTree = useCallback(() => {
     if (fileSearchOpen) {
       setFileSearchOpen(false);
-      setSearchHighlightSession(null);
       setEditorRevealLocation(null);
       return;
     }
@@ -862,90 +861,109 @@ export function WorkspaceFilesTab({
         >
           <div
             className={cn(
-              "flex h-full min-h-0 w-full flex-col overflow-hidden pr-2",
+              "relative flex h-full min-h-0 w-full flex-col overflow-hidden pr-2",
               !fileTreeOpen && "pointer-events-none select-none",
             )}
             aria-hidden={!fileTreeOpen}
             inert={!fileTreeOpen ? true : undefined}
           >
-            {fileSearchOpen && searchWorkspaceContent ? (
-              <WorkspaceFilesSearchPanel
-                searchWorkspaceContent={searchWorkspaceContent}
-                onOpenSearchMatch={openSearchMatch}
-                onSearchSessionChange={onSearchSessionChange}
-              />
-            ) : (
+            <div
+              hidden={fileSearchOpen}
+              inert={fileSearchOpen ? true : undefined}
+              aria-hidden={fileSearchOpen}
+              className={cn(
+                "absolute inset-0 flex min-h-0 flex-col overflow-hidden",
+                fileSearchOpen && "invisible",
+              )}
+            >
               <WorkspaceFilesPanel
-          workspaceRoot={workspaceRoot}
-          plan={plan}
-          listExplorerChildren={listExplorerChildren}
-          gitRevision={gitRevision}
-          selectedEntryKey={selectedEntryKey}
-          expandDirectoryPath={fileRevealDirectoryOnly ? fileRevealPath : ""}
-          expandDirectoryNonce={fileRevealDirectoryOnly ? autoRevealFileNonce : 0}
-          onOpenFile={(relativePath) => {
-            setEditorRevealLocation(null);
-            const viewMode = isMarkdownPath(relativePath) ? "preview" : "edit";
-            if (
-              selectedEntry?.kind === "workspace" &&
-              selectedEntry.relativePath === relativePath
-            ) {
-              setMarkdownViewMode(viewMode);
-              return;
-            }
-            if (selectedEntry !== null && editorDirty && onOpenWorkspaceFileInNewTab) {
-              onOpenWorkspaceFileInNewTab(relativePath, { viewMode });
-              return;
-            }
-            if (onOpenWorkspaceFile) {
-              onOpenWorkspaceFile(relativePath, { viewMode });
-              return;
-            }
-            setMarkdownViewMode(viewMode);
-            setSelectedEntry({ kind: "workspace", relativePath });
-          }}
-          onOpenPlan={() => {
-            setEditorRevealLocation(null);
-            setMarkdownViewMode("preview");
-            setSelectedEntry({ kind: "plan" });
-          }}
-          onWorkspaceEntryRenamed={(oldRelativePath, newRelativePath) => {
-            setSelectedEntry((current) => {
-              if (current?.kind !== "workspace") {
-                return current;
-              }
-              const nextPath = remapWorkspaceEntryPath(
-                oldRelativePath,
-                newRelativePath,
-                current.relativePath,
-              );
-              return nextPath ? { kind: "workspace", relativePath: nextPath } : current;
-            });
-          }}
-          onWorkspaceEntryMoved={(oldRelativePath, newRelativePath) => {
-            setSelectedEntry((current) => {
-              if (current?.kind !== "workspace") {
-                return current;
-              }
-              const nextPath = remapWorkspaceEntryPath(
-                oldRelativePath,
-                newRelativePath,
-                current.relativePath,
-              );
-              return nextPath ? { kind: "workspace", relativePath: nextPath } : current;
-            });
-          }}
-          onWorkspaceEntryDeleted={(relativePath) => {
-            setSelectedEntry((current) =>
-              current?.kind === "workspace" &&
-              isUnderWorkspaceEntryPath(relativePath, current.relativePath)
-                ? null
-                : current,
-            );
-          }}
-          onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
-            />
-            )}
+                workspaceRoot={workspaceRoot}
+                plan={plan}
+                listExplorerChildren={listExplorerChildren}
+                gitRevision={gitRevision}
+                selectedEntryKey={selectedEntryKey}
+                expandDirectoryPath={fileRevealDirectoryOnly ? fileRevealPath : ""}
+                expandDirectoryNonce={fileRevealDirectoryOnly ? autoRevealFileNonce : 0}
+                onOpenFile={(relativePath) => {
+                  setEditorRevealLocation(null);
+                  const viewMode = isMarkdownPath(relativePath) ? "preview" : "edit";
+                  if (
+                    selectedEntry?.kind === "workspace" &&
+                    selectedEntry.relativePath === relativePath
+                  ) {
+                    setMarkdownViewMode(viewMode);
+                    return;
+                  }
+                  if (selectedEntry !== null && editorDirty && onOpenWorkspaceFileInNewTab) {
+                    onOpenWorkspaceFileInNewTab(relativePath, { viewMode });
+                    return;
+                  }
+                  if (onOpenWorkspaceFile) {
+                    onOpenWorkspaceFile(relativePath, { viewMode });
+                    return;
+                  }
+                  setMarkdownViewMode(viewMode);
+                  setSelectedEntry({ kind: "workspace", relativePath });
+                }}
+                onOpenPlan={() => {
+                  setEditorRevealLocation(null);
+                  setMarkdownViewMode("preview");
+                  setSelectedEntry({ kind: "plan" });
+                }}
+                onWorkspaceEntryRenamed={(oldRelativePath, newRelativePath) => {
+                  setSelectedEntry((current) => {
+                    if (current?.kind !== "workspace") {
+                      return current;
+                    }
+                    const nextPath = remapWorkspaceEntryPath(
+                      oldRelativePath,
+                      newRelativePath,
+                      current.relativePath,
+                    );
+                    return nextPath ? { kind: "workspace", relativePath: nextPath } : current;
+                  });
+                }}
+                onWorkspaceEntryMoved={(oldRelativePath, newRelativePath) => {
+                  setSelectedEntry((current) => {
+                    if (current?.kind !== "workspace") {
+                      return current;
+                    }
+                    const nextPath = remapWorkspaceEntryPath(
+                      oldRelativePath,
+                      newRelativePath,
+                      current.relativePath,
+                    );
+                    return nextPath ? { kind: "workspace", relativePath: nextPath } : current;
+                  });
+                }}
+                onWorkspaceEntryDeleted={(relativePath) => {
+                  setSelectedEntry((current) =>
+                    current?.kind === "workspace" &&
+                    isUnderWorkspaceEntryPath(relativePath, current.relativePath)
+                      ? null
+                      : current,
+                  );
+                }}
+                onWorkspaceFileAddToSession={onWorkspaceFileAddToSession}
+              />
+            </div>
+            {searchWorkspaceContent ? (
+              <div
+                hidden={!fileSearchOpen}
+                inert={!fileSearchOpen ? true : undefined}
+                aria-hidden={!fileSearchOpen}
+                className={cn(
+                  "absolute inset-0 flex min-h-0 flex-col overflow-hidden",
+                  !fileSearchOpen && "invisible",
+                )}
+              >
+                <WorkspaceFilesSearchPanel
+                  searchWorkspaceContent={searchWorkspaceContent}
+                  onOpenSearchMatch={openSearchMatch}
+                  onSearchSessionChange={onSearchSessionChange}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
         {fileTreeOpen && selectedEntry ? (
