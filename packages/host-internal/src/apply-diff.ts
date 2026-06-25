@@ -43,6 +43,10 @@ function normalizeDiffLines(diff: string): string[] {
     .filter((line, idx, arr) => !(idx === arr.length - 1 && line === ''));
 }
 
+function splitInputLines(input: string): string[] {
+  return input.split('\n').map((line) => line.replace(/\r$/, ''));
+}
+
 function detectNewlineFromText(text: string): string {
   return text.includes('\r\n') ? '\r\n' : '\n';
 }
@@ -100,7 +104,7 @@ function parseUpdateDiff(lines: string[], input: string): { chunks: Chunk[]; fuz
     index: 0,
     fuzz: 0,
   };
-  const inputLines = input.split('\n');
+  const inputLines = splitInputLines(input);
   const chunks: Chunk[] = [];
   let cursor = 0;
 
@@ -335,7 +339,7 @@ function equalsSlice(
 }
 
 function applyChunks(input: string, chunks: Chunk[], newline: string): string {
-  const origLines = input.split('\n');
+  const origLines = splitInputLines(input);
   const destLines: string[] = [];
   let origIndex = 0;
 

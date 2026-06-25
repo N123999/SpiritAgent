@@ -23,3 +23,11 @@ test('applyDiff update mode replaces one line', () => {
   const diff = ['@@ ', ' alpha', '-beta', '+BETA', ' gamma', '*** End Patch'].join('\n');
   assert.equal(applyDiff(input, diff), 'alpha\nBETA\ngamma');
 });
+
+test('applyDiff update mode preserves CRLF without doubling CR', () => {
+  const input = 'alpha\r\nbeta\r\ngamma\r\n';
+  const diff = ['@@ ', ' alpha', '-beta', '+BETA', ' gamma', '*** End Patch'].join('\n');
+  const output = applyDiff(input, diff);
+  assert.equal(output, 'alpha\r\nBETA\r\ngamma\r\n');
+  assert.equal((output.match(/\r\r\n/g) ?? []).length, 0);
+});
