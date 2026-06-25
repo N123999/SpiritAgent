@@ -1,6 +1,6 @@
 use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::{
     collections::{HashMap, VecDeque},
     env,
@@ -9,11 +9,7 @@ use std::{
 };
 
 use crate::{
-    host_runtime::{
-        RuntimeEvent, ToolUiRequest, build_tool_result_block, format_tool_ui_message,
-        tool_approval_block, tool_failed_block,
-    },
-    llm_types::LlmMessage,
+    host_runtime::RuntimeEvent,
     logging,
     hooks_types::{HookListItem, HooksValidationReport},
     mcp::{McpServerConfig, McpScope, add_mcp_server, spirit_agent_data_dir},
@@ -21,15 +17,11 @@ use crate::{
         ManagedMcpServer, McpDiscoveredPrompt, McpDiscoveredResource, McpDiscoveredTool,
         McpServerInspection,
     },
-    model_registry::{
-        AppConfig, ModelProvider, load_provider_access_key_id_from_keyring,
-        load_provider_secret_access_key_from_keyring, normalize_reasoning_effort_value,
-    },
-    model_provider_presets::{azure_api_base_from_resource_name, resolve_azure_resource_name, resolve_profile_api_base},
+    model_registry::AppConfig,
     plan::{self, PlanMetadata},
     ports::{
-        ArchivedLlmMessage, ArchivedLlmToolCall, AssistantAuxArchiveEntry, ChatArchive,
-        McpStatusSnapshot, SecretStore, SubagentSessionArchiveEntry, SubagentSessionSummary,
+        AssistantAuxArchiveEntry, ChatArchive, McpStatusSnapshot, SecretStore,
+        SubagentSessionArchiveEntry, SubagentSessionSummary,
     },
     rewind::{self, DesktopRewindCheckpointSnapshot, RewindRestoreOutcome},
     rules::EnabledRule,
@@ -43,62 +35,62 @@ mod archive;
 mod constants;
 mod host_dispatch;
 mod json_rpc;
+mod runtime;
+mod sync;
 mod tool_ui;
 mod transport;
 mod types;
 
-use constants::{ENV_API_BASE, ENV_API_KEY};
 #[cfg(test)]
-pub(crate) use constants::ENV_RUNTIME_BACKEND_NODE_PATH;
+pub(crate) use constants::{ENV_API_BASE, ENV_API_KEY, ENV_RUNTIME_BACKEND_NODE_PATH};
 pub(crate) use json_rpc::resolve_bridge_script;
-use json_rpc::{is_json_rpc_response, JsonRpcProcess};
+use json_rpc::JsonRpcProcess;
 pub use types::*;
-pub(crate) use archive::{chat_archive_to_bridge_json, llm_history_to_json};
-pub(crate) use tool_ui::{
-    approval_decision_from_input, is_retired_builtin_host_method, tool_request_from_host_value,
-    tool_request_from_local_mcp, tool_request_from_streaming_preview,
-};
+pub(crate) use tool_ui::{approval_decision_from_input, tool_request_from_host_value};
+#[cfg(test)]
+pub(crate) use tool_ui::{is_retired_builtin_host_method, tool_request_from_local_mcp, tool_request_from_streaming_preview};
 pub(crate) use types::bridge::{
-    BridgeChatArchive, BridgeDrainEventsResult, BridgeExportState,
-    BridgeManualToolCommandStartResult, BridgePendingApproval, BridgeRuntimeEvent,
-    BridgeRuntimeSnapshot, BridgeSubagentSessionArchiveEntry, BridgeSubagentSessionSummary,
-    BridgeToolExecution,
-    BridgeWorkspaceFileReferenceSuggestions, LocalMcpToolFailedEvent, LocalMcpToolRequest,
-    LocalMcpToolResultEvent,
+    BridgeChatArchive, BridgeExportState, BridgePendingApproval, BridgeRuntimeSnapshot,
+    BridgeSubagentSessionArchiveEntry, BridgeWorkspaceFileReferenceSuggestions,
+};
+#[cfg(test)]
+pub(crate) use types::bridge::{
+    BridgeManualToolCommandStartResult, BridgeRuntimeEvent, BridgeSubagentSessionSummary,
+    BridgeToolExecution, LocalMcpToolFailedEvent, LocalMcpToolRequest, LocalMcpToolResultEvent,
 };
 
 pub struct TsBridgeRuntime {
-    process: JsonRpcProcess,
+    pub(crate) process: JsonRpcProcess,
     pub(crate) config: AppConfig,
     pub(crate) secret_store: Arc<dyn SecretStore>,
     pub(crate) workspace_root: PathBuf,
-    session: SessionModel,
-    rewind: rewind::StoredDesktopRewindMetadata,
-    enabled_rules: Vec<EnabledRule>,
-    enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
-    plan_metadata: PlanMetadata,
-    active_plan_path: Option<PathBuf>,
+    pub(crate) session: SessionModel,
+    pub(crate) rewind: rewind::StoredDesktopRewindMetadata,
+    pub(crate) enabled_rules: Vec<EnabledRule>,
+    pub(crate) enabled_skill_catalog: Vec<EnabledSkillCatalogEntry>,
+    pub(crate) plan_metadata: PlanMetadata,
+    pub(crate) active_plan_path: Option<PathBuf>,
     pending_aux_state: Option<PendingAssistantAux>,
-    pending_approval_kind: Option<PendingApprovalKind>,
+    pub(crate) pending_approval_kind: Option<PendingApprovalKind>,
     current_pending_approval: Option<BridgePendingApproval>,
-    pending_questions_active: bool,
-    pending_assistant_has_output: bool,
-    is_busy_cache: bool,
-    child_sessions_cache: Vec<SubagentSessionSummary>,
-    subagent_message_cache: HashMap<String, Vec<ChatMessage>>,
-    events: VecDeque<RuntimeEvent>,
-    bridge_failed: bool,
+    pub(crate) pending_questions_active: bool,
+    pub(crate) pending_assistant_has_output: bool,
+    pub(crate) is_busy_cache: bool,
+    pub(crate) child_sessions_cache: Vec<SubagentSessionSummary>,
+    pub(crate) subagent_message_cache: HashMap<String, Vec<ChatMessage>>,
+    pub(crate) events: VecDeque<RuntimeEvent>,
+    pub(crate) bridge_failed: bool,
     /// 忙时切换模型/endpoint 已写入 `config`，但尚未对 TS `runtime.replaceConfig`；空闲后由 `flush_deferred_transport_replace` 应用。
-    deferred_transport_replace: bool,
+    pub(crate) deferred_transport_replace: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PendingApprovalKind {
+pub(crate) enum PendingApprovalKind {
     Tool,
     Manual,
 }
 
-fn bootstrap_plan_metadata() -> PlanMetadata {
+pub(crate) fn bootstrap_plan_metadata() -> PlanMetadata {
     PlanMetadata {
         path: PathBuf::new(),
         exists: false,
@@ -108,79 +100,6 @@ fn bootstrap_plan_metadata() -> PlanMetadata {
 }
 
 impl TsBridgeRuntime {
-    pub fn new(
-        config: AppConfig,
-        secret_store: Arc<dyn SecretStore>,
-        workspace_root: PathBuf,
-    ) -> Result<Self> {
-        let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
-        let mut runtime = Self {
-            process,
-            config,
-            secret_store,
-            workspace_root,
-            session: SessionModel::new(),
-            rewind: rewind::create_desktop_rewind_metadata(),
-            enabled_rules: Vec::new(),
-            enabled_skill_catalog: Vec::new(),
-            plan_metadata: bootstrap_plan_metadata(),
-            active_plan_path: None,
-            pending_aux_state: None,
-            pending_approval_kind: None,
-            current_pending_approval: None,
-            pending_questions_active: false,
-            pending_assistant_has_output: false,
-            is_busy_cache: false,
-            child_sessions_cache: Vec::new(),
-            subagent_message_cache: HashMap::new(),
-            events: VecDeque::new(),
-            bridge_failed: false,
-            deferred_transport_replace: false,
-        };
-        logging::log_event(&format!(
-            "[ts-bridge-host] runtime init workspace_root={}",
-            runtime.workspace_root.display()
-        ));
-        runtime.initialize_bridge()?;
-        runtime.apply_llm_http_version_from_config()?;
-        runtime.apply_llm_client_version_from_build()?;
-        Ok(runtime)
-    }
-
-    pub fn new_mcp_only(
-        secret_store: Arc<dyn SecretStore>,
-        workspace_root: PathBuf,
-    ) -> Result<Self> {
-        let process = JsonRpcProcess::spawn(resolve_bridge_script(&workspace_root)?)?;
-        let mut runtime = Self {
-            process,
-            config: AppConfig::default(),
-            secret_store,
-            workspace_root,
-            session: SessionModel::new(),
-            rewind: rewind::create_desktop_rewind_metadata(),
-            enabled_rules: Vec::new(),
-            enabled_skill_catalog: Vec::new(),
-            plan_metadata: bootstrap_plan_metadata(),
-            active_plan_path: None,
-            pending_aux_state: None,
-            pending_approval_kind: None,
-            current_pending_approval: None,
-            pending_questions_active: false,
-            pending_assistant_has_output: false,
-            is_busy_cache: false,
-            child_sessions_cache: Vec::new(),
-            subagent_message_cache: HashMap::new(),
-            events: VecDeque::new(),
-            bridge_failed: false,
-            deferred_transport_replace: false,
-        };
-        runtime.initialize_bridge_with_transport_config(transport::build_mcp_only_transport_config(
-            &runtime.workspace_root,
-        ))?;
-        Ok(runtime)
-    }
-
     pub fn config(&self) -> &AppConfig {
         &self.config
     }
@@ -897,77 +816,8 @@ impl TsBridgeRuntime {
         self.set_llm_client_version(env!("CARGO_PKG_VERSION"))
     }
 
-    pub fn abort(&mut self) {
-        if self.bridge_failed {
-            return;
-        }
-        if let Err(err) = self.call_bridge("runtime.abort", None) {
-            self.handle_bridge_error(err);
-            return;
-        }
-        if let Err(err) = self.sync_after_command() {
-            self.handle_bridge_error(err);
-        }
-    }
-
-    pub fn continue_assistant_completion(&mut self) -> Result<()> {
-        if self.bridge_failed {
-            return Err(anyhow!("TS bridge 已失效，无法继续补全回复"));
-        }
-        self.call_bridge("runtime.continueAssistantCompletionStreaming", None)?;
-        self.sync_after_command()?;
-        Ok(())
-    }
-
-    pub fn drain_events(&mut self) -> Vec<RuntimeEvent> {
-        self.events.drain(..).collect()
-    }
-
     pub fn pending_aux_state(&self) -> Option<PendingAssistantAux> {
         self.pending_aux_state.clone()
-    }
-
-    pub fn tick_thinking_spinner(&mut self) {
-        if self.bridge_failed || !self.should_poll_bridge() {
-            return;
-        }
-        if let Err(err) = self.call_bridge("runtime.tickThinkingSpinner", None) {
-            self.handle_bridge_error(err);
-            return;
-        }
-        if let Err(err) = self.sync_snapshot_only() {
-            self.handle_bridge_error(err);
-        }
-    }
-
-    pub fn poll(&mut self) {
-        if self.bridge_failed || !self.should_poll_bridge() {
-            return;
-        }
-        if let Err(err) = self.call_bridge("runtime.poll", None) {
-            self.handle_bridge_error(err);
-            return;
-        }
-        if let Err(err) = self.sync_after_command() {
-            self.handle_bridge_error(err);
-            return;
-        }
-        if let Err(err) = self.consume_completed_manual_tool_command_result() {
-            self.handle_bridge_error(err);
-        }
-    }
-
-    pub fn handle_stream_stall_timeout(&mut self) {
-        if self.bridge_failed || !self.should_poll_bridge() {
-            return;
-        }
-        if let Err(err) = self.call_bridge("runtime.handleStreamStallTimeout", None) {
-            self.handle_bridge_error(err);
-            return;
-        }
-        if let Err(err) = self.sync_after_command() {
-            self.handle_bridge_error(err);
-        }
     }
 
     pub fn submit_user_turn(
@@ -1380,645 +1230,6 @@ impl TsBridgeRuntime {
             self.handle_bridge_error(err);
         }
         cleared
-    }
-
-    fn initialize_bridge(&mut self) -> Result<()> {
-        self.initialize_bridge_with_transport_config(self.resolve_transport_config_json()?)
-    }
-
-    fn initialize_bridge_with_transport_config(&mut self, transport_config: Value) -> Result<()> {
-        let snapshot = self.call_bridge(
-            "runtime.init",
-            Some(json!({
-                "transportConfig": transport_config,
-                "history": llm_history_to_json(self.session.llm_history()),
-                "enabledRules": self.enabled_rules,
-                "enabledSkillCatalog": self.enabled_skill_catalog,
-                "planMetadata": self.plan_metadata,
-                "loopEnabled": self.session.loop_enabled(),
-                "approvalLevel": self.session.approval_level(),
-                "todoSessionKey": self.rewind.session_id,
-            })),
-        )?;
-        self.apply_snapshot(serde_json::from_value(snapshot)?);
-        self.apply_llm_http_version_from_config()?;
-        self.apply_llm_client_version_from_build()?;
-        Ok(())
-    }
-
-    fn resolve_transport_config_json(&self) -> Result<Value> {
-        self.resolve_transport_config_json_for(&self.config)
-    }
-
-    fn resolve_transport_config_json_for(&self, config: &AppConfig) -> Result<Value> {
-        transport::resolve_transport_config_json_for(
-            &transport::TransportHost::from_runtime(self),
-            config,
-        )
-    }
-
-    fn transport_config_will_change(&self, config: &AppConfig) -> bool {
-        transport::transport_config_will_change(&self.config, config)
-    }
-
-    fn call_bridge(&mut self, method: &str, params: Option<Value>) -> Result<Value> {
-        if self.bridge_failed {
-            return Err(anyhow!("TS bridge 已处于失败状态。"));
-        }
-
-        let request_id = self.process.next_request_id();
-        self.process.write_request(request_id, method, params)?;
-
-        loop {
-            let message = self.process.recv_message()?;
-            if is_json_rpc_response(&message) {
-                let message_id = message
-                    .get("id")
-                    .and_then(Value::as_u64)
-                    .ok_or_else(|| anyhow!("JSON-RPC 响应缺少 id"))?;
-                if message_id != request_id {
-                    return Err(anyhow!(
-                        "收到不匹配的 JSON-RPC 响应 id: {} != {}",
-                        message_id,
-                        request_id
-                    ));
-                }
-
-                if let Some(error) = message.get("error") {
-                    let summary = error
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("TS bridge 返回未知错误");
-                    return Err(anyhow!("runtime-error: {}", summary));
-                }
-
-                return Ok(message.get("result").cloned().unwrap_or(Value::Null));
-            }
-
-            self.handle_host_request(message)?;
-        }
-    }
-
-    fn sync_after_command(&mut self) -> Result<()> {
-        let value = self.call_bridge("runtime.drainEvents", None)?;
-        let drained: BridgeDrainEventsResult = serde_json::from_value(value)?;
-        if !drained.events.is_empty() {
-            logging::log_event(&format!(
-                "[ts-bridge-host] drain events count={} busy={} approval={} aux={}",
-                drained.events.len(),
-                drained.snapshot.is_busy,
-                drained.snapshot.has_pending_approval,
-                drained.snapshot.pending_aux_state.is_some()
-            ));
-        }
-        self.apply_bridge_events(drained.events);
-        self.apply_snapshot(drained.snapshot);
-        Ok(())
-    }
-
-    fn sync_snapshot_only(&mut self) -> Result<()> {
-        let value = self.call_bridge("runtime.snapshot", None)?;
-        self.apply_snapshot(serde_json::from_value(value)?);
-        Ok(())
-    }
-
-    fn consume_completed_manual_tool_command_result(&mut self) -> Result<()> {
-        let value = self.call_bridge("runtime.takeCompletedManualToolCommandResult", None)?;
-        if value.is_null() {
-            return Ok(());
-        }
-
-        let result: BridgeManualToolCommandStartResult = serde_json::from_value(value)?;
-        self.handle_manual_tool_command_result(result);
-        Ok(())
-    }
-
-    fn replace_runtime_archive(&mut self, archive: &crate::ports::ChatArchive) -> Result<()> {
-        if self.bridge_failed {
-            return Ok(());
-        }
-        self.subagent_message_cache.clear();
-        self.call_bridge(
-            "runtime.replaceFromArchive",
-            Some(chat_archive_to_bridge_json(archive)),
-        )?;
-        self.sync_snapshot_only()
-    }
-
-    fn record_host_file_change(&mut self, change: rewind::HostRecordedFileChange) -> Result<()> {
-        if change.tool_name == "create_plan" && change.after.exists {
-            self.active_plan_path = Some(PathBuf::from(change.resolved_path.clone()));
-            self.plan_metadata = plan::plan_metadata_snapshot(
-                self.plan_metadata.spirit_agent_mode(),
-                self.active_plan_path.as_deref(),
-            );
-        }
-
-        let spirit_data_dir = spirit_agent_data_dir();
-        let stored = rewind::to_desktop_file_change(change, self.rewind.next_sequence());
-        rewind::save_rewind_file_change(&spirit_data_dir, &self.rewind.session_id, &stored)?;
-        self.rewind
-            .file_changes
-            .push(rewind::file_change_metadata(&stored));
-        self.rewind.file_changes.sort_by_key(|entry| entry.sequence);
-        Ok(())
-    }
-
-    fn apply_snapshot(&mut self, snapshot: BridgeRuntimeSnapshot) {
-        self.session.clear_pending_user_turn();
-        self.session.clear_pending_images();
-        self.session.clear_pending_mcp_resources();
-        self.session.set_loop_enabled(snapshot.loop_enabled);
-        self.session
-            .set_approval_level(snapshot.approval_level.as_str());
-        if let Some(turn) = snapshot.pending_user_turn {
-            self.session.set_pending_user_turn(turn);
-        }
-        for path in snapshot.pending_image_paths {
-            self.session.add_pending_image(path);
-        }
-        for resource in snapshot.pending_mcp_resources {
-            self.session.add_pending_mcp_resource(resource);
-        }
-
-        self.pending_aux_state = snapshot.pending_aux_state;
-        self.current_pending_approval = snapshot.current_pending_approval;
-        self.pending_approval_kind = if snapshot.has_pending_approval {
-            Some(if snapshot.has_pending_manual_approval {
-                PendingApprovalKind::Manual
-            } else {
-                PendingApprovalKind::Tool
-            })
-        } else {
-            None
-        };
-        self.child_sessions_cache = snapshot
-            .child_sessions
-            .into_iter()
-            .map(|summary| SubagentSessionSummary {
-                session_id: summary.session_id,
-                parent_tool_call_id: summary.parent_tool_call_id,
-                title: summary.title,
-                status: summary.status,
-                started_at_unix_ms: summary.started_at_unix_ms,
-                updated_at_unix_ms: summary.updated_at_unix_ms,
-                completed_at_unix_ms: summary.completed_at_unix_ms,
-                latest_message: summary.latest_message,
-                final_output: summary.final_output,
-                error: summary.error,
-            })
-            .collect();
-        self.subagent_message_cache.retain(|session_id, _| {
-            self.child_sessions_cache
-                .iter()
-                .any(|summary| summary.session_id == *session_id)
-        });
-        self.pending_questions_active = snapshot.has_pending_questions;
-        self.is_busy_cache = snapshot.is_busy;
-        self.flush_deferred_transport_replace();
-    }
-
-    fn should_poll_bridge(&self) -> bool {
-        self.is_busy_cache && self.pending_approval_kind.is_none() && !self.pending_questions_active
-    }
-
-    fn apply_bridge_events(&mut self, events: Vec<BridgeRuntimeEvent>) {
-        for event in events {
-            match event {
-                BridgeRuntimeEvent::BeginAssistantResponse => {
-                    self.pending_assistant_has_output = false;
-                    self.events.push_back(RuntimeEvent::BeginAssistantResponse);
-                }
-                BridgeRuntimeEvent::UpdatePendingAssistantThinking { text } => {
-                    self.events
-                        .push_back(RuntimeEvent::UpdatePendingAssistantThinking(text));
-                }
-                BridgeRuntimeEvent::AssistantThinkingSegmentFinalized { text } => {
-                    self.events
-                        .push_back(RuntimeEvent::AssistantThinkingSegmentFinalized(text));
-                }
-                BridgeRuntimeEvent::UpdatePendingAssistantCompaction { text } => {
-                    self.events
-                        .push_back(RuntimeEvent::UpdatePendingAssistantCompaction(text));
-                }
-                BridgeRuntimeEvent::AssistantChunk { text } => {
-                    self.pending_assistant_has_output = true;
-                    self.events.push_back(RuntimeEvent::AssistantChunk(text));
-                }
-                BridgeRuntimeEvent::ReplacePendingAssistant { text } => {
-                    self.pending_assistant_has_output = !text.trim().is_empty();
-                    self.events
-                        .push_back(RuntimeEvent::ReplacePendingAssistant(text));
-                }
-                BridgeRuntimeEvent::AssistantResponseCompleted => {
-                    self.pending_assistant_has_output = false;
-                    self.events
-                        .push_back(RuntimeEvent::AssistantResponseCompleted);
-                }
-                BridgeRuntimeEvent::RemovePendingAssistant => {
-                    self.pending_assistant_has_output = false;
-                    self.events.push_back(RuntimeEvent::RemovePendingAssistant);
-                }
-                BridgeRuntimeEvent::ApprovalRequested { approval } => {
-                    if let Some(session_id) = approval.subagent_session_id.as_deref() {
-                        match tool_request_from_host_value(approval.request.clone()) {
-                            Ok(_) => self.push_subagent_live_message(
-                                session_id,
-                                ChatMessage::with_tool_block(
-                                    MessageRole::Agent,
-                                    approval.prompt.clone(),
-                                    tool_approval_block(
-                                        &approval.tool_name,
-                                        approval.tool_call_id.as_deref(),
-                                        &approval.prompt,
-                                        approval.trust_target.is_some(),
-                                    ),
-                                ),
-                            ),
-                            Err(err) => self.push_subagent_live_message(
-                                session_id,
-                                ChatMessage::new(
-                                    MessageRole::Agent,
-                                    format!(
-                                        "待确认工具调用（解析失败）: {}\n{}",
-                                        err, approval.prompt
-                                    ),
-                                ),
-                            ),
-                        }
-                    } else {
-                        self.events.push_back(RuntimeEvent::PushMessage(
-                            ChatMessage::with_tool_block(
-                                MessageRole::Agent,
-                                approval.prompt.clone(),
-                                tool_approval_block(
-                                    &approval.tool_name,
-                                    approval.tool_call_id.as_deref(),
-                                    &approval.prompt,
-                                    approval.trust_target.is_some(),
-                                ),
-                            ),
-                        ));
-                    }
-                }
-                BridgeRuntimeEvent::QuestionsRequested { questions } => {
-                    self.events.push_back(RuntimeEvent::OpenAskQuestions {
-                        tool_call_id: questions.tool_call_id,
-                        tool_name: questions.tool_name,
-                        questions: questions.questions,
-                    });
-                }
-                BridgeRuntimeEvent::ToolCallStarted { .. } => {}
-                BridgeRuntimeEvent::StreamingToolPreview {
-                    tool_call_id,
-                    tool_name,
-                    arguments_json,
-                } => {
-                    let request =
-                        tool_request_from_streaming_preview(&tool_name, &arguments_json);
-                    self.events.push_back(RuntimeEvent::UpsertToolPreview {
-                        tool_call_id,
-                        tool_name,
-                        arguments: request.arguments,
-                    });
-                }
-                BridgeRuntimeEvent::ApprovalResolved { .. } => {}
-                BridgeRuntimeEvent::HistoryCompacted {
-                    dropped_messages,
-                    summary_preview,
-                } => {
-                    let summary = summary_preview.unwrap_or_else(|| "<无摘要内容>".to_string());
-                    self.events.push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                        MessageRole::Agent,
-                        format!(
-                            "检测到上下文超限，已调用模型生成/更新压缩摘要并重试（本轮合并 {} 条历史消息）。\n\n压缩摘要预览:\n{}",
-                            dropped_messages, summary
-                        ),
-                    )));
-                }
-                BridgeRuntimeEvent::BackgroundToolStatus { .. } => {}
-                BridgeRuntimeEvent::ContextUsageUpdated { .. } => {}
-                // TODO(cli): project tool-execution-output-chunk into TUI shell tool cards.
-                BridgeRuntimeEvent::ToolExecutionOutputChunk { .. } => {}
-                BridgeRuntimeEvent::ToolExecutionFinished { execution } => {
-                    if execution.tool_name.starts_with("todo_") {
-                        continue;
-                    }
-                    match tool_request_from_host_value(execution.request) {
-                        Ok(request) => {
-                            self.events.push_back(RuntimeEvent::PushMessage(
-                                ChatMessage::with_tool_block(
-                                    MessageRole::Agent,
-                                    if execution.failed {
-                                        format!("工具执行失败: {}", execution.output)
-                                    } else {
-                                        format_tool_ui_message(
-                                            &request,
-                                            &execution.tool_name,
-                                            &execution.output,
-                                        )
-                                    },
-                                    if execution.failed {
-                                        tool_failed_block(
-                                            &execution.tool_name,
-                                            Some(execution.tool_call_id.as_str()),
-                                            "工具执行失败",
-                                            &execution.output,
-                                        )
-                                    } else {
-                                        build_tool_result_block(
-                                            &request,
-                                            &execution.tool_name,
-                                            Some(execution.tool_call_id.as_str()),
-                                            &execution.output,
-                                        )
-                                    },
-                                ),
-                            ));
-                        }
-                        Err(err) => {
-                            self.events.push_back(RuntimeEvent::PushMessage(
-                                ChatMessage::with_tool_block(
-                                    MessageRole::Agent,
-                                    if execution.failed {
-                                        format!(
-                                            "工具执行失败（请求解析失败）: {}",
-                                            execution.output
-                                        )
-                                    } else {
-                                        format!(
-                                            "工具执行完成（请求解析失败）: {}\n{}",
-                                            err, execution.output
-                                        )
-                                    },
-                                    if execution.failed {
-                                        tool_failed_block(
-                                            &execution.tool_name,
-                                            Some(execution.tool_call_id.as_str()),
-                                            "工具执行失败",
-                                            &execution.output,
-                                        )
-                                    } else {
-                                        tool_failed_block(
-                                            &execution.tool_name,
-                                            Some(execution.tool_call_id.as_str()),
-                                            "工具执行完成但请求解析失败",
-                                            &err.to_string(),
-                                        )
-                                    },
-                                ),
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    fn push_local_mcp_tool_result(&mut self, event: LocalMcpToolResultEvent) {
-        let request = tool_request_from_local_mcp(&event.request);
-        if let Some(session_id) = event.subagent_session_id.as_deref() {
-            self.push_subagent_tool_result(
-                session_id,
-                &request,
-                &event.tool_name,
-                event.tool_call_id.as_deref(),
-                &event.output,
-            );
-            return;
-        }
-
-        self.events
-            .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                MessageRole::Agent,
-                format_tool_ui_message(&request, &event.tool_name, &event.output),
-                build_tool_result_block(
-                    &request,
-                    &event.tool_name,
-                    event.tool_call_id.as_deref(),
-                    &event.output,
-                ),
-            )));
-    }
-
-    fn push_local_mcp_tool_failure(&mut self, event: LocalMcpToolFailedEvent) {
-        if let Some(session_id) = event.subagent_session_id.as_deref() {
-            self.push_subagent_tool_failure(
-                session_id,
-                &event.tool_name,
-                event.tool_call_id.as_deref(),
-                &event.error,
-            );
-            return;
-        }
-
-        self.events
-            .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                MessageRole::Agent,
-                format!("工具执行失败: {}", event.error),
-                tool_failed_block(
-                    &event.tool_name,
-                    event.tool_call_id.as_deref(),
-                    "工具执行失败",
-                    &event.error,
-                ),
-            )));
-    }
-
-    fn push_subagent_live_message(&mut self, session_id: &str, message: ChatMessage) {
-        self.subagent_message_cache
-            .entry(session_id.to_string())
-            .or_default()
-            .push(message);
-    }
-
-    fn push_subagent_tool_result(
-        &mut self,
-        session_id: &str,
-        request: &ToolUiRequest,
-        tool_name: &str,
-        tool_call_id: Option<&str>,
-        output: &str,
-    ) {
-        self.push_subagent_live_message(
-            session_id,
-            ChatMessage::with_tool_block(
-                MessageRole::Agent,
-                format_tool_ui_message(request, tool_name, output),
-                build_tool_result_block(request, tool_name, tool_call_id, output),
-            ),
-        );
-    }
-
-    fn push_subagent_tool_failure(
-        &mut self,
-        session_id: &str,
-        tool_name: &str,
-        tool_call_id: Option<&str>,
-        error: &str,
-    ) {
-        self.push_subagent_live_message(
-            session_id,
-            ChatMessage::with_tool_block(
-                MessageRole::Agent,
-                format!("工具执行失败: {}", error),
-                tool_failed_block(tool_name, tool_call_id, "工具执行失败", error),
-            ),
-        );
-    }
-
-    fn handle_manual_tool_command_bridge_response(&mut self, value: &Value) -> Result<()> {
-        let Some(result_value) = value.get("result").cloned() else {
-            return Ok(());
-        };
-
-        let result: BridgeManualToolCommandStartResult = serde_json::from_value(result_value)?;
-        self.handle_manual_tool_command_result(result);
-        Ok(())
-    }
-
-    fn handle_manual_tool_command_result(&mut self, result: BridgeManualToolCommandStartResult) {
-        match result {
-            BridgeManualToolCommandStartResult::Completed {
-                request,
-                tool_name,
-                output,
-                failed,
-                background_execution: _,
-            } => self.push_manual_tool_command_message(request, &tool_name, &output, failed),
-            BridgeManualToolCommandStartResult::StartedBackground {
-                request: _,
-                tool_name: _,
-                status_text: _,
-            }
-            | BridgeManualToolCommandStartResult::StartedUserTurn { user_message: _ }
-            | BridgeManualToolCommandStartResult::RequiresApproval { approval: _ } => {}
-            BridgeManualToolCommandStartResult::Denied {
-                request: _,
-                tool_name: _,
-                message,
-            } => {
-                self.events
-                    .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                        MessageRole::Agent,
-                        message,
-                    )));
-            }
-            BridgeManualToolCommandStartResult::Failed { error, request } => {
-                self.push_manual_tool_command_failure(request, &error);
-            }
-        }
-    }
-
-    fn push_manual_tool_command_message(
-        &mut self,
-        request: Value,
-        tool_name: &str,
-        output: &str,
-        failed: bool,
-    ) {
-        match tool_request_from_host_value(request) {
-            Ok(request) => {
-                self.events
-                    .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                        MessageRole::Agent,
-                        if failed {
-                            format!("工具执行失败: {}", output)
-                        } else {
-                            format_tool_ui_message(&request, tool_name, output)
-                        },
-                        if failed {
-                            tool_failed_block(tool_name, None, "工具执行失败", output)
-                        } else {
-                            build_tool_result_block(&request, tool_name, None, output)
-                        },
-                    )));
-            }
-            Err(err) => {
-                self.events
-                    .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                        MessageRole::Agent,
-                        if failed {
-                            format!("工具执行失败（请求解析失败）: {}", output)
-                        } else {
-                            format!("工具执行完成（请求解析失败）: {}\n{}", err, output)
-                        },
-                    )));
-            }
-        }
-    }
-
-    fn push_manual_tool_command_failure(&mut self, request: Option<Value>, error: &str) {
-        if let Some(request) = request
-            && let Ok(request) = tool_request_from_host_value(request)
-        {
-            self.events
-                .push_back(RuntimeEvent::PushMessage(ChatMessage::with_tool_block(
-                    MessageRole::Agent,
-                    format!("工具执行失败: {}", error),
-                    tool_failed_block(&request.name, None, "工具执行失败", error),
-                )));
-            return;
-        }
-
-        self.events
-            .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                MessageRole::Agent,
-                format!("工具执行失败: {}", error),
-            )));
-    }
-
-    fn handle_bridge_error(&mut self, err: anyhow::Error) {
-        let mut summary = err.to_string();
-        let fatal = !summary.starts_with("runtime-error: ");
-        if let Some(stripped) = summary.strip_prefix("runtime-error: ") {
-            summary = stripped.to_string();
-        }
-
-        if fatal && self.bridge_failed {
-            logging::log_event(&format!(
-                "[ts-bridge-host] suppress repeated fatal error: {}",
-                summary
-            ));
-            return;
-        }
-
-        if fatal {
-            self.bridge_failed = true;
-        }
-        logging::log_event(&format!(
-            "[ts-bridge-host] {}: {}",
-            if fatal {
-                "fatal error"
-            } else {
-                "runtime error"
-            },
-            summary
-        ));
-        let had_inflight_response = self.is_busy_cache || self.pending_aux_state.is_some();
-        let had_pending_output = self.pending_assistant_has_output;
-        self.is_busy_cache = false;
-        self.pending_aux_state = None;
-        self.pending_approval_kind = None;
-        self.pending_assistant_has_output = false;
-        self.session.clear_pending_user_turn();
-        if had_inflight_response {
-            self.events.push_back(if had_pending_output {
-                RuntimeEvent::AssistantResponseCompleted
-            } else {
-                RuntimeEvent::RemovePendingAssistant
-            });
-        }
-        self.events
-            .push_back(RuntimeEvent::PushMessage(ChatMessage::new(
-                MessageRole::Agent,
-                if fatal {
-                    format!("TS runtime bridge 失败: {}", summary)
-                } else {
-                    format!("TS runtime 执行失败: {}", summary)
-                },
-            )));
-        self.flush_deferred_transport_replace();
     }
 
     #[cfg(test)]
