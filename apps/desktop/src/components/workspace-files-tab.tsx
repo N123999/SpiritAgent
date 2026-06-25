@@ -164,10 +164,7 @@ function WorkspaceFilesExplorerToolbar({
               type="button"
               variant="ghost"
               size="icon"
-              className={cn(
-                DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN,
-                fileTreeOpen && !fileSearchOpen && "bg-muted/60",
-              )}
+              className={DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN}
               onClick={onToggleFileTree}
               aria-label={fileTreeTooltip}
               aria-expanded={fileTreeOpen}
@@ -186,10 +183,7 @@ function WorkspaceFilesExplorerToolbar({
               type="button"
               variant="ghost"
               size="icon"
-              className={cn(
-                DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN,
-                fileSearchOpen && fileTreeOpen && "bg-muted/60",
-              )}
+              className={DESKTOP_FILES_EXPLORER_TOOLBAR_ICON_BTN}
               onClick={onToggleFileSearch}
               aria-label={fileSearchTooltip}
               aria-pressed={fileSearchOpen && fileTreeOpen}
