@@ -75,7 +75,7 @@ export interface BridgeRuntimeSnapshot {
 }
 
 export interface DrainEventsResult {
-  /** Includes `tool-execution-output-chunk` while `run_shell_command` streams; CLI ignores, Desktop projects to UI. */
+  /** Includes `tool-execution-output-chunk` while `shell` streams; CLI ignores, Desktop projects to UI. */
   events: RuntimeEvent<JsonValue>[];
   snapshot: BridgeRuntimeSnapshot;
 }

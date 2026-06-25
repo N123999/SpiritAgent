@@ -26,7 +26,7 @@ export function mapToolNameToKind(toolName: string): string {
       return 'delete';
 
     // Command execution
-    case 'run_shell_command':
+    case 'shell':
       return 'execute';
 
     // Web
@@ -64,7 +64,7 @@ export function buildToolCallTitle(toolName: string, argumentsJson: string): str
         return 'Applying patch';
       case 'delete_file':
         return `Deleting ${formatPath(args['path'])}`;
-      case 'run_shell_command':
+      case 'shell':
         return `Running: ${truncate(String(args['command'] ?? ''), 60)}`;
       case 'glob':
         return `Searching files: ${String(args['pattern'] ?? '')}`;

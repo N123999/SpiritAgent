@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  buildRunShellCommandToolResult,
+  buildShellToolResult,
   combineShellToolOutput,
-  parseRunShellCommandToolResult,
-  serializeRunShellCommandToolResult,
+  parseShellToolResult,
+  serializeShellToolResult,
 } from './shell-tool-result.js';
 
 test('combineShellToolOutput merges stdout and stderr with a newline when needed', () => {
@@ -15,9 +15,9 @@ test('combineShellToolOutput merges stdout and stderr with a newline when needed
   assert.equal(combineShellToolOutput('', ''), '');
 });
 
-test('serializeRunShellCommandToolResult returns compact JSON for LLM context', () => {
-  const json = serializeRunShellCommandToolResult(
-    buildRunShellCommandToolResult({
+test('serializeShellToolResult returns compact JSON for LLM context', () => {
+  const json = serializeShellToolResult(
+    buildShellToolResult({
       terminal: 'Command Prompt (cmd.exe)',
       workspace: 'D:\\SpiritAgent',
       command: 'echo hello',
@@ -37,10 +37,10 @@ test('serializeRunShellCommandToolResult returns compact JSON for LLM context', 
   });
 });
 
-test('serializeRunShellCommandToolResult preserves full output without truncation', () => {
+test('serializeShellToolResult preserves full output without truncation', () => {
   const longOutput = 'x'.repeat(20);
-  const json = serializeRunShellCommandToolResult(
-    buildRunShellCommandToolResult({
+  const json = serializeShellToolResult(
+    buildShellToolResult({
       terminal: 'bash',
       workspace: '/tmp',
       command: 'cat',
@@ -58,15 +58,15 @@ test('serializeRunShellCommandToolResult preserves full output without truncatio
   assert.equal(parsed.truncated, undefined);
 });
 
-test('parseRunShellCommandToolResult rejects legacy human transcript', () => {
+test('parseShellToolResult rejects legacy human transcript', () => {
   assert.equal(
-    parseRunShellCommandToolResult('终端      bash\n工作目录  /tmp\n'),
+    parseShellToolResult('终端      bash\n工作目录  /tmp\n'),
     null,
   );
 });
 
-test('parseRunShellCommandToolResult round-trips serialized JSON', () => {
-  const result = buildRunShellCommandToolResult({
+test('parseShellToolResult round-trips serialized JSON', () => {
+  const result = buildShellToolResult({
     terminal: 'zsh',
     workspace: '/workspace',
     command: 'false',
@@ -74,6 +74,6 @@ test('parseRunShellCommandToolResult round-trips serialized JSON', () => {
     stdout: '',
     stderr: 'command failed\n',
   });
-  const parsed = parseRunShellCommandToolResult(serializeRunShellCommandToolResult(result));
+  const parsed = parseShellToolResult(serializeShellToolResult(result));
   assert.deepEqual(parsed, result);
 });

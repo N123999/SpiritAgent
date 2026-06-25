@@ -191,7 +191,7 @@ export function hostToolArgumentsReadyForEarlyStreamingPreview(
       return tryExtractPartialToolPath(argumentsJson) !== undefined;
     case 'glob':
     case 'grep':
-    case 'run_shell_command':
+    case 'shell':
     case 'web_fetch':
     case 'run_subagent':
       return hostToolArgumentsReadyForPreview(name, argumentsJson);
@@ -227,7 +227,7 @@ export function hostToolArgumentsReadyForPreview(name: string, argumentsJson: st
   };
 
   switch (name) {
-    case 'run_shell_command':
+    case 'shell':
       return nonEmpty('command');
     case 'web_fetch':
       return nonEmpty('url');

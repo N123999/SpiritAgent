@@ -1,4 +1,4 @@
-export type RunShellCommandToolResult = {
+export type ShellToolResult = {
   terminal: string;
   workspace: string;
   command: string;
@@ -23,14 +23,14 @@ export function combineShellToolOutput(stdout: string, stderr: string): string {
   return `${stdout}${separator}${stderr}`;
 }
 
-export function buildRunShellCommandToolResult(input: {
+export function buildShellToolResult(input: {
   terminal: string;
   workspace: string;
   command: string;
   exitCode: number;
   stdout: string;
   stderr: string;
-}): RunShellCommandToolResult {
+}): ShellToolResult {
   return {
     terminal: input.terminal,
     workspace: input.workspace,
@@ -40,8 +40,8 @@ export function buildRunShellCommandToolResult(input: {
   };
 }
 
-export function serializeRunShellCommandToolResult(result: RunShellCommandToolResult): string {
-  const payload: RunShellCommandToolResult = {
+export function serializeShellToolResult(result: ShellToolResult): string {
+  const payload: ShellToolResult = {
     terminal: result.terminal,
     workspace: result.workspace,
     command: result.command,
@@ -51,14 +51,14 @@ export function serializeRunShellCommandToolResult(result: RunShellCommandToolRe
   return JSON.stringify(payload);
 }
 
-export function parseRunShellCommandToolResult(text: string): RunShellCommandToolResult | null {
+export function parseShellToolResult(text: string): ShellToolResult | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith('{')) {
     return null;
   }
   try {
     const parsed: unknown = JSON.parse(trimmed);
-    if (!isRunShellCommandToolResult(parsed)) {
+    if (!isShellToolResult(parsed)) {
       return null;
     }
     return parsed;
@@ -67,7 +67,7 @@ export function parseRunShellCommandToolResult(text: string): RunShellCommandToo
   }
 }
 
-function isRunShellCommandToolResult(value: unknown): value is RunShellCommandToolResult {
+function isShellToolResult(value: unknown): value is ShellToolResult {
   if (!value || typeof value !== 'object') {
     return false;
   }

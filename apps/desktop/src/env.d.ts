@@ -100,7 +100,7 @@ declare global {
     pushGitBranch(): Promise<DesktopSnapshot>;
     refreshGitSnapshot(): Promise<DesktopSnapshot>;
     abortConversation(): Promise<DesktopSnapshot>;
-    abortShellCommand(toolCallId: string): Promise<DesktopSnapshot>;
+    abortShell(toolCallId: string): Promise<DesktopSnapshot>;
     continueAssistantCompletion(messageId: number): Promise<DesktopSnapshot>;
     rewindAndSubmitMessage(request: RewindAndSubmitMessageRequest): Promise<DesktopSnapshot>;
     forkSession(request: ForkSessionRequest): Promise<DesktopSnapshot>;

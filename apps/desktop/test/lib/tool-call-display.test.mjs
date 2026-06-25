@@ -36,10 +36,10 @@ test('toolHasExpandableContent: read_file is never expandable', () => {
   );
 });
 
-test('getToolCallSummaryParts: run_shell_command prefixes reason and keeps command as detail', () => {
+test('getToolCallSummaryParts: shell prefixes reason and keeps command as detail', () => {
   assert.deepEqual(
     getToolCallSummaryParts({
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       phase: 'running',
       headline: '执行并发命令',
       headlineDetail: 'echo abc',
@@ -53,7 +53,7 @@ test('getToolCallSummaryParts: run_shell_command prefixes reason and keeps comma
   );
   assert.deepEqual(
     getToolCallSummaryParts({
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       phase: 'running',
       headline: i18n.t('tool.runCommand'),
       headlineDetail: 'npm install',
@@ -145,10 +145,10 @@ test('getToolCallSummaryParts: apply_patch headline re-translates across locales
   }
 });
 
-test('getToolCallSummaryParts: run_shell_command default headline re-translates', async () => {
+test('getToolCallSummaryParts: shell default headline re-translates', async () => {
   // Host stored the Chinese default "运行命令" then user switched to English
   const tool = {
-    toolName: 'run_shell_command',
+    toolName: 'shell',
     phase: 'succeeded',
     headline: '运行命令', // zh-CN default
     headlineDetail: 'ls -la',
@@ -432,7 +432,7 @@ test('getToolCallSummaryParts: shell verb uses tense in English', async () => {
   try {
     assert.deepEqual(
       getToolCallSummaryParts({
-        toolName: 'run_shell_command',
+        toolName: 'shell',
         phase: 'running',
         headline: 'Install deps',
         headlineDetail: 'npm install',
@@ -446,7 +446,7 @@ test('getToolCallSummaryParts: shell verb uses tense in English', async () => {
     );
     assert.deepEqual(
       getToolCallSummaryParts({
-        toolName: 'run_shell_command',
+        toolName: 'shell',
         phase: 'succeeded',
         headline: 'Install deps',
         headlineDetail: 'npm install',

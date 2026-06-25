@@ -6,13 +6,13 @@ import {
   defaultShellForPty,
   isWindowsCmdExecutable,
   isWindowsPowerShellExecutable,
-  prepareShellCommandForHostExecution,
+  prepareShellForHostExecution,
 } from './default-terminal-shell.js';
 
 const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const DEFAULT_CHUNK_THROTTLE_MS = 75;
 
-export interface RunShellCommandOptions {
+export interface RunShellOptions {
   workspaceRoot: string;
   command: string;
   onOutputChunk?: (chunk: string) => void;
@@ -20,14 +20,14 @@ export interface RunShellCommandOptions {
   maxOutputBytes?: number;
 }
 
-export interface RunShellCommandResult {
+export interface RunShellResult {
   stdout: string;
   stderr: string;
   exitCode: number;
 }
 
-export interface RunShellCommandHandle {
-  result: Promise<RunShellCommandResult>;
+export interface RunShellHandle {
+  result: Promise<RunShellResult>;
   kill: () => void;
 }
 
@@ -91,9 +91,9 @@ function decodeSpawnChunk(shellFile: string, chunk: Buffer): string {
   return decodeShellHostOutput(shellFile, chunk);
 }
 
-export function runShellCommand(options: RunShellCommandOptions): RunShellCommandHandle {
+export function runShell(options: RunShellOptions): RunShellHandle {
   const { file: shellExecutable } = defaultShellForPty();
-  const preparedCommand = prepareShellCommandForHostExecution(shellExecutable, options.command);
+  const preparedCommand = prepareShellForHostExecution(shellExecutable, options.command);
   const { file, args } = shellSpawnInvocation(shellExecutable, preparedCommand);
   const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   const throttle = options.onOutputChunk
@@ -110,7 +110,7 @@ export function runShellCommand(options: RunShellCommandOptions): RunShellComman
     }
   };
 
-  const result = new Promise<RunShellCommandResult>((resolve) => {
+  const result = new Promise<RunShellResult>((resolve) => {
     let stdout = '';
     let stderr = '';
     let stdoutBytes = 0;

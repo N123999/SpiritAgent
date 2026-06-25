@@ -29,10 +29,10 @@ import {
 import { resolveCompactionArchivesDir } from './compaction-archive.js';
 import {
   defaultShellForPty,
-  shellCommandParameterDescriptionForResolvedShell,
+  commandParameterDescriptionForResolvedShell,
   shellDisplayNameForResolvedShell,
 } from './default-terminal-shell.js';
-import { runShellCommand } from './shell-execution.js';
+import { runShell } from './shell-execution.js';
 import { resolveToolOutputArchivesDir } from './tool-output-archive.js';
 import {
   readHostFileSnapshot,
@@ -87,8 +87,8 @@ import {
 import { detectSupportedVideoFile, hasSupportedVideoExtension } from './video-file-support.js';
 import { filterWorkspaceFilePathsByIgnore } from './workspace-ignore.js';
 import {
-  buildRunShellCommandToolResult,
-  serializeRunShellCommandToolResult,
+  buildShellToolResult,
+  serializeShellToolResult,
 } from '@spirit-agent/core';
 
 const PERMISSIONS_FILE = 'tool-permissions.json';
@@ -179,7 +179,7 @@ interface ResolvedReadFileTarget {
 
 export interface HostBuiltinToolDefinitionEnvironment {
   shellDisplayName: string;
-  shellCommandParameterDescription: string;
+  commandParameterDescription: string;
 }
 
 export interface HostOperatingSystemInfo {
@@ -227,7 +227,7 @@ export interface ApplyPatchOperation {
 
 export type HostToolRequest<QuestionSpec = HostAskQuestionsQuestionSpec> =
   | { name: 'finish_task'; summary?: string }
-  | { name: 'run_shell_command'; command: string; reason: string }
+  | { name: 'shell'; command: string; reason: string }
   | { name: 'web_fetch'; url: string }
   | { name: 'list_directory_files'; path: string }
   | { name: 'glob'; pattern: string }
@@ -340,8 +340,8 @@ export interface HostBuiltinToolService<QuestionSpec = HostAskQuestionsQuestionS
   ): HostToolRequest<QuestionSpec>;
   shouldExecuteInBackground?(request: HostToolRequest<QuestionSpec>): boolean;
   backgroundStatusText?(request: HostToolRequest<QuestionSpec>): string | undefined;
-  abortRunningShellCommands?(): void;
-  abortShellCommand?(toolCallId: string): boolean;
+  abortRunningShell?(): void;
+  abortShell?(toolCallId: string): boolean;
   startMcpBackgroundRefresh(): void;
   mcpStatusSnapshot(): HostMcpStatusSnapshot;
   addMcpServer(name: string, config: HostJsonValue): Promise<string>;
@@ -467,14 +467,14 @@ export function detectShellForTools(): HostBuiltinToolDefinitionEnvironment {
     const name = path.basename(shell);
     return {
       shellDisplayName: `POSIX shell (${name})`,
-      shellCommandParameterDescription: `The command to execute in POSIX shell (${name}). Prefer POSIX shell syntax such as ls, find, grep, cat, pwd, and cd.`,
+      commandParameterDescription: `The command to execute in POSIX shell (${name}). Prefer POSIX shell syntax such as ls, find, grep, cat, pwd, and cd.`,
     };
   }
 
   const { file } = defaultShellForPty();
   return {
     shellDisplayName: shellDisplayNameForResolvedShell(file),
-    shellCommandParameterDescription: shellCommandParameterDescriptionForResolvedShell(file),
+    commandParameterDescription: commandParameterDescriptionForResolvedShell(file),
   };
 }
 
@@ -582,7 +582,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           throw new Error('用法: /tool shell <command>');
         }
         return {
-          name: 'run_shell_command',
+          name: 'shell',
           command,
           reason: '用户手动执行',
         };
@@ -652,7 +652,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
             ...(summary ? { summary } : {}),
           };
         }
-      case 'run_shell_command':
+      case 'shell':
         return {
           name,
           reason: requiredString(parsed, 'reason'),
@@ -882,7 +882,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
           };
         }
         return { kind: 'allowed' };
-      case 'run_shell_command': {
+      case 'shell': {
         const metadata = this.requestMetadataFor(request);
         if (metadata?.userInitiated) {
           return { kind: 'allowed' };
@@ -1002,7 +1002,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     switch (request.name) {
       case 'finish_task':
         return createHostToolTextOutput(request.summary?.trim() || 'Task marked complete.');
-      case 'run_shell_command': {
+      case 'shell': {
         const shellMetadata = this.requestMetadataFor(request);
         return this.executeShell(request.command, {
           ...(shellMetadata?.onOutputChunk ? { onOutputChunk: shellMetadata.onOutputChunk } : {}),
@@ -1149,20 +1149,20 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   }
 
   shouldExecuteInBackground(request: HostToolRequest<QuestionSpec>): boolean {
-    if (request.name === 'run_shell_command' || request.name === 'web_fetch') {
+    if (request.name === 'shell' || request.name === 'web_fetch') {
       return true;
     }
     return request.name === 'extension_tool' && request.execution_mode === 'background';
   }
 
-  abortRunningShellCommands(): void {
+  abortRunningShell(): void {
     for (const kill of this.activeShellKills.values()) {
       kill();
     }
     this.activeShellKills.clear();
   }
 
-  abortShellCommand(toolCallId: string): boolean {
+  abortShell(toolCallId: string): boolean {
     const trimmed = toolCallId.trim();
     if (!trimmed) {
       return false;
@@ -1177,7 +1177,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
   }
 
   backgroundStatusText(request: HostToolRequest<QuestionSpec>): string | undefined {
-    if (request.name === 'run_shell_command' || request.name === 'web_fetch') {
+    if (request.name === 'shell' || request.name === 'web_fetch') {
       // Status is shown on the tool card; do not mirror into thinking aux.
       return undefined;
     }
@@ -1627,7 +1627,7 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
     options: { onOutputChunk?: (chunk: string) => void; toolCallId?: string } = {},
   ): Promise<string> {
     const shell = this.toolDefinitionEnvironment();
-    const handle = runShellCommand({
+    const handle = runShell({
       workspaceRoot: this.workspaceRoot,
       command,
       ...(options.onOutputChunk ? { onOutputChunk: options.onOutputChunk } : {}),
@@ -1645,8 +1645,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       }
     }
 
-    return serializeRunShellCommandToolResult(
-      buildRunShellCommandToolResult({
+    return serializeShellToolResult(
+      buildShellToolResult({
         terminal: shell.shellDisplayName,
         workspace: this.workspaceRoot,
         command,

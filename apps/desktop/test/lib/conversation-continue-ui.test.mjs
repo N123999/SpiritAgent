@@ -29,7 +29,7 @@ test('resolveTurnContinuePresentation anchors Continue on last row when timeline
       content: '',
       pending: false,
       canContinue: true,
-      tool: { toolName: 'run_shell_command', phase: 'failed', headline: 'x', detailLines: [] },
+      tool: { toolName: 'shell', phase: 'failed', headline: 'x', detailLines: [] },
     },
   ];
   const resolved = resolveTurnContinuePresentation(messages);

@@ -157,8 +157,8 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   abortConversation() {
     return ipcRenderer.invoke('desktop:invoke', 'abortConversation');
   },
-  abortShellCommand(toolCallId: string) {
-    return ipcRenderer.invoke('desktop:invoke', 'abortShellCommand', { toolCallId });
+  abortShell(toolCallId: string) {
+    return ipcRenderer.invoke('desktop:invoke', 'abortShell', { toolCallId });
   },
   continueAssistantCompletion(messageId: number) {
     return ipcRenderer.invoke('desktop:invoke', 'continueAssistantCompletion', { messageId });

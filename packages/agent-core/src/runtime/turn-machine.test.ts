@@ -44,19 +44,19 @@ test('resumePendingApproval deny persists tool result into historyStore', async 
       tool_calls: [{
         id: 'call_shell',
         type: 'function',
-        function: { name: 'run_shell_command', arguments: '{}' },
+        function: { name: 'shell', arguments: '{}' },
       }],
     }],
     steps: 0,
   };
-  const request = { name: 'run_shell_command', argumentsJson: '{}' };
+  const request = { name: 'shell', argumentsJson: '{}' };
   const turn = createTurnContext<{ name: string; argumentsJson: string }>();
   const historyStore = [{
     role: 'assistant' as const,
     content: [{ type: 'text' as const, text: 'run shell' }],
     toolCalls: [{
       id: 'call_shell',
-      name: 'run_shell_command',
+      name: 'shell',
       argumentsJson: '{}',
     }],
   }];
@@ -70,7 +70,7 @@ test('resumePendingApproval deny persists tool result into historyStore', async 
       state,
       request,
       toolCallId: 'call_shell',
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       remainingCalls: [],
       turn,
     },
@@ -234,7 +234,7 @@ test('resumePendingQuestions forwards argumentsJson to postToolUse hook', async 
     };
   };
   const turn = createTurnContext<{ name: string; command?: string }>();
-  const request = { name: 'run_shell_command', command: 'echo hi' };
+  const request = { name: 'shell', command: 'echo hi' };
   const runtime = {
     options: {
       config: {},
@@ -283,7 +283,7 @@ test('resumePendingQuestions forwards argumentsJson to postToolUse hook', async 
       request,
       questions: [],
       toolCallId: 'call_shell',
-      toolName: 'run_shell_command',
+      toolName: 'shell',
       argumentsJson: '{"command":"echo hi"}',
       remainingCalls: [],
       turn,
@@ -543,7 +543,7 @@ test('repairMissingToolResultsInHistory inserts placeholders for orphaned tool c
       content: [{ type: 'text' as const, text: 'run shell' }],
       toolCalls: [{
         id: 'call_00_zbxFvpiBoJJIy2ca3n8b4482',
-        name: 'run_shell_command',
+        name: 'shell',
         argumentsJson: '{}',
       }],
     },
@@ -813,7 +813,7 @@ test('processToolCalls hook allow bypasses host need-approval', async () => {
     runtime,
     state,
     'run shell',
-    [{ id: 'call_shell', name: 'run_shell_command', argumentsJson: '{"command":"echo hi"}' }],
+    [{ id: 'call_shell', name: 'shell', argumentsJson: '{"command":"echo hi"}' }],
     createTurnContext(),
   );
 

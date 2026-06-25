@@ -9,7 +9,7 @@ import {
   decodeShellHostOutput,
   defaultShellForPty,
   isWindowsPowerShellExecutable,
-  prepareShellCommandForHostExecution,
+  prepareShellForHostExecution,
   shellDisplayNameForResolvedShell,
   shellHostExecUsesBufferOutput,
 } from './default-terminal-shell.js';
@@ -65,13 +65,13 @@ test('detectShellForTools: Windows 与 defaultShellForPty 解析结果一致', {
   }
 });
 
-test('prepareShellCommandForHostExecution: PowerShell 子进程可输出 UTF-8 中文', { skip: process.platform !== 'win32' }, async () => {
+test('prepareShellForHostExecution: PowerShell 子进程可输出 UTF-8 中文', { skip: process.platform !== 'win32' }, async () => {
   const { file } = defaultShellForPty();
   if (!isWindowsPowerShellExecutable(file)) {
     return;
   }
   const sample = '你好，Spirit Agent 中文输出测试';
-  const command = prepareShellCommandForHostExecution(file, `Write-Output "${sample}"`);
+  const command = prepareShellForHostExecution(file, `Write-Output "${sample}"`);
   const result = await exec(command, {
     shell: file,
     windowsHide: true,
@@ -87,7 +87,7 @@ test('decodeShellHostOutput: cmd 子进程 GBK 输出可解码为中文', { skip
     return;
   }
   const sample = '你好，cmd 中文输出测试';
-  const command = prepareShellCommandForHostExecution(cmd, `echo ${sample}`);
+  const command = prepareShellForHostExecution(cmd, `echo ${sample}`);
   const result = await exec(command, {
     shell: cmd,
     windowsHide: true,

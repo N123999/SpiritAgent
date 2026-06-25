@@ -31,7 +31,7 @@ import {
   toolHasExpandableContent,
   type ShellToolSummaryParts,
 } from "@/lib/tool-call-display";
-import { parseShellCommand, parseShellToolResult } from "@/lib/shell-tool-display";
+import { parseShellToolCommand, parseShellToolResult } from "@/lib/shell-tool-display";
 import {
   clickableToolCardTriggerClass,
   shouldShowLspDiagnosticsOnToolCard,
@@ -502,7 +502,7 @@ export function MinimalToolCallCard({
 }) {
   const summary = getToolCallSummaryParts(tool);
   const shimmerActive = toolCallPhaseShowsShimmer(tool.phase);
-  const isShell = tool.toolName === "run_shell_command";
+  const isShell = tool.toolName === "shell";
   const isSubagent = tool.toolName === "run_subagent";
   const subagentToolCallId = tool.toolCallId?.trim() ?? "";
   const canOpenSubagentViewer = Boolean(isSubagent && onOpenSubagentViewer && subagentToolCallId);
@@ -514,7 +514,7 @@ export function MinimalToolCallCard({
   const isFileDiff = isFileDiffTool(tool.toolName);
   const isResponsesBuiltIn = isResponsesBuiltInToolCard(tool.toolName);
   const shellCommand = useMemo(
-    () => (isShell ? tool.headlineDetail?.trim() || parseShellCommand(tool) : undefined),
+    () => (isShell ? tool.headlineDetail?.trim() || parseShellToolCommand(tool) : undefined),
     [isShell, tool.argsExcerpt, tool.detailLines, tool.headlineDetail],
   );
   const expandable = toolHasExpandableContent(tool);

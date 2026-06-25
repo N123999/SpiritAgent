@@ -263,7 +263,7 @@ export function ConversationList({
                           onOpenSubagentViewer={onOpenSubagentViewer}
                           onOpenReadFile={onOpenReadFile}
                           onAbortShell={(toolCallId) => {
-                            void runtime.abortShellCommand(toolCallId);
+                            void runtime.abortShell(toolCallId);
                           }}
                         />
                       )}
@@ -400,7 +400,7 @@ export function ConversationList({
                 onOpenSubagentViewer={onOpenSubagentViewer}
                 onOpenReadFile={onOpenReadFile}
                 onAbortShell={(toolCallId) => {
-                  void runtime.abortShellCommand(toolCallId);
+                  void runtime.abortShell(toolCallId);
                 }}
                 queuedCanMoveUp={queuedCanMoveUp}
                 queueActionBusy={runtime.busyAction === "send"}

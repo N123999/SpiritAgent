@@ -50,7 +50,7 @@ export interface HostCommandDelegate {
   pushGitBranch(): Promise<unknown>;
   refreshGitSnapshot(): Promise<unknown>;
   abortConversation(): Promise<unknown>;
-  abortShellCommand(toolCallId: string): Promise<unknown>;
+  abortShell(toolCallId: string): Promise<unknown>;
   continueAssistantCompletion(messageId: number): Promise<unknown>;
   poll(): Promise<unknown>;
   listDreamsOverview(): Promise<unknown>;
@@ -181,7 +181,7 @@ const hostCommandDispatch = {
   pushGitBranch: (host) => host.pushGitBranch(),
   refreshGitSnapshot: (host) => host.refreshGitSnapshot(),
   abortConversation: (host) => host.abortConversation(),
-  abortShellCommand: (host, payload) => host.abortShellCommand(payload.toolCallId),
+  abortShell: (host, payload) => host.abortShell(payload.toolCallId),
   continueAssistantCompletion: (host, payload) => host.continueAssistantCompletion(payload.messageId),
   poll: (host) => host.poll(),
   listDreamsOverview: (host) => host.listDreamsOverview(),

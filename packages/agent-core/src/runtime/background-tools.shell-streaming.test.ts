@@ -13,7 +13,7 @@ import { startBackgroundToolExecutionAsync, type BackgroundToolsRuntime } from '
 import type { RuntimeEvent, RuntimeTurnContext } from './types.js';
 
 interface ShellToolRequest {
-  name: 'run_shell_command';
+  name: 'shell';
   command: string;
 }
 
@@ -53,7 +53,7 @@ class StreamingShellExecutor implements ToolExecutor<ShellToolRequest> {
   }
 
   shouldExecuteInBackground(request: ShellToolRequest): boolean {
-    return request.name === 'run_shell_command';
+    return request.name === 'shell';
   }
 
   backgroundStatusText(request: ShellToolRequest): string | undefined {
@@ -113,7 +113,7 @@ test('startBackgroundToolExecutionAsync emits tool-execution-output-chunk for sh
   const executor = new StreamingShellExecutor();
   const events: RuntimeEvent<ShellToolRequest>[] = [];
   const request: ShellToolRequest = {
-    name: 'run_shell_command',
+    name: 'shell',
     command: 'echo hello',
   };
   const turn: RuntimeTurnContext<ShellToolRequest> = {
@@ -149,7 +149,7 @@ test('startBackgroundToolExecutionAsync emits tool-execution-output-chunk for sh
     { messages: [] },
     request,
     'call_shell_1',
-    'run_shell_command',
+    'shell',
     '{"command":"echo hello"}',
     [],
     turn,

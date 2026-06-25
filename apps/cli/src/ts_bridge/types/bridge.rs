@@ -305,7 +305,7 @@ pub(crate) enum BridgeRuntimeEvent {
     },
     #[serde(rename = "tool-execution-finished")]
     ToolExecutionFinished { execution: BridgeToolExecution },
-    /// Incremental shell stdout/stderr while `run_shell_command` runs in the background.
+    /// Incremental shell stdout/stderr while `shell` runs in the background.
     /// CLI TUI does not render chunks yet; Desktop projects them into tool cards.
     #[serde(rename = "tool-execution-output-chunk")]
     ToolExecutionOutputChunk {

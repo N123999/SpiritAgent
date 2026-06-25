@@ -109,7 +109,7 @@ export function classifyProcessToolCategory(
   if (toolName === 'get_diagnostics') {
     return 'diagnose';
   }
-  if (toolName === 'run_shell_command') {
+  if (toolName === 'shell') {
     return 'run';
   }
   if (EXPLORE_TOOLS.has(toolName)) {

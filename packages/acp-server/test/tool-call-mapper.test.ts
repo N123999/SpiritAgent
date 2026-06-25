@@ -41,8 +41,8 @@ test('mapToolNameToKind: delete_file → delete', () => {
   assert.equal(mapToolNameToKind('delete_file'), 'delete');
 });
 
-test('mapToolNameToKind: run_shell_command → execute', () => {
-  assert.equal(mapToolNameToKind('run_shell_command'), 'execute');
+test('mapToolNameToKind: shell → execute', () => {
+  assert.equal(mapToolNameToKind('shell'), 'execute');
 });
 
 test('mapToolNameToKind: web_fetch → fetch', () => {
@@ -70,14 +70,14 @@ test('buildToolCallTitle: read_file with path', () => {
   assert.equal(title, 'Reading main.ts');
 });
 
-test('buildToolCallTitle: run_shell_command with command', () => {
-  const title = buildToolCallTitle('run_shell_command', JSON.stringify({ command: 'npm install' }));
+test('buildToolCallTitle: shell with command', () => {
+  const title = buildToolCallTitle('shell', JSON.stringify({ command: 'npm install' }));
   assert.equal(title, 'Running: npm install');
 });
 
-test('buildToolCallTitle: run_shell_command truncates long commands', () => {
+test('buildToolCallTitle: shell truncates long commands', () => {
   const longCmd = 'a'.repeat(100);
-  const title = buildToolCallTitle('run_shell_command', JSON.stringify({ command: longCmd }));
+  const title = buildToolCallTitle('shell', JSON.stringify({ command: longCmd }));
   assert.ok(title.length < 80);
   assert.ok(title.endsWith('…'));
 });

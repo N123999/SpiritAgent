@@ -1,7 +1,7 @@
 import { FILE_DIFF_TOOL_NAMES } from '@/lib/file-tool-diff-source.js';
 import i18n from '@/lib/i18n';
 import {
-  parseShellCommand,
+  parseShellToolCommand,
   shellExpandableDetailLines,
   shellHasExpandableContent,
 } from '@/lib/shell-tool-display';
@@ -29,7 +29,7 @@ export type ShellToolSummaryParts = {
 export type ToolCallSummaryParts = {
   headline: string;
   detail?: string;
-  /** When set, headline is split into verb (darkest) + reason (mid) for run_shell_command. */
+  /** When set, headline is split into verb (darkest) + reason (mid) for shell. */
   shellSummary?: ShellToolSummaryParts;
 };
 
@@ -206,8 +206,8 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
     return readFileToolSummaryParts(tool);
   }
 
-  if (tool.toolName === 'run_shell_command') {
-    const command = snapshotDetail || parseShellCommand(tool);
+  if (tool.toolName === 'shell') {
+    const command = snapshotDetail || parseShellToolCommand(tool);
     return {
       ...shellToolSummaryFromReason(headline, tool.phase),
       ...(command ? { detail: command } : {}),
@@ -375,8 +375,8 @@ export function toolHasExpandableContent(tool: ToolBlockSnapshot): boolean {
     return responsesBuiltInToolHasExpandableContent(tool);
   }
 
-  if (tool.toolName === 'run_shell_command') {
-    const command = tool.headlineDetail?.trim() || parseShellCommand(tool);
+  if (tool.toolName === 'shell') {
+    const command = tool.headlineDetail?.trim() || parseShellToolCommand(tool);
     return shellHasExpandableContent(tool, command);
   }
 

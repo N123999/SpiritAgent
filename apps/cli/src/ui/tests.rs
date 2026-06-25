@@ -765,7 +765,7 @@ fn streaming_tool_preview_renders_tool_card_on_separate_message_row() {
         String::new(),
         ToolUiBlock {
             tool_call_id: Some("call-preview-shell".to_string()),
-            tool_name: "run_shell_command".to_string(),
+            tool_name: "shell".to_string(),
             phase: ToolUiPhase::Preview,
             headline: "执行命令".to_string(),
             detail_lines: vec!["echo hello".to_string()],
@@ -1251,7 +1251,7 @@ fn shell_pending_approval_title_line_shows_reason_instead_of_call_id() {
         String::new(),
         ToolUiBlock {
             tool_call_id: Some("call_00_demo_reason".to_string()),
-            tool_name: "run_shell_command".to_string(),
+            tool_name: "shell".to_string(),
             phase: ToolUiPhase::PendingApproval,
             headline: "查看构建输出".to_string(),
             detail_lines: vec![
@@ -1267,7 +1267,7 @@ fn shell_pending_approval_title_line_shows_reason_instead_of_call_id() {
 
     let lines = render_text_lines(render_message_lines(&app, &app.messages[0], 0));
 
-    assert!(lines[0].contains("run_shell_command"));
+    assert!(lines[0].contains("shell"));
     assert!(lines[0].contains(t!("ui.tool.phase.pending_approval").as_ref()));
     assert!(lines[0].contains("查看构建输出"));
     assert!(!lines[0].contains("call_00_demo_reason"));

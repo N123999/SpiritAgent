@@ -52,7 +52,7 @@ test('resolveMergedHookDefinitions applies matcher to tool names', () => {
   const user = emptyHooksConfigFile();
   user.hooks.preToolUse = [
     { command: 'all.sh' },
-    { command: 'shell.sh', matcher: '^run_shell_command$' },
+    { command: 'shell.sh', matcher: '^shell$' },
   ];
 
   const all = resolveMergedHookDefinitions(user, emptyHooksConfigFile(), 'preToolUse', '/data');
@@ -64,7 +64,7 @@ test('resolveMergedHookDefinitions applies matcher to tool names', () => {
     'preToolUse',
     '/data',
     undefined,
-    'run_shell_command',
+    'shell',
   );
   assert.deepEqual(
     shellOnly.map((entry: { command: string }) => entry.command),

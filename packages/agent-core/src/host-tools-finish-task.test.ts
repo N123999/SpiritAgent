@@ -23,7 +23,7 @@ function readToolName(definition: JsonValue): string {
 
 const environment = {
   shellDisplayName: 'PowerShell',
-  shellCommandParameterDescription: 'Command to run.',
+  commandParameterDescription: 'Command to run.',
 };
 
 test('buildBuiltinHostToolDefinitions omits finish_task', () => {
@@ -39,7 +39,7 @@ test('buildFinishTaskHostToolDefinitions exposes finish_task only when Loop tool
 test('assertFinishTaskToolAllowed rejects finish_task when Loop is off', () => {
   const definitions = buildBuiltinHostToolDefinitions({
     shellDisplayName: 'test shell',
-    shellCommandParameterDescription: 'cmd',
+    commandParameterDescription: 'cmd',
   });
   const available = toolNamesFromDefinitions(definitions);
   assert.throws(

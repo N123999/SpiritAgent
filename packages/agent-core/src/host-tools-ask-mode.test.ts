@@ -32,7 +32,7 @@ function filterSubagentToolDefinitions(value: unknown): unknown {
 test('filterHostToolDefinitionsForAgentMode removes edit tools in Ask mode', () => {
   const builtins = buildBuiltinHostToolDefinitions({
     shellDisplayName: 'cmd',
-    shellCommandParameterDescription: 'command',
+    commandParameterDescription: 'command',
   });
   const filtered = filterHostToolDefinitionsForAgentMode(builtins, 'ask');
   const names = toolNames(filtered as ReturnType<typeof buildBuiltinHostToolDefinitions>);
@@ -40,7 +40,7 @@ test('filterHostToolDefinitionsForAgentMode removes edit tools in Ask mode', () 
   assert.ok(names.includes('read_file'));
   assert.ok(names.includes('run_subagent'));
   assert.ok(!names.includes('edit_file'));
-  assert.ok(!names.includes('run_shell_command'));
+  assert.ok(!names.includes('shell'));
   for (const excluded of ASK_MODE_EXCLUDED_HOST_TOOL_NAMES) {
     if (excluded === 'create_plan') {
       continue;
@@ -52,7 +52,7 @@ test('filterHostToolDefinitionsForAgentMode removes edit tools in Ask mode', () 
 test('filterHostToolDefinitionsForAgentMode leaves Agent mode builtins unchanged', () => {
   const builtins = buildBuiltinHostToolDefinitions({
     shellDisplayName: 'cmd',
-    shellCommandParameterDescription: 'command',
+    commandParameterDescription: 'command',
   });
   const names = toolNames(builtins);
   assert.ok(names.includes('edit_file'));
@@ -63,7 +63,7 @@ test('subagent inherits Ask-filtered tools without nested run_subagent', () => {
   const parentDefinitions = filterHostToolDefinitionsForAgentMode(
     buildBuiltinHostToolDefinitions({
       shellDisplayName: 'cmd',
-      shellCommandParameterDescription: 'command',
+      commandParameterDescription: 'command',
     }),
     'ask',
   );

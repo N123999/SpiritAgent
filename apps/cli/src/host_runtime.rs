@@ -201,7 +201,7 @@ fn preview_summary_for_tool(tool_name: &str, request: &ToolUiRequest) -> (String
             "匹配".to_string(),
             vec![string_arg(request, "pattern").unwrap_or("**/*").to_string()],
         ),
-        "run_shell_command" => (
+        "shell" => (
             "执行命令".to_string(),
             string_arg(request, "command")
                 .map(|value| vec![value.to_string()])
@@ -265,7 +265,7 @@ pub(crate) fn tool_approval_block(
     prompt: &str,
     supports_trust: bool,
 ) -> ToolUiBlock {
-    let (shell_reason, mut detail_lines) = if tool_name == "run_shell_command" {
+    let (shell_reason, mut detail_lines) = if tool_name == "shell" {
         strip_shell_reason_from_prompt(prompt)
     } else {
         (
@@ -539,7 +539,7 @@ pub(crate) fn build_tool_result_block(
                 output_excerpt: None,
             }
         }
-        "run_shell_command" => ToolUiBlock {
+        "shell" => ToolUiBlock {
             tool_call_id: tool_call_id.map(String::from),
             tool_name: tool_name.to_string(),
             phase: ToolUiPhase::Succeeded,
@@ -633,7 +633,7 @@ pub(crate) fn format_tool_ui_message(
             "[tool] 已应用补丁 {}",
             apply_patch_path(request).unwrap_or("<unknown>")
         ),
-        "run_shell_command" => format!(
+        "shell" => format!(
             "[tool] {} 执行完成。\n{}",
             tool_name,
             truncate_for_preview(output, 1200)
@@ -685,7 +685,7 @@ mod tests {
     #[test]
     fn shell_tool_args_excerpt_keeps_reason_field() {
         let excerpt = tool_request_args_excerpt(&ToolUiRequest::new(
-            "run_shell_command",
+            "shell",
             json!({ "command": "echo hello", "reason": "smoke test" }),
         ));
         let parsed: Value = serde_json::from_str(&excerpt).expect("args excerpt json");
@@ -699,16 +699,16 @@ mod tests {
     fn tool_result_block_keeps_tool_call_id_for_shell() {
         let block = build_tool_result_block(
             &ToolUiRequest::new(
-                "run_shell_command",
+                "shell",
                 json!({ "command": "echo hello", "reason": "smoke test" }),
             ),
-            "run_shell_command",
+            "shell",
             Some("call_00_demo"),
             "hello\n",
         );
 
         assert_eq!(block.tool_call_id.as_deref(), Some("call_00_demo"));
-        assert_eq!(block.tool_name, "run_shell_command");
+        assert_eq!(block.tool_name, "shell");
         assert_eq!(block.headline, "命令已执行");
         assert_eq!(
             block.args_excerpt.as_deref(),
@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn tool_approval_block_uses_shell_reason_as_headline() {
         let block = tool_approval_block(
-            "run_shell_command",
+            "shell",
             Some("call_00_demo"),
             "理由: 查看构建输出\n高风险工具调用: shell\n终端: Command Prompt (cmd.exe)\n命令: echo hi",
             true,

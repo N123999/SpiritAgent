@@ -694,7 +694,7 @@ export class AgentRuntime<
       return;
     }
 
-    this.options.toolExecutor.abortRunningShellCommands?.();
+    this.options.toolExecutor.abortRunningShell?.();
 
     const hasPendingAssistantText = this.pendingAssistantTextStore.trim().length > 0;
 
