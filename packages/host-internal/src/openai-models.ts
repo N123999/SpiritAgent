@@ -2,6 +2,8 @@
  * OpenAI-compatible `GET /v1/models` listing (host-side; no secrets stored here).
  */
 
+import { gatewayAnthropicClaudeSupportedEfforts } from '@spirit-agent/core';
+
 import type { ModelProviderId, ProviderModelTransportKind } from './model-provider-presets.js';
 import { resolveProviderConnectApiBase } from './model-provider-presets.js';
 import {
@@ -477,6 +479,20 @@ export function parseGoogleModelEntriesPayload(body: unknown): ProviderListedMod
 
 const SKIPPED_VERCEL_GATEWAY_MODEL_TYPES = new Set(['embedding', 'reranking']);
 
+function attachGatewayAnthropicReasoningEfforts(
+  modelEntry: ProviderListedModelEntry,
+): ProviderListedModelEntry {
+  const supportedReasoningEfforts = gatewayAnthropicClaudeSupportedEfforts(modelEntry.id);
+  if (supportedReasoningEfforts === undefined) {
+    return modelEntry;
+  }
+
+  return {
+    ...modelEntry,
+    supportedReasoningEfforts,
+  };
+}
+
 export function parseVercelAiGatewayModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
   if (typeof body !== 'object' || body === null || !('data' in body)) {
     return [];
@@ -547,7 +563,7 @@ export function parseVercelAiGatewayModelEntriesPayload(body: unknown): Provider
       attachListedModelMetadata({ id: id.trim() }, record, readVercelGatewayPricing(record)),
     );
   }
-  return entries;
+  return entries.map(attachGatewayAnthropicReasoningEfforts);
 }
 
 function readOpenRouterModalities(value: unknown): string[] {

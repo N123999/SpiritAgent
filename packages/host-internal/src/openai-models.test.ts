@@ -168,6 +168,39 @@ test('parseVercelAiGatewayModelEntriesPayload maps language and image types', ()
   ]);
 });
 
+test('parseVercelAiGatewayModelEntriesPayload infers supportedReasoningEfforts for anthropic claude models', () => {
+  const entries = parseVercelAiGatewayModelEntriesPayload({
+    data: [
+      {
+        id: 'anthropic/claude-sonnet-4.6',
+        type: 'language',
+      },
+      {
+        id: 'anthropic/claude-opus-4.7',
+        type: 'language',
+      },
+      {
+        id: 'openai/gpt-5',
+        type: 'language',
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'anthropic/claude-sonnet-4.6',
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
+    },
+    {
+      id: 'anthropic/claude-opus-4.7',
+      supportedReasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    },
+    {
+      id: 'openai/gpt-5',
+    },
+  ]);
+});
+
 test('parseOpenAiCompatibleModelEntriesPayload routes vercel-ai-gateway to typed parser', () => {
   const entries = parseOpenAiCompatibleModelEntriesPayload({
     data: [

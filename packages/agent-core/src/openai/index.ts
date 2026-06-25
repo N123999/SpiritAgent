@@ -5,6 +5,12 @@ export * from './transport-factory.js';
 export {
   resolveOpenAiModelCompatibilityProfile,
 } from './openai-compat.js';
+export {
+  buildGatewayAnthropicProviderOptions,
+  gatewayAnthropicClaudeSupportedEfforts,
+  isGatewayAnthropicClaudeModel,
+  resolveGatewayAnthropicClaudeCapabilities,
+} from './gateway-anthropic-thinking.js';
 export type {
   OpenAiLlmVendor,
   OpenAiModelCapabilities,

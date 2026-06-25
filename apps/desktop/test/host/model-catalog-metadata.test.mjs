@@ -218,6 +218,33 @@ test('vercel-ai-gateway provider maps language and image model types to catalog 
   ]);
 });
 
+test('vercel-ai-gateway infers supportedReasoningEfforts for anthropic claude catalog entries', () => {
+  const preview = previewModelCatalogForTransport({
+    provider: 'vercel-ai-gateway',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'anthropic/claude-sonnet-4.6',
+      },
+      {
+        id: 'openai/gpt-5',
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'anthropic/claude-sonnet-4.6',
+      capabilities: ['chat'],
+      supportedReasoningEfforts: ['low', 'medium', 'high'],
+    },
+    {
+      id: 'openai/gpt-5',
+      capabilities: ['chat'],
+    },
+  ]);
+});
+
 test('moonshot-ai video input maps to video capability not videoGeneration', () => {
   const preview = previewModelCatalogForTransport({
     provider: 'moonshot-ai',

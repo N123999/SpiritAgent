@@ -81,6 +81,10 @@ import {
   type OpenAiTransportConfig,
   type OpenAiVideoGenerationConfig,
 } from './openai-compat.js';
+import {
+  buildGatewayAnthropicProviderOptions,
+  isGatewayAnthropicClaudeModel,
+} from './gateway-anthropic-thinking.js';
 import { generateSiliconFlowImage } from '../image-generation/siliconflow-backend.js';
 import { generateVideoWithRouter } from '../video-generation/router.js';
 import { getLlmFetch } from '../llm-fetch.js';
@@ -895,6 +899,10 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
 function buildAiSdkProviderOptions(
   config: OpenAiTransportConfig,
 ): Record<string, JsonObject> {
+  if (isVercelAiGatewayProvider(config) && isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
+    return buildGatewayAnthropicProviderOptions(config);
+  }
+
   if (isAlibabaOfficialAiSdkProvider(config)) {
     const extraBody = shouldUseAlibabaChatCompletionsBuiltInTools(config)
       ? buildAlibabaChatCompletionsExtraBody({ streaming: true })

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  modelReasoningEffortOptions,
   resolveAnthropicTransportReasoningEffortForContext,
   resolveModelReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
@@ -128,5 +129,42 @@ test('anthropic supported efforts restrict unavailable levels', () => {
       supportedEfforts: ['low', 'medium', 'high', 'xhigh'],
     }),
     'xhigh',
+  );
+});
+
+test('gateway claude models use anthropic effort options filtered by model capabilities', () => {
+  const sonnetOptions = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'anthropic/claude-sonnet-4.6',
+    transportKind: 'openai-compatible',
+  });
+  assert.deepEqual(
+    sonnetOptions.map((option) => option.value),
+    ['default', 'low', 'medium', 'high'],
+  );
+
+  const opusOptions = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'anthropic/claude-opus-4.7',
+    transportKind: 'openai-compatible',
+  });
+  assert.ok(opusOptions.some((option) => option.value === 'max'));
+  assert.ok(!opusOptions.some((option) => option.value === 'none'));
+
+  assert.equal(
+    resolveModelReasoningEffortForContext('max', {
+      provider: 'vercel-ai-gateway',
+      model: 'anthropic/claude-sonnet-4.6',
+      transportKind: 'openai-compatible',
+    }),
+    'default',
+  );
+  assert.equal(
+    resolveModelReasoningEffortForContext('max', {
+      provider: 'vercel-ai-gateway',
+      model: 'anthropic/claude-opus-4.7',
+      transportKind: 'openai-compatible',
+    }),
+    'max',
   );
 });

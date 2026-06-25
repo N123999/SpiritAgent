@@ -124,6 +124,44 @@ test('buildResponsesProviderOptions maps gateway openai reasoning options', () =
   });
 });
 
+test('buildResponsesProviderOptions maps gateway anthropic claude to adaptive thinking', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'anthropic/claude-sonnet-4.6',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'medium',
+    }),
+    {
+      anthropic: {
+        toolStreaming: true,
+        thinking: { type: 'adaptive' },
+        effort: 'medium',
+      },
+    },
+  );
+});
+
+test('buildResponsesProviderOptions maps gateway anthropic opus 4.8 to summarized adaptive thinking', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'anthropic/claude-opus-4.8',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'medium',
+    }),
+    {
+      anthropic: {
+        toolStreaming: true,
+        thinking: { type: 'adaptive', display: 'summarized' },
+        effort: 'medium',
+      },
+    },
+  );
+});
+
 test('buildResponsesProviderOptions maps azure provider options', () => {
   const options = buildResponsesProviderOptions({
     transportKind: 'open-responses',

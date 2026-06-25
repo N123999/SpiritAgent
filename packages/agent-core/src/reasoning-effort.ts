@@ -1,5 +1,9 @@
 import type { AnthropicTransportConfig } from './anthropic/anthropic-compat.js';
 import type { LlmTransportKind } from './llm-provider-shared.js';
+import {
+  isGatewayAnthropicClaudeModel,
+  resolveGatewayAnthropicClaudeCapabilities,
+} from './openai/gateway-anthropic-thinking.js';
 import type { OpenAiTransportConfig } from './openai/openai-compat.js';
 
 export type ModelReasoningProvider =
@@ -198,6 +202,10 @@ export function defaultModelReasoningEffort(
     return 'default';
   }
 
+  if (isGatewayAnthropicClaudeReasoningModel(context)) {
+    return 'default';
+  }
+
   return DEFAULT_MODEL_REASONING_EFFORT;
 }
 
@@ -228,6 +236,12 @@ export function modelReasoningEffortOptions(
       return anthropicReasoningEffortOptionsForSupportedEfforts(context.supportedEfforts);
     }
     return ANTHROPIC_REASONING_EFFORT_OPTIONS;
+  }
+
+  if (isGatewayAnthropicClaudeReasoningModel(context)) {
+    const supportedEfforts = context?.supportedEfforts
+      ?? resolveGatewayAnthropicClaudeCapabilities(context?.model ?? '').supportedEfforts;
+    return anthropicReasoningEffortOptionsForSupportedEfforts(supportedEfforts);
   }
 
   return OPENAI_COMPATIBLE_REASONING_EFFORT_OPTIONS;
@@ -321,6 +335,15 @@ export function isAnthropicReasoningEffortModel(
   return context?.transportKind === 'anthropic' || context?.provider === 'anthropic';
 }
 
+export function isGatewayAnthropicClaudeReasoningModel(
+  context?: ModelReasoningEffortContext,
+): boolean {
+  return isGatewayAnthropicClaudeModel(
+    context?.provider === 'vercel-ai-gateway' ? 'vercel-ai-gateway' : undefined,
+    context?.model ?? '',
+  );
+}
+
 function normalizeModelId(value: unknown): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
@@ -391,6 +414,20 @@ function resolveCompatibleModelReasoningEffort(
 
   if (isAnthropicReasoningEffortModel(context)) {
     const supportedEfforts = normalizeSupportedReasoningEfforts(context?.supportedEfforts);
+    switch (normalized) {
+      case 'none':
+      case 'minimal':
+        return 'default';
+      default:
+        return anthropicReasoningEffortValueForContext(normalized, supportedEfforts) ?? 'default';
+    }
+  }
+
+  if (isGatewayAnthropicClaudeReasoningModel(context)) {
+    const supportedEfforts = normalizeSupportedReasoningEfforts(
+      context?.supportedEfforts
+        ?? resolveGatewayAnthropicClaudeCapabilities(context?.model ?? '').supportedEfforts,
+    );
     switch (normalized) {
       case 'none':
       case 'minimal':

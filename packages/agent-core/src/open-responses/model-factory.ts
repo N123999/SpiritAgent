@@ -26,6 +26,10 @@ import {
   shouldUseApplyPatchFunctionTool,
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
+import {
+  buildGatewayAnthropicProviderOptions,
+  isGatewayAnthropicClaudeModel,
+} from '../openai/gateway-anthropic-thinking.js';
 import { buildGatewayWebSearchTool, shouldUseGatewayWebSearch } from './gateway-web-search.js';
 import { resolveProviderWebSearchMode } from './web-search-eligibility.js';
 import {
@@ -199,6 +203,10 @@ export function buildResponsesProviderOptions(
   const reasoningSummary = resolveOpenResponsesReasoningSummary(config);
 
   if (shouldUseGatewayWebSearch(config)) {
+    if (isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
+      return buildGatewayAnthropicProviderOptions(config);
+    }
+
     // Gateway v3 language-model 原样转发 providerOptions；OpenAI 路由模型须用 openai 命名空间（见 Vercel AI Gateway reasoning 文档）。
     const openaiOptions: JsonObject = {
       ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),

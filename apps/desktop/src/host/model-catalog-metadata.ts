@@ -1,4 +1,5 @@
 import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-name';
+import { gatewayAnthropicClaudeSupportedEfforts } from '@spirit-agent/core';
 import type { ProviderListedModelEntry } from '@spirit-agent/host-internal';
 
 import type {
@@ -91,9 +92,7 @@ export function previewModelCatalogForTransport(input: {
     ...resolvePreviewCatalogDisplayName(input.provider, entry),
     ...(entry.description !== undefined ? { description: entry.description } : {}),
     ...(entry.pricing !== undefined ? { pricing: { ...entry.pricing } } : {}),
-    ...(entry.supportedReasoningEfforts !== undefined
-      ? { supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(entry.supportedReasoningEfforts) }
-      : {}),
+    ...resolvePreviewSupportedReasoningEffortsForEntry(input.provider, entry),
     ...(entry.contextLength !== undefined ? { contextLength: entry.contextLength } : {}),
   }));
 }
@@ -168,6 +167,30 @@ function previewCapabilitiesFromListedEntry(
     capabilities.push('video');
   }
   return capabilities;
+}
+
+function resolvePreviewSupportedReasoningEffortsForEntry(
+  provider: DesktopModelProvider | undefined,
+  entry: ProviderListedModelEntry,
+): { supportedReasoningEfforts?: DesktopModelReasoningEffort[] } {
+  if (entry.supportedReasoningEfforts !== undefined) {
+    return {
+      supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(entry.supportedReasoningEfforts),
+    };
+  }
+
+  if (provider !== 'vercel-ai-gateway') {
+    return {};
+  }
+
+  const inferred = gatewayAnthropicClaudeSupportedEfforts(entry.id);
+  if (inferred === undefined) {
+    return {};
+  }
+
+  return {
+    supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(inferred),
+  };
 }
 
 function normalizePreviewSupportedReasoningEfforts(
