@@ -159,6 +159,37 @@ test('buildResponsesProviderOptions maps gateway alibaba qwen to enable_thinking
   );
 });
 
+test('buildResponsesProviderOptions maps gateway minimax m3 to adaptive thinking', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'minimax/minimax-m3',
+      llmVendor: 'vercel-ai-gateway',
+    }),
+    {
+      minimax: {
+        thinking: { type: 'adaptive' },
+      },
+    },
+  );
+
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'minimax/minimax-m3',
+      llmVendor: 'vercel-ai-gateway',
+      vendorExtendedThinking: false,
+    }),
+    {
+      minimax: {
+        thinking: { type: 'disabled' },
+      },
+    },
+  );
+});
+
 test('buildResponsesProviderOptions maps gateway anthropic claude to adaptive thinking', () => {
   assert.deepEqual(
     buildResponsesProviderOptions({

@@ -29,6 +29,10 @@ import {
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
 import {
+  buildGatewayMinimaxProviderOptions,
+  isGatewayMinimaxModel,
+} from '../openai/gateway-minimax-thinking.js';
+import {
   buildGatewayAlibabaProviderOptions,
   isGatewayAlibabaModel,
 } from '../openai/gateway-alibaba-thinking.js';
@@ -282,6 +286,14 @@ export function buildResponsesProviderOptions(
       const alibabaOptions = buildGatewayAlibabaProviderOptions(config);
       if (Object.keys(alibabaOptions).length > 0) {
         return alibabaOptions;
+      }
+    }
+
+    if (isGatewayMinimaxModel(config.llmVendor, config.model)) {
+      const minimaxOptions = buildGatewayMinimaxProviderOptions(config);
+      if (Object.keys(minimaxOptions).length > 0) {
+        // Gateway MiniMax M3 经 open-responses 当前不产出 reasoning-delta，Thought UI 仍可能为空。
+        return minimaxOptions;
       }
     }
 

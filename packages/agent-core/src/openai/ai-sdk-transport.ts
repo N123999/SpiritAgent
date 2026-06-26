@@ -81,6 +81,10 @@ import {
   type OpenAiVideoGenerationConfig,
 } from './openai-compat.js';
 import {
+  buildGatewayMinimaxProviderOptions,
+  isGatewayMinimaxModel,
+} from './gateway-minimax-thinking.js';
+import {
   buildGatewayAlibabaProviderOptions,
   isGatewayAlibabaModel,
 } from './gateway-alibaba-thinking.js';
@@ -977,6 +981,13 @@ function buildAiSdkProviderOptions(
     const alibabaOptions = buildGatewayAlibabaProviderOptions(config);
     if (Object.keys(alibabaOptions).length > 0) {
       return alibabaOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayMinimaxModel(config.llmVendor, config.model)) {
+    const minimaxOptions = buildGatewayMinimaxProviderOptions(config);
+    if (Object.keys(minimaxOptions).length > 0) {
+      return minimaxOptions;
     }
   }
 
