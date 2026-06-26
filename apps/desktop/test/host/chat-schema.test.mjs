@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import {
@@ -10,6 +13,8 @@ import {
   timelinePersistedSnapshotToMessages,
   validateTimelineSnapshotV2,
 } from '../../dist-electron/src/host/chat-schema.js';
+import { loadStoredSession } from '../../dist-electron/src/host/storage.js';
+import { buildV2StoredSession } from './chat-schema-fixture.mjs';
 
 function toolRow(toolCallId) {
   return {
@@ -160,6 +165,44 @@ test('timelineSnapshotToMessages round-trips normalized thinking and tool rows',
   assert.equal(messages[1].aux?.thinking, 'reasoning');
   assert.equal(messages[2].tool?.toolCallId, 'call-1');
   assert.equal(messages[3].content, 'answer');
+});
+
+test('loadStoredSession rejects legacy chat files without chatSchemaVersion', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'spirit-chat-schema-'));
+  const filePath = path.join(dir, 'legacy-chat.json');
+  try {
+    await writeFile(filePath, JSON.stringify({
+      messages: [{ role: 'user', content: 'hello' }],
+      assistantAux: [],
+      llmHistory: [],
+      subagentSessions: [],
+      savedAtUnixMs: Date.now(),
+    }, null, 2));
+    await assert.rejects(
+      () => loadStoredSession(filePath),
+      (error) => error instanceof ChatSessionSchemaError,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('loadStoredSession round-trips v2 stored session', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'spirit-chat-schema-'));
+  const filePath = path.join(dir, 'v2-chat.json');
+  try {
+    const stored = buildV2StoredSession({ userContent: 'round trip' });
+    await writeFile(filePath, JSON.stringify(stored, null, 2));
+    const loaded = await loadStoredSession(filePath);
+    assert.equal(loaded.chatSchemaVersion, CHAT_SCHEMA_VERSION);
+    assert.equal(loaded.desktopMessageTimeline.length, 1);
+    assert.equal(
+      timelinePersistedSnapshotToMessages(loaded.desktopMessageTimeline)[0].content,
+      'round trip',
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('assertChatSchemaVersionV2 and assertNoLegacyConversationFields enforce v2 shape', () => {
