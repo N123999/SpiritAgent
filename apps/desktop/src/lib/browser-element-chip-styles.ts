@@ -7,13 +7,7 @@ import {
 /** 输入框 chip、消息气泡共用 */
 export const BROWSER_ELEMENT_CHIP_CLASS = COMPOSER_INLINE_CHIP_CLASS;
 
-export const BROWSER_ELEMENT_CARD_SHELL_CLASS =
-  "inline-flex min-w-0 max-w-[12rem] items-center gap-1 rounded-md border border-blue-200/90 bg-blue-50 pl-1 pr-1.5 py-0.75 dark:border-blue-700/60 dark:bg-blue-950";
-
 export const BROWSER_ELEMENT_CHIP_ICON_CLASS = COMPOSER_INLINE_CHIP_ICON_CLASS;
-
-export const BROWSER_ELEMENT_CHIP_REMOVE_CLASS =
-  "inline-flex size-[18px] shrink-0 items-center justify-center rounded-full text-blue-600 transition-colors hover:bg-blue-100 hover:text-blue-900 dark:text-blue-400 dark:hover:bg-blue-900 dark:hover:text-blue-200";
 
 export function makeChipNode(a: BrowserElementAttachment, doc: Document): HTMLElement {
   const span = doc.createElement("span");

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { GitCommit, GitMerge, GitPullRequest, GitPullRequestClosed, GitPullRequestDraft, PenTool, Terminal, FileText } from "lucide-react";
 
-import { BROWSER_ELEMENT_CHIP_CLASS } from "@/components/browser-element-card";
-import { BROWSER_ELEMENT_CHIP_ICON_CLASS } from "@/lib/browser-element-chip-styles";
+import { BROWSER_ELEMENT_CHIP_CLASS, BROWSER_ELEMENT_CHIP_ICON_CLASS } from "@/lib/browser-element-chip-styles";
 import { ComposerLocalFileStrip } from "@/components/composer-local-file-strip";
 import { useLocalFileAttachmentPreviews } from "@/hooks/useLocalFileAttachmentPreviews";
 import {
