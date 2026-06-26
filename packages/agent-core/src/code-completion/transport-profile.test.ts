@@ -78,6 +78,18 @@ test('applyCodeCompletionTransportProfile disables OpenAI reasoning on open-resp
   assert.equal((result as OpenResponsesTransportConfig).reasoningSummary, 'off');
 });
 
+test('applyCodeCompletionTransportProfile disables Anthropic extended thinking', () => {
+  const input: AnthropicTransportConfig = {
+    transportKind: 'anthropic',
+    apiKey: 'k',
+    model: 'claude-sonnet-4-6',
+    effort: 'high',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal(result.transportRequestProfile, 'code-completion');
+  assert.deepEqual((result as AnthropicTransportConfig).thinking, { type: 'disabled' });
+});
+
 test('applyCodeCompletionTransportProfile tags anthropic, open-responses, and bedrock transports', () => {
   const anthropic: AnthropicTransportConfig = {
     transportKind: 'anthropic',

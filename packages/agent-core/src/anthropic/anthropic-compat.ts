@@ -53,7 +53,7 @@ export function resolveAnthropicThinkingConfig(
   }
 
   if (isCodeCompletionTransportProfile(config)) {
-    return undefined;
+    return { type: 'disabled' };
   }
 
   if (Array.isArray(config.supportedEfforts) && config.supportedEfforts.length === 0) {

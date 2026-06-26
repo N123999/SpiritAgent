@@ -53,7 +53,10 @@ function applyOpenAiCompatibleCodeCompletionProfile(
 function applyAnthropicCodeCompletionProfile(
   config: AnthropicTransportConfig,
 ): AnthropicTransportConfig {
-  return withCodeCompletionProfile(config);
+  return {
+    ...withCodeCompletionProfile(config),
+    thinking: { type: 'disabled' },
+  };
 }
 
 function applyOpenResponsesCodeCompletionProfile(
