@@ -349,6 +349,40 @@ test('xiaomi provider consumes Xiaomi model catalog metadata', () => {
   ]);
 });
 
+test('minimax provider consumes MiniMax model catalog metadata', () => {
+  assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'minimax' }), true);
+
+  const preview = previewModelCatalogForTransport({
+    provider: 'minimax',
+    transportKind: 'anthropic',
+    listedModels: [
+      {
+        id: 'MiniMax-M3',
+        supportsImageInput: true,
+        supportsVideoInput: true,
+      },
+      {
+        id: 'MiniMax-M2.5',
+        supportsImageInput: false,
+        supportsVideoInput: false,
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'MiniMax-M3',
+      displayName: 'MiniMax M3',
+      capabilities: ['chat', 'image', 'video'],
+    },
+    {
+      id: 'MiniMax-M2.5',
+      displayName: 'MiniMax M2.5',
+      capabilities: ['chat'],
+    },
+  ]);
+});
+
 test('volcengine provider maps domain-derived traits to catalog capabilities', () => {
   assert.equal(usesProviderListedModelCatalogMetadata({ provider: 'volcengine' }), true);
 
