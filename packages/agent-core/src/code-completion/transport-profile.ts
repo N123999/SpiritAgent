@@ -100,7 +100,10 @@ function applyOpenResponsesCodeCompletionProfile(
 function applyBedrockCodeCompletionProfile(
   config: BedrockTransportConfig,
 ): BedrockTransportConfig {
-  return withCodeCompletionProfile(config);
+  return {
+    ...withCodeCompletionProfile(config),
+    reasoningEffort: 'none',
+  };
 }
 
 /** 将任意 transport config 标记为代码补全请求画像，并按 transportKind / llmVendor 写入关闭思考所需字段。 */

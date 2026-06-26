@@ -7,6 +7,7 @@ import {
 } from './transport-profile.js';
 import type { AnthropicTransportConfig } from '../anthropic/anthropic-compat.js';
 import type { BedrockTransportConfig } from '../bedrock/bedrock-compat.js';
+import { buildBedrockProviderOptions } from '../bedrock/bedrock-compat.js';
 import type { OpenAiTransportConfig } from '../openai/openai-compat.js';
 import type { OpenResponsesTransportConfig } from '../open-responses/responses-compat.js';
 import { openAiVendorChatCompletionBodyExtras } from '../openai/openai-compat.js';
@@ -169,6 +170,19 @@ test('applyCodeCompletionTransportProfile disables Anthropic extended thinking',
   const result = applyCodeCompletionTransportProfile(input);
   assert.equal(result.transportRequestProfile, 'code-completion');
   assert.deepEqual((result as AnthropicTransportConfig).thinking, { type: 'disabled' });
+});
+
+test('applyCodeCompletionTransportProfile disables Bedrock reasoning on code completion', () => {
+  const input: BedrockTransportConfig = {
+    transportKind: 'bedrock',
+    model: 'anthropic.claude-sonnet-4-6',
+    region: 'us-east-1',
+    reasoningEffort: 'high',
+  };
+  const result = applyCodeCompletionTransportProfile(input) as BedrockTransportConfig;
+  assert.equal(result.transportRequestProfile, 'code-completion');
+  assert.equal(result.reasoningEffort, 'none');
+  assert.deepEqual(buildBedrockProviderOptions(result), {});
 });
 
 test('applyCodeCompletionTransportProfile tags anthropic, open-responses, and bedrock transports', () => {
