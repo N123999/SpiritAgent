@@ -485,7 +485,14 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
         </button>
         <button
           type="button"
-          className="hidden shrink-0 border-0 bg-transparent p-0 text-muted-foreground hover:text-foreground group-hover:inline-flex"
+          className={cn(
+            "inline-flex shrink-0 border-0 bg-transparent p-0",
+            "text-muted-foreground/55 transition-all duration-150",
+            "hover:text-foreground focus-visible:text-foreground",
+            copied
+              ? "opacity-100 text-foreground"
+              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+          )}
           onClick={() => void copySha()}
           aria-label={copied ? t("workspace.git.copiedSha") : t("workspace.git.copySha")}
         >
