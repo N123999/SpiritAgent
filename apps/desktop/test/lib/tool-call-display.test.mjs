@@ -125,6 +125,35 @@ test('getToolCallSummaryParts: dynamic re-translation on language switch', async
   }
 });
 
+test('getToolCallSummaryParts: grep detail re-translates on language switch', async () => {
+  const tool = {
+    toolName: 'grep',
+    phase: 'succeeded',
+    headline: 'Searched',
+    headlineDetail: 'ratatui in apps/cli/**/*.{rs,toml}',
+    argsExcerpt: JSON.stringify({
+      query: 'ratatui',
+      glob: 'apps/cli/**/*.{rs,toml}',
+    }),
+    detailLines: [],
+  };
+
+  await i18n.changeLanguage('en');
+  try {
+    assert.deepEqual(getToolCallSummaryParts(tool), {
+      headline: 'Searched',
+      detail: 'ratatui in apps/cli/**/*.{rs,toml}',
+    });
+  } finally {
+    await i18n.changeLanguage('zh-CN');
+  }
+
+  assert.deepEqual(getToolCallSummaryParts(tool), {
+    headline: '搜索',
+    detail: 'ratatui 于 apps/cli/**/*.{rs,toml}',
+  });
+});
+
 test('getToolCallSummaryParts: apply_patch headline re-translates across locales', async () => {
   const tool = {
     toolName: 'apply_patch',

@@ -28,6 +28,7 @@ import {
   readFileToolHeadlineDetail,
   readFileVerbKey,
 } from '../lib/read-file-tool-display.js';
+import { grepToolHeadlineDetail } from '../lib/grep-tool-display.js';
 import { phaseToVerbContext } from '../lib/tool-verb-context.js';
 import {
   diagnosticsPathsHeadlineDetail,
@@ -302,14 +303,14 @@ export function toolCallSummaryCopyForRequest(
       };
     }
     case 'grep': {
-      const query = typeof record.query === 'string' ? record.query.trim() : '';
-      const prefix = record.is_regexp === true ? i18n.t('tool.regexPrefix') : '';
-      const glob = typeof record.glob === 'string' ? record.glob.trim() : '';
-      const queryLabel = `${prefix}${query}`;
-      const headlineDetail =
-        queryLabel && glob
-          ? i18n.t('tool.searchQueryInGlob', { query: queryLabel, glob })
-          : queryLabel || glob;
+      const headlineDetail = grepToolHeadlineDetail(
+        {
+          query: typeof record.query === 'string' ? record.query : undefined,
+          is_regexp: record.is_regexp === true,
+          glob: typeof record.glob === 'string' ? record.glob : undefined,
+        },
+        (key, opts) => i18n.t(key, { ...tOpts, ...opts }),
+      );
       return {
         headline: i18n.t('tool.search', tOpts),
         ...(headlineDetail ? { headlineDetail: truncateSummaryDetail(headlineDetail) } : {}),

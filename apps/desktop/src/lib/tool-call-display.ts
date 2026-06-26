@@ -18,6 +18,7 @@ import {
   readFileVerbKey,
 } from '@/lib/read-file-tool-display';
 import { phaseToVerbContext } from '@/lib/tool-verb-context';
+import { grepToolHeadlineDetail, parseGrepRequestFromArgsExcerpt } from '@/lib/grep-tool-display';
 import { resolveTodoWriteBeforeSnapshot, todoWriteSummaryDetail } from '@/lib/todo-tool-display.js';
 import type { ToolBlockSnapshot } from '@/types';
 
@@ -283,6 +284,15 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
             separator: i18n.t('tool.todoWriteDeltaSeparator'),
           })
         : undefined;
+    const grepDetail =
+      tool.toolName === 'grep'
+        ? (() => {
+            const request = parseGrepRequestFromArgsExcerpt(tool.argsExcerpt);
+            return request
+              ? grepToolHeadlineDetail(request, (key, opts) => i18n.t(key, opts))
+              : undefined;
+          })()
+        : undefined;
     const inFlightTodoWrite =
       tool.toolName === 'todo_write'
       && (tool.phase === 'preview' || tool.phase === 'running' || tool.phase === 'pending-approval');
@@ -296,6 +306,8 @@ export function getToolCallSummaryParts(tool: ToolBlockSnapshot): ToolCallSummar
       } else {
         detail = todoWriteDetail ?? snapshotDetail;
       }
+    } else if (tool.toolName === 'grep') {
+      detail = grepDetail ?? snapshotDetail;
     } else {
       detail = todoWriteDetail || snapshotDetail;
     }

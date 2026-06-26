@@ -24,6 +24,7 @@
     "src/lib/fork-session-utils.ts",
     "src/lib/tool-call-shimmer.ts",
     "src/lib/todo-tool-display.ts",
+    "src/lib/grep-tool-display.ts",
     "src/lib/tool-verb-context.ts",
     "src/lib/i18n-host.ts",
     "src/lib/spirit-notification-protocol.ts",
