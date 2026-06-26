@@ -211,6 +211,7 @@ export function openAiVendorChatCompletionBodyExtras(
     || config.llmVendor === 'zhipu-ai'
     || config.llmVendor === 'minimax'
     || config.llmVendor === 'xiaomi'
+    || config.llmVendor === 'volcengine'
   ) {
     const enabled = config.vendorExtendedThinking !== false;
     extras.thinking = { type: enabled ? 'enabled' : 'disabled' };

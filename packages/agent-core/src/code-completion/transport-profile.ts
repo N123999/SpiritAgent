@@ -19,6 +19,7 @@ const OPENAI_COMPAT_THINKING_TYPE_VENDORS = new Set<OpenAiLlmVendor>([
   'zhipu-ai',
   'minimax',
   'xiaomi',
+  'volcengine',
 ]);
 
 export function isCodeCompletionTransportProfile(
