@@ -94,7 +94,6 @@ export function WorkspaceFileContextMenu({
       section: "session",
       item: (
         <ContextMenuItem
-          disabled={target.kind !== "file"}
           onSelect={() => {
             onAddToSession(target);
           }}

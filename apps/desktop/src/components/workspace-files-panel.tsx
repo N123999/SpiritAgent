@@ -8,6 +8,8 @@ import {
   ListTodo,
 } from "lucide-react";
 
+import { WORKSPACE_REFERENCE_DIRECTORY_SUFFIX } from "@spirit-agent/host-internal/workspace-file-reference-query";
+
 import {
   WorkspaceFileContextMenu,
   useMoveToTrashLabel,
@@ -662,10 +664,12 @@ export function WorkspaceFilesPanel({
 
   const handleAddToSession = useCallback(
     (target: WorkspaceExplorerContextTarget) => {
-      if (target.kind !== "file") {
-        return;
-      }
-      onWorkspaceFileAddToSession?.(target.relativePath);
+      const normalized = target.relativePath.replace(/\\/g, "/");
+      const path =
+        target.kind === "dir"
+          ? `${normalized}${WORKSPACE_REFERENCE_DIRECTORY_SUFFIX}`
+          : normalized;
+      onWorkspaceFileAddToSession?.(path);
     },
     [onWorkspaceFileAddToSession],
   );
@@ -904,6 +908,7 @@ export function WorkspaceFilesPanel({
               onReveal={handleReveal}
               onRenameStart={handleRenameStart}
               onDelete={handleDeleteRequest}
+              onAddToSession={onWorkspaceFileAddToSession ? handleAddToSession : undefined}
               onRenameValueChange={setRenameValue}
               onRenameCommit={() => void handleRenameCommit()}
               onRenameCancel={handleRenameCancel}
