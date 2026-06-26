@@ -94,6 +94,21 @@ export function AgentsSettingsPanel({
           </div>
         </AgentsSettingsRow>
 
+        <AgentsSettingsRow
+          label={t("settings.codeCompletionEnabled")}
+          description={t("settings.codeCompletionEnabledDescription")}
+          htmlFor="settings-code-completion-enabled"
+        >
+          <div className="flex justify-end">
+            <Checkbox
+              id="settings-code-completion-enabled"
+              checked={settings.codeCompletionEnabled}
+              onCheckedChange={(value) => void onSavePatch({ codeCompletionEnabled: value === true })}
+              className="size-5"
+            />
+          </div>
+        </AgentsSettingsRow>
+
         {(lsp?.providers ?? []).map((provider) => (
           <div
             key={provider.id}

@@ -251,6 +251,15 @@ export async function updateConfigCommand(
         },
       });
     }
+    if (request.agents?.codeCompletion !== undefined) {
+      state.config.agents = normalizeAgentsConfig({
+        ...state.config.agents,
+        codeCompletion: {
+          ...state.config.agents.codeCompletion,
+          ...request.agents.codeCompletion,
+        },
+      });
+    }
     if (request.networks?.llmHttpVersion !== undefined) {
       state.config.networks = normalizeNetworksConfig({
         ...state.config.networks,

@@ -27,6 +27,8 @@ import type {
   PrepareMarketplaceExtensionInstallRequest,
   PreviewModelsRequest,
   QueryWorkspaceFileReferenceSuggestionsRequest,
+  RecordCodeCompletionFileStateRequest,
+  RequestCodeCompletionRequest,
   ReadGitHistoryRequest,
   ReadGitCommitMessageRequest,
   RememberWorkspaceRequest,
@@ -138,6 +140,10 @@ export type CommandPayloads = {
   openSession: { path: string };
   deleteSession: { path: string };
   listWorkspaceFileReferenceSuggestions: { request: QueryWorkspaceFileReferenceSuggestionsRequest };
+  requestCodeCompletion: { request: RequestCodeCompletionRequest };
+  abortCodeCompletion: undefined;
+  recordCodeCompletionFileState: { request: RecordCodeCompletionFileStateRequest };
+  resetCodeCompletionJournal: undefined;
   primeWorkspaceFileReferenceIndex: undefined;
   getWorkspaceFileReferenceIndex: undefined;
   listWorkspaceExplorerChildren: { relativePath: string };

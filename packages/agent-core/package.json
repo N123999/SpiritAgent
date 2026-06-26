@@ -31,6 +31,14 @@
       "types": "./dist/shell-tool-result.d.ts",
       "default": "./dist/shell-tool-result.js"
     },
+    "./code-completion-to-monaco": {
+      "types": "./dist/code-completion/to-monaco.d.ts",
+      "default": "./dist/code-completion/to-monaco.js"
+    },
+    "./code-completion-delete-diff": {
+      "types": "./dist/code-completion/delete-diff-preview.d.ts",
+      "default": "./dist/code-completion/delete-diff-preview.js"
+    },
     "./azure-resource": {
       "types": "./dist/azure-resource.d.ts",
       "default": "./dist/azure-resource.js"

@@ -1,6 +1,7 @@
+import { isCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 import type { JsonObject, JsonValue } from '../ports.js';
 import { cloneJsonValue } from '../tool-agent.js';
-import type { LlmModelCapabilities } from '../llm-provider-shared.js';
+import type { LlmModelCapabilities, TransportRequestProfile } from '../llm-provider-shared.js';
 
 export const DEFAULT_ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
 
@@ -27,6 +28,8 @@ export interface AnthropicTransportConfig {
   sendReasoning?: boolean;
   disableParallelToolUse?: boolean;
   structuredOutputMode?: AnthropicStructuredOutputMode;
+  /** 代码补全等非 Agent 轻量请求的策略画像；缺省为 agent 路径默认行为。 */
+  transportRequestProfile?: TransportRequestProfile;
 }
 
 export interface AnthropicRequestTrace extends JsonObject {
@@ -40,10 +43,17 @@ export interface AnthropicRequestTrace extends JsonObject {
 }
 
 export function resolveAnthropicThinkingConfig(
-  config: Pick<AnthropicTransportConfig, 'model' | 'thinking' | 'effort' | 'supportedEfforts'>,
+  config: Pick<
+    AnthropicTransportConfig,
+    'model' | 'thinking' | 'effort' | 'supportedEfforts' | 'transportRequestProfile'
+  >,
 ): AnthropicThinkingConfig | undefined {
   if (config.thinking !== undefined) {
     return config.thinking;
+  }
+
+  if (isCodeCompletionTransportProfile(config)) {
+    return { type: 'disabled' };
   }
 
   if (Array.isArray(config.supportedEfforts) && config.supportedEfforts.length === 0) {
@@ -80,6 +90,7 @@ export function buildAnthropicProviderOptions(
     | 'sendReasoning'
     | 'disableParallelToolUse'
     | 'structuredOutputMode'
+    | 'transportRequestProfile'
   >,
 ): Record<string, JsonObject> {
   const thinking = resolveAnthropicThinkingConfig(config);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { setLlmFetchTransportOverrideForTests } from '../llm-fetch.js';
+import { applyCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 import {
   clearMoonshotChatCompletionMessages,
   openAiMessagesContainVideoUrl,
@@ -93,6 +94,47 @@ test('Moonshot transport uses official provider trace kind and base URL', async 
       trace && typeof trace === 'object' && !Array.isArray(trace) ? trace.kind : undefined,
       'moonshot_sdk_chat_completions',
     );
+  } finally {
+    setLlmFetchTransportOverrideForTests(undefined);
+  }
+});
+
+test('Moonshot code-completion profile sends thinking.type disabled without reasoning_effort', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  setLlmFetchTransportOverrideForTests(async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: '{"ok":true}',
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  const transport = new AiSdkOpenAiCompatibleTransport();
+  try {
+    const config = applyCodeCompletionTransportProfile({
+      apiKey: 'test-key',
+      model: 'kimi-k2.5',
+      baseUrl: 'https://api.moonshot.cn/v1',
+      llmVendor: 'moonshot-ai',
+      reasoningEffort: 'high',
+      workspaceRoot: process.cwd(),
+    }) as import('./openai-compat.js').OpenAiTransportConfig;
+
+    await transport.createJsonSchemaCompletion(config, {
+      schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+      schemaName: 'test',
+      userPrompt: 'reply',
+    });
+
+    assert.deepEqual(capturedBody?.thinking, { type: 'disabled' });
+    assert.equal(capturedBody?.reasoning_effort, undefined);
   } finally {
     setLlmFetchTransportOverrideForTests(undefined);
   }

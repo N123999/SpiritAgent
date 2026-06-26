@@ -41,6 +41,9 @@ import type {
   PreviewModelsRequest,
   PreviewModelsResponse,
   QueryWorkspaceFileReferenceSuggestionsRequest,
+  RecordCodeCompletionFileStateRequest,
+  RequestCodeCompletionRequest,
+  CodeCompletionResponse,
   RememberWorkspaceRequest,
   ForgetWorkspaceRequest,
   QueuedUserTurnRequest,
@@ -203,6 +206,10 @@ export interface HostApi {
   listWorkspaceFileReferenceSuggestions(
     request: QueryWorkspaceFileReferenceSuggestionsRequest,
   ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
+  requestCodeCompletion(request: RequestCodeCompletionRequest): Promise<CodeCompletionResponse>;
+  abortCodeCompletion(): Promise<void>;
+  recordCodeCompletionFileState(request: RecordCodeCompletionFileStateRequest): Promise<void>;
+  resetCodeCompletionJournal(): Promise<void>;
   primeWorkspaceFileReferenceIndex(): Promise<void>;
   getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
   listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;

@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from '../ports.js';
 import { cloneJsonValue } from '../tool-agent.js';
-import type { LlmModelCapabilities } from '../llm-provider-shared.js';
+import type { LlmModelCapabilities, TransportRequestProfile } from '../llm-provider-shared.js';
 
 /** Bedrock 推理强度；`default` 表示不注入 `reasoningConfig`。 */
 export type BedrockReasoningEffort =
@@ -31,6 +31,8 @@ export interface BedrockTransportConfig {
   modelCapabilities?: LlmModelCapabilities;
   reasoningEffort?: BedrockReasoningEffort;
   supportedReasoningEfforts?: readonly BedrockReasoningEffort[];
+  /** 代码补全等非 Agent 轻量请求的策略画像；缺省为 agent 路径默认行为。 */
+  transportRequestProfile?: TransportRequestProfile;
 }
 
 export interface BedrockRequestTrace extends JsonObject {

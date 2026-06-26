@@ -48,6 +48,29 @@ test('alibaba chat fetch uses search-only extra_body when not streaming', async 
   assert.deepEqual(extraBody, { enable_search: true });
 });
 
+test('alibaba chat fetch disables enable_thinking for code-completion profile', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  const baseFetch: typeof fetch = async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response('{}', { status: 200 });
+  };
+
+  const fetch = createAlibabaChatCompletionsAwareFetch(
+    {
+      ...alibabaChatConfig,
+      transportRequestProfile: 'code-completion',
+    },
+    baseFetch,
+  );
+  await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({ model: 'qwen3-max', messages: [], stream: false }),
+  });
+
+  const extraBody = capturedBody?.extra_body as Record<string, unknown> | undefined;
+  assert.deepEqual(extraBody, { enable_thinking: false });
+});
+
 test('alibaba chat fetch is passthrough for non-alibaba vendor', async () => {
   let called = false;
   const baseFetch: typeof fetch = async () => {

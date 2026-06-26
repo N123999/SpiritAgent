@@ -131,6 +131,14 @@ declare global {
     listWorkspaceFileReferenceSuggestions(
       request: QueryWorkspaceFileReferenceSuggestionsRequest,
     ): Promise<WorkspaceFileReferenceSuggestionsResponse>;
+    requestCodeCompletion(
+      request: import('./types').RequestCodeCompletionRequest,
+    ): Promise<import('./types').CodeCompletionResponse>;
+    abortCodeCompletion(): Promise<void>;
+    recordCodeCompletionFileState(
+      request: import('./types').RecordCodeCompletionFileStateRequest,
+    ): Promise<void>;
+    resetCodeCompletionJournal(): Promise<void>;
     primeWorkspaceFileReferenceIndex(): Promise<void>;
     getWorkspaceFileReferenceIndex(): Promise<import('./types').WorkspaceFileReferenceIndexSnapshot>;
     listWorkspaceExplorerChildren(relativePath: string): Promise<WorkspaceExplorerListResult>;

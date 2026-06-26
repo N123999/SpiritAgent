@@ -86,17 +86,23 @@ import {
   isGatewayAnthropicClaudeModel,
 } from './gateway-anthropic-thinking.js';
 import {
+  buildGatewayCodeCompletionProviderOptions,
+  shouldUseGatewayCodeCompletionProviderOptions,
+} from './gateway-code-completion-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
   isGatewayGoogleGeminiModel,
 } from './gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openrouter-anthropic-reasoning.js';
 import { generateSiliconFlowImage } from '../image-generation/siliconflow-backend.js';
+import { isCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 import { generateVideoWithRouter } from '../video-generation/router.js';
 import { getLlmFetch } from '../llm-fetch.js';
 import { createAlibabaChatCompletionsAwareFetch } from '../open-responses/alibaba-chat-completions-fetch.js';
 import {
   buildAlibabaChatCompletionsExtraBody,
+  shouldPatchAlibabaChatCompletionsExtraBody,
   shouldUseAlibabaChatCompletionsBuiltInTools,
 } from '../open-responses/alibaba-built-in-tools.js';
 import {
@@ -873,7 +879,7 @@ function createAiSdkDeepSeekProvider(config: OpenAiTransportConfig) {
 }
 
 function createAiSdkAlibabaProvider(config: OpenAiTransportConfig) {
-  const fetchWrapper = shouldUseAlibabaChatCompletionsBuiltInTools(config)
+  const fetchWrapper = shouldPatchAlibabaChatCompletionsExtraBody(config)
     ? createAlibabaChatCompletionsAwareFetch(config, getLlmFetch())
     : getLlmFetch();
 
@@ -905,6 +911,10 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
 function buildAiSdkProviderOptions(
   config: OpenAiTransportConfig,
 ): Record<string, JsonObject> {
+  if (shouldUseGatewayCodeCompletionProviderOptions(config)) {
+    return buildGatewayCodeCompletionProviderOptions(config);
+  }
+
   if (isVercelAiGatewayProvider(config) && isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
     return buildGatewayAnthropicProviderOptions(config);
   }
@@ -918,6 +928,14 @@ function buildAiSdkProviderOptions(
   }
 
   if (isAlibabaOfficialAiSdkProvider(config)) {
+    if (isCodeCompletionTransportProfile(config)) {
+      return {
+        alibaba: {
+          enable_thinking: false,
+        } as JsonObject,
+      };
+    }
+
     const extraBody = shouldUseAlibabaChatCompletionsBuiltInTools(config)
       ? buildAlibabaChatCompletionsExtraBody({ streaming: true })
       : undefined;
@@ -1005,6 +1023,25 @@ function buildAiSdkProviderOptions(
 
     return {
       vertex: vertexOptions as JsonObject,
+    };
+  }
+
+  if (isOpenAiOfficialAiSdkProvider(config)) {
+    const reasoningEffort = openAiReasoningEffort(config) as
+      | OpenAICompatibleLanguageModelChatOptions['reasoningEffort']
+      | undefined;
+    const openaiOptions: JsonObject = {};
+    if (reasoningEffort !== undefined) {
+      openaiOptions.reasoningEffort = reasoningEffort;
+    }
+    if (isCodeCompletionTransportProfile(config) && reasoningEffort === 'none') {
+      openaiOptions.reasoningSummary = 'off';
+    }
+    if (Object.keys(openaiOptions).length === 0) {
+      return {};
+    }
+    return {
+      openai: openaiOptions as JsonObject,
     };
   }
 

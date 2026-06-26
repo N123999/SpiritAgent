@@ -4,6 +4,7 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from "react";
 
 import * as monaco from "monaco-editor";
@@ -18,6 +19,7 @@ import {
   applySpiritMonacoEditorTheme,
   syncMonacoThemeFromDocument,
 } from "@/lib/monaco-theme";
+import { useMonacoCodeCompletion } from "@/hooks/use-monaco-code-completion";
 
 export type WorkspaceMonacoEditorHandle = {
   /** 将当前缓冲区写入磁盘；成功后会清除脏标记。 */
@@ -39,6 +41,7 @@ export type WorkspaceMonacoEditorProps = {
   onDirtyChange?: (dirty: boolean) => void;
   onTextChange?: (text: string) => void;
   readOnly?: boolean;
+  codeCompletionEnabled?: boolean;
   onEditorReady?: (editor: monaco.editor.IStandaloneCodeEditor | null) => void;
   revealLocation?: EditorFileRevealLocation | null;
   onRevealConsumed?: () => void;
@@ -57,6 +60,7 @@ export const WorkspaceMonacoEditor = forwardRef<
     onDirtyChange,
     onTextChange,
     readOnly = false,
+    codeCompletionEnabled = true,
     onEditorReady,
     revealLocation = null,
     onRevealConsumed,
@@ -66,6 +70,7 @@ export const WorkspaceMonacoEditor = forwardRef<
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const [activeEditor, setActiveEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
   const baselineRef = useRef(baselineText ?? initialText);
   const onSaveRef = useRef(onSave);
   const onDirtyChangeRef = useRef(onDirtyChange);
@@ -82,6 +87,14 @@ export const WorkspaceMonacoEditor = forwardRef<
   onRevealConsumedRef.current = onRevealConsumed;
   revealLocationRef.current = revealLocation;
   searchMatchRangesRef.current = searchMatchRanges;
+
+  useMonacoCodeCompletion({
+    editor: activeEditor,
+    relativePath,
+    enabled: codeCompletionEnabled,
+    readOnly,
+    baselineText: baselineText ?? initialText,
+  });
 
   useEffect(() => {
     if (baselineText !== undefined) {
@@ -203,8 +216,10 @@ export const WorkspaceMonacoEditor = forwardRef<
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
         scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+        inlineSuggest: { enabled: true },
       });
       editorRef.current = editor;
+      setActiveEditor(editor);
       onEditorReadyRef.current?.(editor);
       if (revealLocationRef.current) {
         applyRevealLocation(editor);
@@ -242,6 +257,7 @@ export const WorkspaceMonacoEditor = forwardRef<
       onEditorReadyRef.current?.(null);
       editor?.dispose();
       editorRef.current = null;
+      setActiveEditor(null);
     };
   }, [applyRevealLocation, applySearchDecorations, relativePath, readOnly, runSave]);
 

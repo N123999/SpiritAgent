@@ -111,8 +111,13 @@ export interface DesktopLspConfigFile {
   enabled: boolean;
 }
 
+export interface DesktopCodeCompletionConfigFile {
+  enabled: boolean;
+}
+
 export interface DesktopAgentsConfigFile {
   lsp: DesktopLspConfigFile;
+  codeCompletion: DesktopCodeCompletionConfigFile;
 }
 
 export interface DesktopNetworksConfigFile {
@@ -764,6 +769,9 @@ export function defaultAgentsConfig(): DesktopAgentsConfigFile {
     lsp: {
       enabled: true,
     },
+    codeCompletion: {
+      enabled: true,
+    },
   };
 }
 
@@ -817,9 +825,16 @@ export function normalizeAgentsConfig(raw: unknown): DesktopAgentsConfigFile {
     typeof record.lsp === 'object' && record.lsp !== null
       ? (record.lsp as Partial<DesktopLspConfigFile>)
       : {};
+  const codeCompletionRaw =
+    typeof record.codeCompletion === 'object' && record.codeCompletion !== null
+      ? (record.codeCompletion as Partial<DesktopCodeCompletionConfigFile>)
+      : {};
   return {
     lsp: {
       enabled: lspRaw.enabled !== false,
+    },
+    codeCompletion: {
+      enabled: codeCompletionRaw.enabled !== false,
     },
   };
 }

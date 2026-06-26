@@ -15,6 +15,7 @@ import type {
 import { readModelCatalogCacheSync } from './model-catalog-cache.js';
 import {
   DEFAULT_API_BASE,
+  normalizeAgentsConfig,
   normalizeWorkspaceBinding,
   type DesktopConfigFile,
   type HostMetadataSummary,
@@ -139,6 +140,9 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
     mcpServers: input.mcpServers,
     hooksList: input.hooksList,
     lsp: input.lsp,
+    codeCompletion: {
+      userEnabled: normalizeAgentsConfig(input.config.agents).codeCompletion.enabled,
+    },
     conversation: input.conversation,
     ...(input.activeSession ? { activeSession: { ...input.activeSession } } : {}),
     composerSessionKey: input.composerSessionKey,

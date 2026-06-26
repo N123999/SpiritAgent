@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
+import { clearCodeCompletionStateForWorkspace } from './code-completion-commands.js';
 import type { PlanSnapshot } from '../types.js';
 import {
   discoverWorkspaceRoot,
@@ -181,6 +182,9 @@ export async function ensureInitializedCommand(
   if (switchingWorkspace) {
     ctx.setLastRuntimeError('');
     ctx.setToolExecutor(undefined);
+    if (previousWorkspaceRoot) {
+      clearCodeCompletionStateForWorkspace(previousWorkspaceRoot);
+    }
     ctx.sessionRegistry().clearForWorkspaceSwitch(workspaceRoot);
     ctx.resetStreamingPlacementState(true);
   } else if (!ctx.sessionRegistry().hasActive()) {

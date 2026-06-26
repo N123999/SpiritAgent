@@ -17,6 +17,7 @@ import {
   wrapFetchForBedrockMantleIamAuth,
 } from './bedrock-mantle-auth-fetch.js';
 import { shouldUseAlibabaResponsesBuiltInTools } from './alibaba-built-in-tools.js';
+import { isCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 import {
   buildResponsesAiSdkTools,
   type OpenAiFunctionToolDefinition,
@@ -31,6 +32,10 @@ import {
   buildGatewayAnthropicProviderOptions,
   isGatewayAnthropicClaudeModel,
 } from '../openai/gateway-anthropic-thinking.js';
+import {
+  buildGatewayCodeCompletionProviderOptions,
+  shouldUseGatewayCodeCompletionProviderOptions,
+} from '../openai/gateway-code-completion-thinking.js';
 import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
@@ -210,6 +215,10 @@ export function buildResponsesProviderOptions(
   const reasoningSummary = resolveOpenResponsesReasoningSummary(config);
 
   if (shouldUseGatewayWebSearch(config)) {
+    if (shouldUseGatewayCodeCompletionProviderOptions(config)) {
+      return buildGatewayCodeCompletionProviderOptions(config);
+    }
+
     if (isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
       return buildGatewayAnthropicProviderOptions(config);
     }
@@ -270,7 +279,7 @@ export function buildResponsesProviderOptions(
     };
 
     if (config.llmVendor === 'alibaba') {
-      providerOptions.enable_thinking = true;
+      providerOptions.enable_thinking = !isCodeCompletionTransportProfile(config);
     }
 
     if (Object.keys(providerOptions).length === 0) {

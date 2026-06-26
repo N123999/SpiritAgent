@@ -119,6 +119,9 @@ import type {
   RemoveModelRequest,
   RemoveProviderModelsRequest,
   QueryWorkspaceFileReferenceSuggestionsRequest,
+  RecordCodeCompletionFileStateRequest,
+  RequestCodeCompletionRequest,
+  CodeCompletionResponse,
   SessionListItem,
   ImportExtensionRequest,
   InstallLspProviderRequest,
@@ -323,6 +326,13 @@ import {
 } from './sessions.js';
 import { generateSessionTitleFromModelTask } from './session-title-generation.js';
 import { applyGeneratedSessionTitle } from './session-title-service.js';
+import {
+  abortCodeCompletionCommand,
+  recordCodeCompletionFileStateCommand,
+  requestCodeCompletionCommand,
+  resetCodeCompletionJournalCommand,
+  type CodeCompletionCommandContext,
+} from './code-completion-commands.js';
 import {
   buildContextUsagePercent,
   type ContextUsageModelProfile,
@@ -679,6 +689,14 @@ class DesktopHostService {
       runCoalescedGitRefresh: () => this.runCoalescedGitRefresh(),
       hasState: () => Boolean(this.state),
       buildSnapshot: () => this.buildSnapshot(),
+    };
+  }
+
+  private codeCompletionCommandContext(): CodeCompletionCommandContext {
+    const state = this.requireState();
+    return {
+      workspaceRoot: state.workspaceRoot,
+      config: state.config,
     };
   }
 
@@ -1867,6 +1885,22 @@ class DesktopHostService {
     request: QueryWorkspaceFileReferenceSuggestionsRequest,
   ): Promise<WorkspaceFileReferenceSuggestionsResponse> {
     return listWorkspaceFileReferenceSuggestionsCommand(this.workspaceGitCommandContext(), request);
+  }
+
+  async requestCodeCompletion(request: RequestCodeCompletionRequest): Promise<CodeCompletionResponse> {
+    return requestCodeCompletionCommand(this.codeCompletionCommandContext(), request);
+  }
+
+  async abortCodeCompletion(): Promise<void> {
+    abortCodeCompletionCommand(this.requireState().workspaceRoot);
+  }
+
+  async recordCodeCompletionFileState(request: RecordCodeCompletionFileStateRequest): Promise<void> {
+    recordCodeCompletionFileStateCommand(this.codeCompletionCommandContext(), request);
+  }
+
+  async resetCodeCompletionJournal(): Promise<void> {
+    resetCodeCompletionJournalCommand(this.codeCompletionCommandContext());
   }
 
   async primeWorkspaceFileReferenceIndex(): Promise<void> {

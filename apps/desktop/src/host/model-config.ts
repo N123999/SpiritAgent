@@ -1,4 +1,5 @@
 import {
+  applyCodeCompletionTransportProfile,
   resolveOpenResponsesReasoningSummary,
   type AnthropicTransportConfig,
   type LlmModelCapabilities,
@@ -402,6 +403,13 @@ export function buildPrimaryTransportConfig(input: {
       : {}),
     ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
   };
+}
+
+/** 代码补全走轻量模型；关闭思考策略由 agent-core transport-profile 统一处理。 */
+export function buildCodeCompletionTransportConfig(
+  input: Parameters<typeof buildPrimaryTransportConfig>[0],
+): LlmTransportConfig {
+  return applyCodeCompletionTransportProfile(buildPrimaryTransportConfig(input));
 }
 
 export function modelCapabilitiesFromConfig(
