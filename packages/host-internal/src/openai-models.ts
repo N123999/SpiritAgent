@@ -99,6 +99,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
     return parseXiaomiModelEntriesPayload(body);
   }
 
+  if (provider === 'minimax') {
+    return parseMinimaxModelEntriesPayload(body);
+  }
+
   if (provider === 'siliconflow') {
     return parseSiliconFlowModelEntriesPayload(body, 'chat');
   }
@@ -331,6 +335,44 @@ export function parseXiaomiModelEntriesPayload(body: unknown): ProviderListedMod
 
     const modelId = id.trim();
     const isMultimodal = XIAOMI_MULTIMODAL_MODEL_IDS.has(modelId);
+    entries.push({
+      id: modelId,
+      supportsImageInput: isMultimodal,
+      supportsVideoInput: isMultimodal,
+    });
+  }
+  return entries;
+}
+
+/** MiniMax：上游 /models 不返回多模态能力字段；仅 M3 支持图片与视频输入。 */
+function isMinimaxM3MultimodalModelId(modelId: string): boolean {
+  const normalized = modelId.trim().toLowerCase();
+  const slashIndex = normalized.lastIndexOf('/');
+  const id = slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
+  return id.includes('m3') || id.includes('minimax-m3');
+}
+
+export function parseMinimaxModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('data' in body)) {
+    return [];
+  }
+  const raw = (body as { data?: unknown }).data;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry)) {
+      continue;
+    }
+    const id = (entry as { id?: unknown }).id;
+    if (typeof id !== 'string' || id.trim().length === 0) {
+      continue;
+    }
+
+    const modelId = id.trim();
+    const isMultimodal = isMinimaxM3MultimodalModelId(modelId);
     entries.push({
       id: modelId,
       supportsImageInput: isMultimodal,

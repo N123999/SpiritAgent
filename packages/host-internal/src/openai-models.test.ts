@@ -12,6 +12,7 @@ import {
   parseVercelAiGatewayModelEntriesPayload,
   parseVolcengineModelEntriesPayload,
   parseXiaomiModelEntriesPayload,
+  parseMinimaxModelEntriesPayload,
 } from './openai-models.js';
 
 test('parseAnthropicModelEntriesPayload extracts image input and supported effort levels', () => {
@@ -488,6 +489,59 @@ test('parseXiaomiModelEntriesPayload marks multimodal allowlist models', () => {
       id: 'mimo-v2-flash',
       supportsImageInput: false,
       supportsVideoInput: false,
+    },
+  ]);
+});
+
+test('parseMinimaxModelEntriesPayload marks M3 multimodal models only', () => {
+  const entries = parseMinimaxModelEntriesPayload({
+    object: 'list',
+    data: [
+      { id: 'MiniMax-M3', object: 'model' },
+      { id: 'minimax-m3', object: 'model' },
+      { id: 'MiniMax-M2.5', object: 'model' },
+      { id: 'MiniMax-M2.5-highspeed', object: 'model' },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'MiniMax-M3',
+      supportsImageInput: true,
+      supportsVideoInput: true,
+    },
+    {
+      id: 'minimax-m3',
+      supportsImageInput: true,
+      supportsVideoInput: true,
+    },
+    {
+      id: 'MiniMax-M2.5',
+      supportsImageInput: false,
+      supportsVideoInput: false,
+    },
+    {
+      id: 'MiniMax-M2.5-highspeed',
+      supportsImageInput: false,
+      supportsVideoInput: false,
+    },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload routes minimax provider to minimax parser', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload(
+    {
+      object: 'list',
+      data: [{ id: 'MiniMax-M3', object: 'model' }],
+    },
+    'minimax',
+  );
+
+  assert.deepEqual(entries, [
+    {
+      id: 'MiniMax-M3',
+      supportsImageInput: true,
+      supportsVideoInput: true,
     },
   ]);
 });
