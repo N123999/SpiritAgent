@@ -44,6 +44,8 @@ export interface UpdateConfigRequest {
   lightweightChatModel?: string;
   apiBase: string;
   reasoningEffort?: DesktopModelReasoningEffort;
+  /** 厂商 extended thinking；false 关闭。缺省不修改。 */
+  thinkingEnabled?: boolean;
   uiLocale?: string;
   apiKey?: string;
   /** 与 Rust `UpdateConfigRequest.windows_mica` 一致；缺省不修改已保存的 Mica 开关。 */
@@ -1152,6 +1154,8 @@ export interface ModelProfileSnapshot {
   name: string;
   apiBase: string;
   reasoningEffort: DesktopModelReasoningEffort;
+  /** 厂商 extended thinking；缺省 true。仅 thinking 型模型持久化 false。 */
+  thinkingEnabled?: boolean;
   supportedReasoningEfforts?: DesktopModelReasoningEffort[];
   capabilities?: DesktopModelCapability[];
   /** 持久化来源；缺省表示历史自定义配置。 */
