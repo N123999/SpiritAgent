@@ -4,15 +4,25 @@ import {
   codeCompletionOperationToInlineItemAtCursor,
   type CodeCompletionOperation,
 } from "@spirit-agent/core/code-completion-to-monaco";
+import {
+  codeCompletionOperationToDeleteDiffPreviewAtCursor,
+  type InlineDeleteDiffPreviewSpec,
+} from "@spirit-agent/core/code-completion-delete-diff";
 import * as monaco from "monaco-editor";
 
 import { useHostApi } from "@/hooks/useHostApi";
+import {
+  applyDeletePreviewEdit,
+  DeleteDiffPreviewWidget,
+  deletePreviewDecoration,
+} from "@/lib/monaco-code-completion-delete-preview";
 import { monacoLanguageId } from "@/lib/monaco-language";
 import type { CodeCompletionOperationSnapshot } from "@/types";
 
 const COMPLETION_DEBOUNCE_MS = 600;
 const JOURNAL_DEBOUNCE_MS = 500;
 const CURSOR_AFTER_CONTENT_GRACE_MS = 50;
+const DELETE_PREVIEW_CONTEXT_KEY = "spirit.codeCompletion.deletePreviewActive";
 
 type PendingFetch = {
   position: monaco.Position;
@@ -23,6 +33,12 @@ type CompletionCache = {
   line: number;
   column: number;
   items: monaco.languages.InlineCompletion[];
+};
+
+type DeletePreviewState = {
+  spec: InlineDeleteDiffPreviewSpec;
+  decorations: monaco.editor.IEditorDecorationsCollection;
+  widget: DeleteDiffPreviewWidget | null;
 };
 
 function positionsEqual(
@@ -81,6 +97,8 @@ export function useMonacoCodeCompletion(options: {
   const relativePathRef = useRef(relativePath);
   const baselineRef = useRef(baselineText);
   const cacheRef = useRef<CompletionCache | null>(null);
+  const deletePreviewRef = useRef<DeletePreviewState | null>(null);
+  const deletePreviewActiveRef = useRef<monaco.editor.IContextKey<boolean> | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const fetchTokenRef = useRef(0);
   const fetchInFlightRef = useRef(false);
@@ -97,6 +115,51 @@ export function useMonacoCodeCompletion(options: {
     }
 
     const languageId = monacoLanguageId(relativePath);
+    const deletePreviewActiveKey =
+      deletePreviewActiveRef.current ?? editor.createContextKey(DELETE_PREVIEW_CONTEXT_KEY, false);
+    deletePreviewActiveRef.current = deletePreviewActiveKey;
+
+    const clearInlineGhostCache = () => {
+      cacheRef.current = null;
+    };
+
+    const clearDeletePreview = () => {
+      const state = deletePreviewRef.current;
+      if (state) {
+        state.decorations.clear();
+        if (state.widget) {
+          editor.removeContentWidget(state.widget);
+        }
+        deletePreviewRef.current = null;
+      }
+      deletePreviewActiveKey.set(false);
+    };
+
+    const clearAllPreviews = () => {
+      clearInlineGhostCache();
+      clearDeletePreview();
+    };
+
+    const showDeletePreview = (spec: InlineDeleteDiffPreviewSpec) => {
+      clearAllPreviews();
+      const decorations = editor.createDecorationsCollection([deletePreviewDecoration(spec)]);
+      let widget: DeleteDiffPreviewWidget | null = null;
+      if (spec.previewText.length > 0) {
+        widget = new DeleteDiffPreviewWidget(editor, spec);
+        editor.addContentWidget(widget);
+      }
+      deletePreviewRef.current = { spec, decorations, widget };
+      deletePreviewActiveKey.set(true);
+    };
+
+    const acceptDeletePreview = () => {
+      const state = deletePreviewRef.current;
+      if (!state) {
+        return;
+      }
+      applyDeletePreviewEdit(editor, state.spec);
+      clearDeletePreview();
+    };
 
     const executeFetch = async (
       requestPosition: monaco.Position,
@@ -128,13 +191,31 @@ export function useMonacoCodeCompletion(options: {
 
         const operation = result.operations[0];
         if (!operation) {
-          cacheRef.current = null;
+          clearAllPreviews();
           return;
         }
 
+        if (operation.kind === "delete") {
+          const deleteSpec = codeCompletionOperationToDeleteDiffPreviewAtCursor(
+            operation as CodeCompletionOperation,
+            {
+              documentText: model.getValue(),
+              cursorLine: requestPosition.lineNumber,
+              cursorColumn: requestPosition.column,
+            },
+          );
+          if (!deleteSpec) {
+            clearAllPreviews();
+            return;
+          }
+          showDeletePreview(deleteSpec);
+          return;
+        }
+
+        clearDeletePreview();
         const item = toInlineItem(operation, model, requestPosition);
         if (!item) {
-          cacheRef.current = null;
+          clearInlineGhostCache();
           return;
         }
 
@@ -215,6 +296,14 @@ export function useMonacoCodeCompletion(options: {
       freeInlineCompletions: () => {},
     });
 
+    editor.addCommand(
+      monaco.KeyCode.Tab,
+      () => {
+        acceptDeletePreview();
+      },
+      DELETE_PREVIEW_CONTEXT_KEY,
+    );
+
     const contentDisposable = editor.onDidChangeModelContent(() => {
       const position = editor.getPosition();
       const model = editor.getModel();
@@ -222,7 +311,7 @@ export function useMonacoCodeCompletion(options: {
         return;
       }
       lastContentChangeAtRef.current = Date.now();
-      cacheRef.current = null;
+      clearAllPreviews();
       scheduledTargetRef.current = null;
       scheduleFetch(position, model);
     });
@@ -235,7 +324,7 @@ export function useMonacoCodeCompletion(options: {
       if (!model) {
         return;
       }
-      cacheRef.current = null;
+      clearAllPreviews();
       scheduledTargetRef.current = null;
       scheduleFetch(event.position, model);
     });
@@ -252,7 +341,7 @@ export function useMonacoCodeCompletion(options: {
       pendingFetchRef.current = null;
       fetchInFlightRef.current = false;
       scheduledTargetRef.current = null;
-      cacheRef.current = null;
+      clearAllPreviews();
       void api.abortCodeCompletion();
     };
   }, [api, editor, enabled, readOnly, relativePath]);
