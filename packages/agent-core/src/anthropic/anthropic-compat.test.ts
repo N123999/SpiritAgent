@@ -44,6 +44,42 @@ test('resolveAnthropicThinkingConfig leaves unknown models undefined', () => {
   );
 });
 
+test('resolveAnthropicThinkingConfig disables thinking for code-completion profile', () => {
+  assert.deepEqual(
+    resolveAnthropicThinkingConfig({
+      model: 'claude-sonnet-4-6',
+      transportRequestProfile: 'code-completion',
+    }),
+    { type: 'disabled' },
+  );
+});
+
+test('resolveAnthropicThinkingConfig prefers explicit thinking over code-completion default', () => {
+  assert.deepEqual(
+    resolveAnthropicThinkingConfig({
+      model: 'claude-sonnet-4-6',
+      transportRequestProfile: 'code-completion',
+      thinking: { type: 'enabled', budgetTokens: 1024 },
+    }),
+    { type: 'enabled', budgetTokens: 1024 },
+  );
+});
+
+test('buildAnthropicProviderOptions emits disabled thinking for code-completion profile', () => {
+  assert.deepEqual(
+    buildAnthropicProviderOptions({
+      model: 'claude-sonnet-4-6',
+      transportRequestProfile: 'code-completion',
+    }),
+    {
+      anthropic: {
+        thinking: { type: 'disabled' },
+        toolStreaming: true,
+      },
+    },
+  );
+});
+
 test('buildAnthropicProviderOptions emits disabled thinking for unsupported models', () => {
   assert.deepEqual(
     buildAnthropicProviderOptions({

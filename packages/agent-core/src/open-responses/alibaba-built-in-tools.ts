@@ -1,4 +1,6 @@
 import type { JsonObject, JsonValue } from '../ports.js';
+import { isCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
+import type { OpenAiTransportConfig } from '../openai/openai-compat.js';
 import {
   isOpenAiCompatibleTransportConfig,
   isOpenResponsesTransportConfig,
@@ -35,6 +37,26 @@ export function shouldUseAlibabaBuiltInTools(config: LlmTransportConfig): boolea
 
 export function shouldUseAlibabaChatCompletionsBuiltInTools(config: LlmTransportConfig): boolean {
   return isOpenAiCompatibleTransportConfig(config) && alibabaLlmVendor(config) === 'alibaba';
+}
+
+export function shouldPatchAlibabaChatCompletionsExtraBody(
+  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'transportRequestProfile'>,
+): boolean {
+  return config.llmVendor === 'alibaba' && (
+    isCodeCompletionTransportProfile(config)
+    || shouldUseAlibabaChatCompletionsBuiltInTools(config as LlmTransportConfig)
+  );
+}
+
+export function buildAlibabaChatCompletionsExtraBodyForConfig(
+  config: Pick<OpenAiTransportConfig, 'transportRequestProfile'>,
+  options: AlibabaChatCompletionsExtraBodyOptions = {},
+): JsonObject {
+  if (isCodeCompletionTransportProfile(config)) {
+    return { enable_thinking: false };
+  }
+
+  return buildAlibabaChatCompletionsExtraBody(options);
 }
 
 export function shouldUseAlibabaResponsesBuiltInTools(config: LlmTransportConfig): boolean {

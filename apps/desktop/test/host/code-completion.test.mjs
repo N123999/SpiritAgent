@@ -107,14 +107,34 @@ test('buildCodeCompletionTransportConfig disables DeepSeek thinking', () => {
     profile: {
       provider: 'deepseek',
       capabilities: ['chat'],
-      reasoningEffort: 'default',
+      reasoningEffort: 'high',
     },
   });
   assert.equal(config.llmVendor, 'deepseek');
+  assert.equal(config.reasoningEffort, 'default');
   assert.equal(config.vendorExtendedThinking, false);
+  assert.equal(config.transportRequestProfile, 'code-completion');
 });
 
-test('buildCodeCompletionTransportConfig leaves non-DeepSeek unchanged', () => {
+test('buildCodeCompletionTransportConfig disables Moonshot AI thinking', () => {
+  const config = buildCodeCompletionTransportConfig({
+    apiKey: 'test-key',
+    model: 'kimi-k2.5',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    workspaceRoot,
+    profile: {
+      provider: 'moonshot-ai',
+      capabilities: ['chat'],
+      reasoningEffort: 'high',
+    },
+  });
+  assert.equal(config.llmVendor, 'moonshot-ai');
+  assert.equal(config.reasoningEffort, 'default');
+  assert.equal(config.vendorExtendedThinking, false);
+  assert.equal(config.transportRequestProfile, 'code-completion');
+});
+
+test('buildCodeCompletionTransportConfig disables OpenAI reasoning', () => {
   const config = buildCodeCompletionTransportConfig({
     apiKey: 'test-key',
     model: 'gpt-4o-mini',
@@ -127,4 +147,23 @@ test('buildCodeCompletionTransportConfig leaves non-DeepSeek unchanged', () => {
     },
   });
   assert.equal(config.vendorExtendedThinking, undefined);
+  assert.equal(config.reasoningEffort, 'none');
+  assert.equal(config.transportRequestProfile, 'code-completion');
+});
+
+test('buildCodeCompletionTransportConfig disables custom provider reasoning', () => {
+  const config = buildCodeCompletionTransportConfig({
+    apiKey: 'test-key',
+    model: 'local-model',
+    baseUrl: 'https://llm.example/v1',
+    workspaceRoot,
+    profile: {
+      provider: 'custom',
+      capabilities: ['chat'],
+      reasoningEffort: 'high',
+    },
+  });
+  assert.equal(config.llmVendor, 'custom');
+  assert.equal(config.reasoningEffort, 'none');
+  assert.equal(config.transportRequestProfile, 'code-completion');
 });
