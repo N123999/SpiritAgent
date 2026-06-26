@@ -9,6 +9,7 @@ import type { AnthropicTransportConfig } from '../anthropic/anthropic-compat.js'
 import type { BedrockTransportConfig } from '../bedrock/bedrock-compat.js';
 import type { OpenAiTransportConfig } from '../openai/openai-compat.js';
 import type { OpenResponsesTransportConfig } from '../open-responses/responses-compat.js';
+import { openAiVendorChatCompletionBodyExtras } from '../openai/openai-compat.js';
 
 test('isCodeCompletionTransportProfile matches code-completion only', () => {
   assert.equal(isCodeCompletionTransportProfile({ transportRequestProfile: 'code-completion' }), true);
@@ -114,6 +115,33 @@ test('applyCodeCompletionTransportProfile disables xAI reasoning on open-respons
   assert.equal(result.transportRequestProfile, 'code-completion');
   assert.equal((result as OpenResponsesTransportConfig).reasoningEffort, 'none');
   assert.equal((result as OpenResponsesTransportConfig).reasoningSummary, 'off');
+});
+
+test('applyCodeCompletionTransportProfile disables OpenRouter Claude reasoning effort none', () => {
+  const input: OpenAiTransportConfig = {
+    apiKey: 'k',
+    model: 'anthropic/claude-sonnet-4.6',
+    llmVendor: 'openrouter',
+    reasoningEffort: 'high',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'none');
+  assert.deepEqual(
+    openAiVendorChatCompletionBodyExtras(result as OpenAiTransportConfig),
+    { reasoning: { effort: 'none' } },
+  );
+});
+
+test('applyCodeCompletionTransportProfile disables OpenRouter non-Claude reasoning', () => {
+  const input: OpenAiTransportConfig = {
+    apiKey: 'k',
+    model: 'openai/gpt-4o',
+    llmVendor: 'openrouter',
+    reasoningEffort: 'medium',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'none');
+  assert.deepEqual(openAiVendorChatCompletionBodyExtras(result as OpenAiTransportConfig), {});
 });
 
 test('applyCodeCompletionTransportProfile disables Anthropic extended thinking', () => {
