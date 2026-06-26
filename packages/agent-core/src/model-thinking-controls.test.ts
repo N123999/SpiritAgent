@@ -140,6 +140,25 @@ test('Gateway Xiaomi mimo-v2-flash has no thinking switch', () => {
   assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
+test('Gateway Z.ai glm-4.7 supports thinking switch', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'zai/glm-4.7',
+    transportKind: 'open-responses' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
+});
+
+test('Gateway Z.ai glm-4 has no thinking switch', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'zai/glm-4',
+    transportKind: 'open-responses' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+});
+
 test('OpenAI uses reasoning effort primary control only', () => {
   const context = {
     provider: 'openai' as const,

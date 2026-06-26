@@ -103,6 +103,10 @@ import {
   isGatewayXiaomiModel,
 } from './gateway-xiaomi-thinking.js';
 import {
+  buildGatewayZaiProviderOptions,
+  isGatewayZaiModel,
+} from './gateway-zai-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
   isGatewayGoogleGeminiModel,
@@ -951,6 +955,13 @@ function buildAiSdkProviderOptions(
     const xiaomiOptions = buildGatewayXiaomiProviderOptions(config);
     if (Object.keys(xiaomiOptions).length > 0) {
       return xiaomiOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayZaiModel(config.llmVendor, config.model)) {
+    const zaiOptions = buildGatewayZaiProviderOptions(config);
+    if (Object.keys(zaiOptions).length > 0) {
+      return zaiOptions;
     }
   }
 

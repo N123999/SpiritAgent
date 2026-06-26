@@ -49,6 +49,10 @@ import {
   isGatewayXiaomiModel,
 } from '../openai/gateway-xiaomi-thinking.js';
 import {
+  buildGatewayZaiProviderOptions,
+  isGatewayZaiModel,
+} from '../openai/gateway-zai-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
 } from '../openai/gateway-google-thinking.js';
@@ -254,6 +258,13 @@ export function buildResponsesProviderOptions(
       const xiaomiOptions = buildGatewayXiaomiProviderOptions(config);
       if (Object.keys(xiaomiOptions).length > 0) {
         return xiaomiOptions;
+      }
+    }
+
+    if (isGatewayZaiModel(config.llmVendor, config.model)) {
+      const zaiOptions = buildGatewayZaiProviderOptions(config);
+      if (Object.keys(zaiOptions).length > 0) {
+        return zaiOptions;
       }
     }
 

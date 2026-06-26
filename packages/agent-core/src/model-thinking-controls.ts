@@ -10,6 +10,7 @@ import {
 import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
 import { isMoonshotThinkingSwitchModel } from './openai/moonshot-thinking-switch.js';
 import { isXiaomiThinkingSwitchEligibleModel } from './openai/gateway-xiaomi-thinking.js';
+import { isZaiThinkingSwitchEligibleModel } from './openai/gateway-zai-thinking.js';
 import {
   isRoutedAnthropicClaudeModel,
   resolveRoutedAnthropicClaudeCapabilities,
@@ -137,6 +138,9 @@ function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): bo
   }
   if (slug === 'xiaomi') {
     return isXiaomiThinkingSwitchEligibleModel(context.model ?? '');
+  }
+  if (slug === 'zai') {
+    return isZaiThinkingSwitchEligibleModel(context.model ?? '');
   }
   return true;
 }
