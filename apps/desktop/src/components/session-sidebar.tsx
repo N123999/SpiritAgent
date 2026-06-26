@@ -288,6 +288,9 @@ const sidebarSectionHeaderTriggerClass =
 const sidebarSectionChevronClass =
   "hidden size-3 shrink-0 text-muted-foreground/55 transition-transform duration-150 group-hover:inline-flex group-focus-visible:inline-flex";
 
+const sidebarItemShortcutClass =
+  "ml-auto hidden text-[0.65rem] text-sidebar-item-foreground group-hover:inline group-focus-visible:inline";
+
 type SidebarSectionContextMenuConfig = {
   ariaLabel: string;
   disabled?: boolean;
@@ -1422,7 +1425,7 @@ function SessionSidebarInner({
               sidebarItemHoverClass(micaStyle),
               narrow
                 ? "size-8 shrink-0"
-                : "h-8 w-full justify-start gap-2",
+                : "group h-8 w-full justify-start gap-2",
             )}
             disabled={disabled || newSessionBusy}
             onClick={onNewSession}
@@ -1430,7 +1433,7 @@ function SessionSidebarInner({
             <SquarePen className="size-3.5" aria-hidden />
             <span className={cn(narrow && "sr-only")}>{t('sidebar.newSession')}</span>
             {!narrow && (
-              <span className="ml-auto text-[0.65rem] text-sidebar-item-foreground" aria-hidden>
+              <span className={sidebarItemShortcutClass} aria-hidden>
                 {newSessionShortcutLabel}
               </span>
             )}
@@ -1769,13 +1772,13 @@ function SessionSidebarInner({
                 sidebarItemDefaultTextClass,
                 sidebarInteractionMotionClass,
                 sidebarItemHoverClass(micaStyle),
-                "h-8 w-full justify-start gap-2",
+                "group h-8 w-full justify-start gap-2",
               )}
               onClick={onOpenSettings}
             >
               <Settings className="size-4" aria-hidden />
               <span>{t("settings.title")}</span>
-              <span className="ml-auto text-[0.65rem] text-sidebar-item-foreground" aria-hidden>
+              <span className={sidebarItemShortcutClass} aria-hidden>
                 {settingsShortcutLabelText}
               </span>
             </Button>
