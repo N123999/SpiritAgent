@@ -7,11 +7,10 @@ import {
   COMPOSER_INLINE_CHIP_CLASS,
   COMPOSER_INLINE_CHIP_ICON_CLASS,
 } from '@/lib/composer-inline-chip-styles';
-import { PLAN_CHIP_CLASS, PLAN_CHIP_ICON_CLASS } from '@/lib/plan-chip-styles';
 import { appendWorkspaceExplorerIconSvg } from '@/lib/workspace-explorer-icon-dom';
 import type { WorkspaceExplorerEntryKind } from '@/types';
 
-/** 工作区 @file 引用 chip（文件路径；目录 chip 仍走 Plan 样式） */
+/** 工作区 @ 引用 chip（文件与目录路径） */
 export const WORKSPACE_FILE_CHIP_CLASS = COMPOSER_INLINE_CHIP_CLASS;
 
 export const WORKSPACE_FILE_CHIP_ICON_CLASS = COMPOSER_INLINE_CHIP_ICON_CLASS;
@@ -27,18 +26,20 @@ export function resolveWorkspaceFileChipPresentation(path: string): {
   iconPath: string;
 } {
   const normalized = path.replace(/\\/gu, '/');
+  const chipClass = WORKSPACE_FILE_CHIP_CLASS;
+  const iconClass = WORKSPACE_FILE_CHIP_ICON_CLASS;
   if (isWorkspaceDirectoryChipPath(normalized)) {
     return {
-      chipClass: PLAN_CHIP_CLASS,
-      iconClass: PLAN_CHIP_ICON_CLASS,
+      chipClass,
+      iconClass,
       iconKind: 'dir',
       iconPath: normalizeWorkspaceReferenceDirectoryPath(normalized),
     };
   }
 
   return {
-    chipClass: WORKSPACE_FILE_CHIP_CLASS,
-    iconClass: WORKSPACE_FILE_CHIP_ICON_CLASS,
+    chipClass,
+    iconClass,
     iconKind: 'file',
     iconPath: normalized,
   };
