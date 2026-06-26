@@ -16,13 +16,15 @@ type Phase = "running" | "leaving" | "gone";
 type LaunchSplashProps = {
   /** 为 true 时显示加载态；变为 false 时播放退场后卸载 */
   active: boolean;
+  /** Windows Mica / macOS Vibrancy：与 app-shell 一致透出原生模糊 */
+  useMicaBackdrop?: boolean;
 };
 
 /**
  * 首屏启动：居中品牌图标 + 骨架屏式线性闪光，宿主就绪后淡出。
- * 启动层始终实色底（不透系统材质）；进入主界面后的 Mica 由 app-shell 承担。
+ * Blur 开启时背景透明以透出系统材质；关闭时使用实色底。
  */
-export function LaunchSplash({ active }: LaunchSplashProps) {
+export function LaunchSplash({ active, useMicaBackdrop = false }: LaunchSplashProps) {
   const [phase, setPhase] = useState<Phase>(() => (active ? "running" : "gone"));
 
   useEffect(() => {
@@ -69,7 +71,8 @@ export function LaunchSplash({ active }: LaunchSplashProps) {
       data-spirit-surface="launch-splash"
       aria-hidden={exiting}
       className={cn(
-        "fixed inset-0 z-[200] flex items-center justify-center bg-background",
+        "fixed inset-0 z-[200] flex items-center justify-center",
+        useMicaBackdrop ? "bg-transparent" : "bg-background",
         "transition-opacity duration-500 ease-out motion-reduce:duration-200",
         exiting ? "pointer-events-none opacity-0" : "opacity-100",
       )}
