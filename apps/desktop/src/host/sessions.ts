@@ -248,6 +248,7 @@ export function cloneQueuedUserTurns(queued: readonly QueuedUserTurn[]): QueuedU
   }));
 }
 
+/** 运行时消息投影清洗；chat schema v2 落盘边界见 chat-schema.ts。 */
 export function sanitizeConversationMessagesForPersistence(
   messages: ConversationMessageSnapshot[],
 ): ConversationMessageSnapshot[] {
@@ -386,80 +387,6 @@ export function serializeSubagentTimelinesFromMessages(
     }
   }
   return Object.keys(serialized).length > 0 ? serialized : undefined;
-}
-
-function tryCloneDesktopMessageTimeline(
-  timeline: DesktopTimelineTurnSnapshot[] | undefined,
-): DesktopTimelineTurnSnapshot[] | undefined {
-  if (!timeline) {
-    return undefined;
-  }
-  try {
-    return cloneDesktopMessageTimeline(timeline);
-  } catch {
-    return undefined;
-  }
-}
-
-function cloneDesktopMessageTimeline(
-  timeline: DesktopTimelineTurnSnapshot[],
-): DesktopTimelineTurnSnapshot[] {
-  return timeline.map((turn) => ({
-    ...turn,
-    ...(turn.userRow
-      ? {
-          userRow: {
-            ...turn.userRow,
-            ...(turn.userRow.localFileAttachments?.length
-              ? {
-                  localFileAttachments: turn.userRow.localFileAttachments.map((attachment) => ({
-                    ...attachment,
-                  })),
-                }
-              : {}),
-            ...(turn.userRow.tool
-              ? {
-                  tool: {
-                    ...turn.userRow.tool,
-                    detailLines: [...turn.userRow.tool.detailLines],
-                    ...(turn.userRow.tool.imagePaths
-                      ? { imagePaths: [...turn.userRow.tool.imagePaths] }
-                      : {}),
-                    ...(turn.userRow.tool.videoPaths
-                      ? { videoPaths: [...turn.userRow.tool.videoPaths] }
-                      : {}),
-                  },
-                }
-              : {}),
-            ...(turn.userRow.aux ? { aux: { ...turn.userRow.aux } } : {}),
-          },
-        }
-      : {}),
-    segments: turn.segments.map((segment) => ({
-      ...segment,
-      rows: segment.rows.map((row) => ({
-        ...row,
-        ...(row.localFileAttachments?.length
-          ? {
-              localFileAttachments: row.localFileAttachments.map((attachment) => ({
-                ...attachment,
-              })),
-            }
-          : {}),
-        ...(row.tool
-          ? {
-              tool: {
-                ...row.tool,
-                detailLines: [...row.tool.detailLines],
-                ...(row.tool.imagePaths ? { imagePaths: [...row.tool.imagePaths] } : {}),
-                ...(row.tool.videoPaths ? { videoPaths: [...row.tool.videoPaths] } : {}),
-              },
-            }
-          : {}),
-        ...(row.aux ? { aux: { ...row.aux } } : {}),
-      })),
-    })),
-  }));
 }
 
 function archiveProjectableConversationMessages(
