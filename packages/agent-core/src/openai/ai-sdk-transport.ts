@@ -18,7 +18,6 @@ import {
 } from '@ai-sdk/moonshotai';
 import {
   createXai,
-  type XaiLanguageModelChatOptions,
 } from '@ai-sdk/xai';
 import { createGateway } from '@ai-sdk/gateway';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -106,6 +105,11 @@ import {
   buildGatewayZaiProviderOptions,
   isGatewayZaiModel,
 } from './gateway-zai-thinking.js';
+import {
+  buildGatewayXaiProviderOptions,
+  isGatewayXaiModel,
+  resolveXaiProviderReasoningEffort,
+} from './gateway-xai-reasoning.js';
 import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
@@ -965,6 +969,17 @@ function buildAiSdkProviderOptions(
     }
   }
 
+  if (isVercelAiGatewayProvider(config) && isGatewayXaiModel(config.llmVendor, config.model)) {
+    const xaiOptions = buildGatewayXaiProviderOptions(
+      config.llmVendor,
+      config.model,
+      openAiReasoningEffort(config),
+    );
+    if (Object.keys(xaiOptions).length > 0) {
+      return xaiOptions;
+    }
+  }
+
   if (isOpenRouterAnthropicClaudeModel(config.llmVendor, config.model)) {
     return {};
   }
@@ -1034,17 +1049,15 @@ function buildAiSdkProviderOptions(
   }
 
   if (isXaiOfficialAiSdkProvider(config)) {
-    const reasoningEffort = xaiChatReasoningEffort(openAiReasoningEffort(config));
+    const reasoningEffort = resolveXaiProviderReasoningEffort(openAiReasoningEffort(config));
     if (reasoningEffort === undefined) {
       return {};
     }
 
-    const xaiOptions = {
-      reasoningEffort,
-    } satisfies XaiLanguageModelChatOptions;
-
     return {
-      xai: xaiOptions as JsonObject,
+      xai: {
+        reasoningEffort,
+      } as JsonObject,
     };
   }
 
@@ -1856,16 +1869,6 @@ function isGoogleOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
 
 function isGoogleVertexOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'google-vertex-ai';
-}
-
-function xaiChatReasoningEffort(
-  effort: string | undefined,
-): XaiLanguageModelChatOptions['reasoningEffort'] | undefined {
-  if (effort === 'low' || effort === 'high') {
-    return effort;
-  }
-
-  return effort === 'medium' ? 'high' : undefined;
 }
 
 function buildAiSdkImageGenerationUrl(config: OpenAiImageGenerationConfig): string {

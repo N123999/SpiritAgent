@@ -154,13 +154,17 @@ test('buildGatewayCodeCompletionProviderOptions routes zai alibaba minimax xiaom
   );
 });
 
-test('buildGatewayCodeCompletionProviderOptions omits xai reasoning options', () => {
+test('buildGatewayCodeCompletionProviderOptions disables xai reasoning via xai namespace', () => {
   assert.deepEqual(
     buildGatewayCodeCompletionProviderOptions({
       ...gatewayConfig,
-      model: 'xai/grok-4',
+      model: 'xai/grok-4.3',
     }),
-    {},
+    {
+      xai: {
+        reasoningEffort: 'none',
+      },
+    },
   );
 });
 

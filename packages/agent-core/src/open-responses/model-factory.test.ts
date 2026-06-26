@@ -125,6 +125,23 @@ test('buildResponsesProviderOptions maps gateway openai reasoning options', () =
   });
 });
 
+test('buildResponsesProviderOptions maps gateway xai reasoning via xai namespace', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'xai/grok-4.3',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'none',
+    }),
+    {
+      xai: {
+        reasoningEffort: 'none',
+      },
+    },
+  );
+});
+
 test('buildResponsesProviderOptions maps gateway anthropic claude to adaptive thinking', () => {
   assert.deepEqual(
     buildResponsesProviderOptions({

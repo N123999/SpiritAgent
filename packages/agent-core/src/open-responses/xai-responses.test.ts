@@ -28,6 +28,12 @@ test('xAI responses provider resolves official SDK, options, and trace kind', ()
   assert.deepEqual(buildResponsesProviderOptions(xaiConfig), {
     xai: { reasoningEffort: 'medium' },
   });
+  assert.deepEqual(
+    buildResponsesProviderOptions({ ...xaiConfig, reasoningEffort: 'none' }),
+    {
+      xai: { reasoningEffort: 'none' },
+    },
+  );
 
   const trace = buildOpenResponsesRequestTrace(
     xaiConfig,

@@ -53,6 +53,11 @@ import {
   isGatewayZaiModel,
 } from '../openai/gateway-zai-thinking.js';
 import {
+  buildGatewayXaiProviderOptions,
+  isGatewayXaiModel,
+  resolveXaiProviderReasoningEffort,
+} from '../openai/gateway-xai-reasoning.js';
+import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
 } from '../openai/gateway-google-thinking.js';
@@ -269,6 +274,17 @@ export function buildResponsesProviderOptions(
       }
     }
 
+    if (isGatewayXaiModel(config.llmVendor, config.model)) {
+      const xaiOptions = buildGatewayXaiProviderOptions(
+        config.llmVendor,
+        config.model,
+        openResponsesReasoningEffort(config),
+      );
+      if (Object.keys(xaiOptions).length > 0) {
+        return xaiOptions;
+      }
+    }
+
     // Gateway v3 language-model 原样转发 providerOptions；OpenAI 路由模型须用 openai 命名空间（见 Vercel AI Gateway reasoning 文档）。
     const openaiOptions: JsonObject = {
       ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
@@ -280,13 +296,16 @@ export function buildResponsesProviderOptions(
 
   const provider = resolveOpenResponsesSdkProvider(config);
   if (provider === 'xai') {
-    const xaiOptions = {
-      ...(xaiResponsesReasoningEffort(reasoningEffort) !== undefined
-        ? { reasoningEffort: xaiResponsesReasoningEffort(reasoningEffort) }
-        : {}),
-    } satisfies XaiLanguageModelResponsesOptions;
+    const xaiReasoningEffort = resolveXaiProviderReasoningEffort(reasoningEffort);
+    if (xaiReasoningEffort === undefined) {
+      return {};
+    }
 
-    return Object.keys(xaiOptions).length > 0 ? { xai: xaiOptions as JsonObject } : {};
+    return {
+      xai: {
+        reasoningEffort: xaiReasoningEffort,
+      } as JsonObject,
+    };
   }
 
   if (provider === 'azure') {
@@ -351,12 +370,6 @@ export function buildResponsesProviderOptions(
   }
 
   return { openai: openaiOptions };
-}
-
-function xaiResponsesReasoningEffort(
-  effort: string | undefined,
-): XaiLanguageModelResponsesOptions['reasoningEffort'] | undefined {
-  return effort === 'low' || effort === 'medium' || effort === 'high' ? effort : undefined;
 }
 
 function shouldAttachPreviousResponseId(config: OpenResponsesTransportConfig): boolean {

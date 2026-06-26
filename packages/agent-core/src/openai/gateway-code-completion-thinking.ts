@@ -73,7 +73,11 @@ export function buildGatewayCodeCompletionProviderOptions(
     case 'moonshotai':
       return thinkingTypeDisabledOptions('moonshotai');
     case 'xai':
-      return {};
+      return {
+        xai: {
+          reasoningEffort: 'none',
+        } as JsonObject,
+      };
     case 'zai':
       return thinkingTypeDisabledOptions('zai');
     case 'alibaba':
