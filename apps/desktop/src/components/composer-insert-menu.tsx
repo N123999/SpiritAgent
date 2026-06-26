@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AtSign, File, Plus } from 'lucide-react'
@@ -9,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
   DESKTOP_OVERLAY_LIST_ITEM,
@@ -42,26 +44,38 @@ export function ComposerInsertMenu({
   onInsertSkillTrigger,
 }: ComposerInsertMenuProps) {
   const { t } = useTranslation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const suppressTooltip = menuOpen || disabled
 
   return (
-    <DropdownMenu modal>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t('composer.openInsertPanel')}
-          disabled={disabled}
-          title={t('composer.insert')}
-          className={cn(
-            'size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground',
-            'aria-expanded:bg-muted/35 aria-expanded:text-foreground aria-expanded:hover:bg-muted/50',
-            instantHoverMotionClass,
-          )}
-        >
-          <Plus className="size-3.5" aria-hidden />
-        </Button>
-      </DropdownMenuTrigger>
+    <DropdownMenu modal onOpenChange={setMenuOpen}>
+      <Tooltip
+        open={suppressTooltip ? false : undefined}
+        delayDuration={300}
+        disableHoverableContent
+      >
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t('composer.openInsertPanel')}
+              disabled={disabled}
+              className={cn(
+                'size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground',
+                'aria-expanded:bg-muted/35 aria-expanded:text-foreground aria-expanded:hover:bg-muted/50',
+                instantHoverMotionClass,
+              )}
+            >
+              <Plus className="size-3.5" aria-hidden />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={4}>
+          {t('composer.insert')}
+        </TooltipContent>
+      </Tooltip>
       <DropdownMenuContent
         align="start"
         side="top"
