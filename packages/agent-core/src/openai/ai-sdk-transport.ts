@@ -90,6 +90,10 @@ import {
   shouldUseGatewayCodeCompletionProviderOptions,
 } from './gateway-code-completion-thinking.js';
 import {
+  buildGatewayDeepSeekProviderOptions,
+  isGatewayDeepSeekModel,
+} from './gateway-deepseek-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
   isGatewayGoogleGeminiModel,
@@ -921,6 +925,10 @@ function buildAiSdkProviderOptions(
 
   if (isVercelAiGatewayProvider(config) && isGatewayGoogleGeminiModel(config.llmVendor, config.model)) {
     return buildGatewayGoogleProviderOptions(config, openAiReasoningEffort(config));
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayDeepSeekModel(config.llmVendor, config.model)) {
+    return buildGatewayDeepSeekProviderOptions(config);
   }
 
   if (isOpenRouterAnthropicClaudeModel(config.llmVendor, config.model)) {

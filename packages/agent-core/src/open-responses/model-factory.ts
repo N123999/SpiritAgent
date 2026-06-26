@@ -37,6 +37,10 @@ import {
   shouldUseGatewayCodeCompletionProviderOptions,
 } from '../openai/gateway-code-completion-thinking.js';
 import {
+  buildGatewayDeepSeekProviderOptions,
+  isGatewayDeepSeekModel,
+} from '../openai/gateway-deepseek-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
 } from '../openai/gateway-google-thinking.js';
@@ -225,6 +229,10 @@ export function buildResponsesProviderOptions(
 
     if (isGatewayGoogleGeminiModel(config.llmVendor, config.model)) {
       return buildGatewayGoogleProviderOptions(config, reasoningEffort);
+    }
+
+    if (isGatewayDeepSeekModel(config.llmVendor, config.model)) {
+      return buildGatewayDeepSeekProviderOptions(config);
     }
 
     // Gateway v3 language-model 原样转发 providerOptions；OpenAI 路由模型须用 openai 命名空间（见 Vercel AI Gateway reasoning 文档）。

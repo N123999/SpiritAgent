@@ -281,3 +281,22 @@ test('buildResponsesProviderOptions routes gateway code-completion by upstream s
     },
   );
 });
+
+test('buildResponsesProviderOptions disables Gateway DeepSeek V4 thinking via deepseek namespace', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'deepseek/deepseek-v4-pro',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'default',
+      reasoningSummary: 'auto',
+      vendorExtendedThinking: false,
+    }),
+    {
+      deepseek: {
+        thinking: { type: 'disabled' },
+      },
+    },
+  );
+});
