@@ -260,3 +260,24 @@ test('buildResponsesProviderOptions omits reasoning for code-completion OpenAI p
     },
   );
 });
+
+test('buildResponsesProviderOptions routes gateway code-completion by upstream slug', () => {
+  const config = applyCodeCompletionTransportProfile({
+    transportKind: 'open-responses',
+    apiKey: 'test-key',
+    model: 'anthropic/claude-sonnet-4-6',
+    llmVendor: 'vercel-ai-gateway',
+    reasoningEffort: 'high',
+    reasoningSummary: 'detailed',
+  });
+
+  assert.deepEqual(
+    buildResponsesProviderOptions(config as import('./responses-compat.js').OpenResponsesTransportConfig),
+    {
+      anthropic: {
+        thinking: { type: 'disabled' },
+        toolStreaming: true,
+      },
+    },
+  );
+});

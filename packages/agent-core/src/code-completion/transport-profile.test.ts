@@ -188,6 +188,20 @@ test('applyCodeCompletionTransportProfile disables Azure OpenAI reasoning on ope
   assert.equal((result as OpenResponsesTransportConfig).reasoningSummary, 'off');
 });
 
+test('applyCodeCompletionTransportProfile disables Gateway reasoning on open-responses transport', () => {
+  const input: OpenResponsesTransportConfig = {
+    transportKind: 'open-responses',
+    apiKey: 'k',
+    model: 'openai/gpt-5',
+    llmVendor: 'vercel-ai-gateway',
+    reasoningEffort: 'high',
+    reasoningSummary: 'detailed',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal((result as OpenResponsesTransportConfig).reasoningEffort, 'none');
+  assert.equal((result as OpenResponsesTransportConfig).reasoningSummary, 'off');
+});
+
 test('applyCodeCompletionTransportProfile disables Anthropic extended thinking', () => {
   const input: AnthropicTransportConfig = {
     transportKind: 'anthropic',
