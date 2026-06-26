@@ -237,3 +237,19 @@ test('codeCompletionOperationToInlineItemAtCursor rejects delete', () => {
   );
   assert.equal(item, undefined);
 });
+
+test('codeCompletionOperationToInlineItemAtCursor rejects insert duplicating text after cursor', () => {
+  const lineText = '!**/.env.example';
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'insert',
+      startLine: 1,
+      startColumn: 6,
+      endLine: 1,
+      endColumn: 6,
+      text: 'env.example',
+    },
+    { lineText, cursorLine: 1, cursorColumn: 6 },
+  );
+  assert.equal(item, undefined);
+});

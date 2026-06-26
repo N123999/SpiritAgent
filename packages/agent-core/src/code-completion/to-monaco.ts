@@ -45,6 +45,23 @@ export function completionSuffixAtCursor(
   return sanitized;
 }
 
+/** Point insert before non-empty suffix would duplicate text already on the line. */
+export function wouldInsertDuplicateAtCursor(
+  lineText: string,
+  cursorColumn: number,
+  insertText: string,
+): boolean {
+  const sanitized = sanitizeInlineInsertText(insertText);
+  if (sanitized.length === 0) {
+    return true;
+  }
+  const after = lineText.slice(Math.max(0, cursorColumn - 1));
+  if (after.length === 0) {
+    return false;
+  }
+  return after === sanitized || after.startsWith(sanitized) || sanitized.endsWith(after);
+}
+
 function extractSpanFromLine(lineText: string, startColumn: number, endColumn: number): string {
   return lineText.slice(Math.max(0, startColumn - 1), Math.max(0, endColumn - 1));
 }
@@ -67,7 +84,10 @@ export function isCodeCompletionInlineGhostRenderable(
 ): boolean {
   if (operation.kind === 'insert') {
     const suffix = completionSuffixAtCursor(ctx.lineText, ctx.cursorColumn, operation.text ?? '');
-    return suffix.length > 0;
+    if (suffix.length === 0) {
+      return false;
+    }
+    return !wouldInsertDuplicateAtCursor(ctx.lineText, ctx.cursorColumn, operation.text ?? '');
   }
 
   if (operation.kind !== 'replace') {
@@ -100,7 +120,10 @@ export function codeCompletionOperationToInlineItemAtCursor(
 ): InlineCompletionItemSpec | undefined {
   if (operation.kind === 'insert') {
     const insertText = completionSuffixAtCursor(ctx.lineText, ctx.cursorColumn, operation.text ?? '');
-    if (insertText.length === 0) {
+    if (
+      insertText.length === 0 ||
+      wouldInsertDuplicateAtCursor(ctx.lineText, ctx.cursorColumn, operation.text ?? '')
+    ) {
       return undefined;
     }
     return {

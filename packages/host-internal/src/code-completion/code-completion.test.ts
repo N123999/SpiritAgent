@@ -57,6 +57,14 @@ test('buildCodeCompletionTaskPrompt constrains inline replace near cursor', () =
   assert.match(task, /Never duplicate the current line/);
 });
 
+test('buildCodeCompletionTaskPrompt biases toward offering completions', () => {
+  const sections = buildCodeCompletionSystemSections('mini-model');
+  const task = sections[1] ?? '';
+  assert.match(task, /Default to offering a completion/);
+  assert.match(task, /You may complete markdown and docs/);
+  assert.doesNotMatch(task, /continue README\/markdown prose/);
+});
+
 test('buildCodeCompletionUserPrompt includes recent edits block', () => {
   const prompt = buildCodeCompletionUserPrompt({
     context: {
