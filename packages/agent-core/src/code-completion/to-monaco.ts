@@ -14,15 +14,24 @@ export type {
 
 const MAX_INLINE_INSERT_CHARS = 500;
 
-/** Strip newlines and cap length for inline ghost text. */
+/** Normalize and cap inline ghost insert text (may span multiple lines). */
 export function sanitizeInlineInsertText(text: string): string {
-  const firstLine = text.split(/\r?\n/, 1)[0] ?? '';
-  return firstLine.length > MAX_INLINE_INSERT_CHARS
-    ? firstLine.slice(0, MAX_INLINE_INSERT_CHARS)
-    : firstLine;
+  const normalized = text.replace(/\r\n/g, '\n');
+  return normalized.length > MAX_INLINE_INSERT_CHARS
+    ? normalized.slice(0, MAX_INLINE_INSERT_CHARS)
+    : normalized;
 }
 
-/** Keep only the suffix not yet typed at the cursor (for insert ghost + point range). */
+export function inlineInsertContainsNewline(text: string): boolean {
+  return sanitizeInlineInsertText(text).includes('\n');
+}
+
+/** 1-based column immediately after the last character on the line. */
+export function lineEndColumn(lineText: string): number {
+  return lineText.length + 1;
+}
+
+/** Keep only the suffix not yet typed at the cursor (for insert ghost; may include \\n). */
 export function completionSuffixAtCursor(
   lineText: string,
   cursorColumn: number,
@@ -59,11 +68,38 @@ export function wouldInsertDuplicateAtCursor(
   if (after.length === 0) {
     return false;
   }
-  return after === sanitized || after.startsWith(sanitized) || sanitized.endsWith(after);
+  const firstLine = sanitized.split('\n', 1)[0] ?? '';
+  if (firstLine.length === 0) {
+    return false;
+  }
+  return after === firstLine || after.startsWith(firstLine) || firstLine.endsWith(after);
 }
 
 function extractSpanFromLine(lineText: string, startColumn: number, endColumn: number): string {
   return lineText.slice(Math.max(0, startColumn - 1), Math.max(0, endColumn - 1));
+}
+
+function buildInsertInlineRange(
+  cursorLine: number,
+  cursorColumn: number,
+  lineText: string,
+  insertText: string,
+): Pick<InlineCompletionItemSpec, 'startLineNumber' | 'startColumn' | 'endLineNumber' | 'endColumn'> {
+  // Monaco: multiline insertText requires the replace range to end at end-of-line.
+  if (inlineInsertContainsNewline(insertText)) {
+    return {
+      startLineNumber: cursorLine,
+      startColumn: cursorColumn,
+      endLineNumber: cursorLine,
+      endColumn: lineEndColumn(lineText),
+    };
+  }
+  return {
+    startLineNumber: cursorLine,
+    startColumn: cursorColumn,
+    endLineNumber: cursorLine,
+    endColumn: cursorColumn,
+  };
 }
 
 /** Cursor inside operation span or at the span's end column (Monaco inline visibility). */
@@ -108,7 +144,7 @@ export function isCodeCompletionInlineGhostRenderable(
       : '';
   const existing = extractSpanFromLine(lineText, operation.startColumn, operation.endColumn);
   const insertText = sanitizeInlineInsertText(operation.text ?? '');
-  if (insertText.length === 0) {
+  if (insertText.length === 0 || inlineInsertContainsNewline(insertText)) {
     return false;
   }
   return insertText.startsWith(existing);
@@ -127,10 +163,7 @@ export function codeCompletionOperationToInlineItemAtCursor(
       return undefined;
     }
     return {
-      startLineNumber: ctx.cursorLine,
-      startColumn: ctx.cursorColumn,
-      endLineNumber: ctx.cursorLine,
-      endColumn: ctx.cursorColumn,
+      ...buildInsertInlineRange(ctx.cursorLine, ctx.cursorColumn, ctx.lineText, insertText),
       insertText,
     };
   }

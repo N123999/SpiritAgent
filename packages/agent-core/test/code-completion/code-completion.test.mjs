@@ -253,3 +253,25 @@ test('codeCompletionOperationToInlineItemAtCursor rejects insert duplicating tex
   );
   assert.equal(item, undefined);
 });
+
+test('codeCompletionOperationToInlineItemAtCursor maps multi-line insert after block opener', () => {
+  const lineText = 'if (15 === 15) {';
+  const item = codeCompletionOperationToInlineItemAtCursor(
+    {
+      kind: 'insert',
+      startLine: 1,
+      startColumn: 17,
+      endLine: 1,
+      endColumn: 17,
+      text: '\n  console.log(15);\n}',
+    },
+    { lineText, cursorLine: 1, cursorColumn: 17 },
+  );
+  assert.deepEqual(item, {
+    startLineNumber: 1,
+    startColumn: 17,
+    endLineNumber: 1,
+    endColumn: 17,
+    insertText: '\n  console.log(15);\n}',
+  });
+});

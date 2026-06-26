@@ -51,9 +51,10 @@ test('buildCodeCompletionSystemSections excludes tool agent host sections', () =
 test('buildCodeCompletionTaskPrompt constrains inline replace near cursor', () => {
   const sections = buildCodeCompletionSystemSections('mini-model');
   const task = sections[1] ?? '';
-  assert.match(task, /single-line/);
+  assert.match(task, /Inline replace preview is single-line only/);
   assert.match(task, /prefix of the replacement text/);
   assert.match(task, /include the cursor/);
+  assert.match(task, /Insert may be multi-line ghost text/);
   assert.match(task, /Never duplicate the current line/);
 });
 
