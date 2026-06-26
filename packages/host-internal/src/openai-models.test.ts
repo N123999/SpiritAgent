@@ -546,6 +546,15 @@ test('parseOpenAiCompatibleModelEntriesPayload routes minimax provider to minima
   ]);
 });
 
+test('parseOpenAiCompatibleModelEntriesPayload without provider omits minimax multimodal flags', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload({
+    object: 'list',
+    data: [{ id: 'MiniMax-M3', object: 'model' }],
+  });
+
+  assert.deepEqual(entries, [{ id: 'MiniMax-M3' }]);
+});
+
 test('parseSiliconFlowModelEntriesPayload marks capabilities by list kind', () => {
   const chatEntries = parseSiliconFlowModelEntriesPayload(
     {

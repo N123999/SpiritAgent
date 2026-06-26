@@ -243,13 +243,75 @@ export function mergeNewCatalogModelsIntoConfig(
   return toAdd.length;
 }
 
+function modelMatchesCatalogRefreshScope(
+  model: ModelProfileSnapshot,
+  provider: DesktopModelProvider,
+  transportKind: DesktopTransportKind,
+  apiBase: string,
+): boolean {
+  if (model.provider !== provider) {
+    return false;
+  }
+  if (resolveDesktopTransportKind(model) !== transportKind) {
+    return false;
+  }
+  const modelBase = model.apiBase.trim() || DEFAULT_API_BASE;
+  return normalizeOpenAiApiBase(modelBase) === normalizeOpenAiApiBase(apiBase);
+}
+
+/** 将目录中新标注的 image/video 能力补写到仅存 chat 的已入库模型（如 MiniMax-M3）。 */
+export function syncExistingModelCapabilitiesFromCatalog(
+  config: DesktopConfigFile,
+  profile: ModelProfileSnapshot,
+  result: LoadedPreviewModelsResult,
+): number {
+  const provider = profile.provider;
+  if (!provider) {
+    return 0;
+  }
+
+  const transportKind = resolveDesktopTransportKind(profile);
+  const apiBase = profile.apiBase.trim() || DEFAULT_API_BASE;
+  const catalogEntries = previewCatalogMapForTransport({
+    provider,
+    transportKind,
+    modelCatalog: result.modelCatalog,
+  });
+  if (catalogEntries.size === 0) {
+    return 0;
+  }
+
+  let updated = 0;
+  for (const model of config.models) {
+    if (!modelMatchesCatalogRefreshScope(model, provider, transportKind, apiBase)) {
+      continue;
+    }
+    const catalogEntry = catalogEntries.get(model.name);
+    if (!catalogEntry?.capabilities?.length) {
+      continue;
+    }
+    const stored = model.capabilities;
+    const onlyChat = stored?.length === 1 && stored[0] === 'chat';
+    const catalogHasMultimodalInput = catalogEntry.capabilities.some(
+      (capability) => capability === 'image' || capability === 'video',
+    );
+    if (!onlyChat || !catalogHasMultimodalInput) {
+      continue;
+    }
+    model.capabilities = catalogEntry.capabilities;
+    updated += 1;
+  }
+  return updated;
+}
+
 export async function refreshConfiguredModelCatalogsOnStartup(
   config: DesktopConfigFile,
-): Promise<{ attempted: number; refreshed: number; skipped: number; merged: number }> {
+): Promise<{ attempted: number; refreshed: number; skipped: number; merged: number; synced: number }> {
   const targets = collectModelCatalogRefreshTargets(config.models);
   let refreshed = 0;
   let skipped = 0;
   let merged = 0;
+  let synced = 0;
 
   for (const profile of targets) {
     try {
@@ -257,6 +319,7 @@ export async function refreshConfiguredModelCatalogsOnStartup(
       if (result) {
         refreshed += 1;
         merged += mergeNewCatalogModelsIntoConfig(config, profile, result);
+        synced += syncExistingModelCapabilitiesFromCatalog(config, profile, result);
       } else {
         skipped += 1;
       }
@@ -265,5 +328,5 @@ export async function refreshConfiguredModelCatalogsOnStartup(
     }
   }
 
-  return { attempted: targets.length, refreshed, skipped, merged };
+  return { attempted: targets.length, refreshed, skipped, merged, synced };
 }

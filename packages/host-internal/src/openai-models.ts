@@ -1016,6 +1016,10 @@ export async function listProviderModels(
     return listMoonshotModels(options);
   }
 
+  if (options.provider === 'minimax') {
+    return listMinimaxModels(options);
+  }
+
   if (options.provider === 'xiaomi') {
     return listXiaomiModels(options);
   }
@@ -1119,6 +1123,12 @@ export async function listMoonshotModels(
   options: ListOpenAiCompatibleModelIdsOptions,
 ): Promise<ProviderListedModelEntry[]> {
   return listOpenAiCompatibleModelsForProvider(options, 'moonshot-ai');
+}
+
+export async function listMinimaxModels(
+  options: ListOpenAiCompatibleModelIdsOptions,
+): Promise<ProviderListedModelEntry[]> {
+  return listOpenAiCompatibleModelsForProvider(options, 'minimax');
 }
 
 export async function listXiaomiModels(

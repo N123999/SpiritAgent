@@ -1108,13 +1108,13 @@ class DesktopHostService {
             return;
           }
           const summary = await refreshConfiguredModelCatalogsOnStartup(state.config);
-          if (summary.merged > 0) {
+          if (summary.merged > 0 || summary.synced > 0) {
             await saveConfig(state.config);
             if (this.runtime?.isBusy() !== true) {
               await this.refreshRuntime();
             }
           }
-          if (summary.refreshed > 0 || summary.merged > 0) {
+          if (summary.refreshed > 0 || summary.merged > 0 || summary.synced > 0) {
             this.emitLiveSnapshotUpdate();
           }
         });

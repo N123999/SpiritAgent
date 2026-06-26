@@ -6,6 +6,7 @@ import {
   collectModelCatalogRefreshTargets,
   mergeNewCatalogModelsIntoConfig,
   modelCatalogScopeKey,
+  syncExistingModelCapabilitiesFromCatalog,
 } from '../../dist-electron/src/host/model-catalog-startup-refresh.js';
 
 test('providerSupportsModelCatalogListing includes OpenAI and excludes Azure', () => {
@@ -96,4 +97,43 @@ test('mergeNewCatalogModelsIntoConfig appends only new provider-scoped models', 
     ['zai/glm-5.1', 'zai/glm-5.2'],
   );
   assert.equal(config.activeModel, 'zai/glm-5.1');
+});
+
+test('syncExistingModelCapabilitiesFromCatalog upgrades chat-only profiles from catalog', () => {
+  const config = {
+    models: [
+      {
+        name: 'MiniMax-M3',
+        apiBase: 'https://api.minimaxi.com/v1',
+        provider: 'minimax',
+        capabilities: ['chat'],
+        reasoningEffort: 'medium',
+      },
+      {
+        name: 'MiniMax-M2.5',
+        apiBase: 'https://api.minimaxi.com/v1',
+        provider: 'minimax',
+        capabilities: ['chat'],
+        reasoningEffort: 'medium',
+      },
+    ],
+    activeModel: 'MiniMax-M3',
+  };
+
+  const synced = syncExistingModelCapabilitiesFromCatalog(
+    config,
+    config.models[0],
+    {
+      modelIds: ['MiniMax-M3', 'MiniMax-M2.5'],
+      fromCache: false,
+      modelCatalog: [
+        { id: 'MiniMax-M3', capabilities: ['chat', 'image', 'video'] },
+        { id: 'MiniMax-M2.5', capabilities: ['chat'] },
+      ],
+    },
+  );
+
+  assert.equal(synced, 1);
+  assert.deepEqual(config.models[0].capabilities, ['chat', 'image', 'video']);
+  assert.deepEqual(config.models[1].capabilities, ['chat']);
 });
