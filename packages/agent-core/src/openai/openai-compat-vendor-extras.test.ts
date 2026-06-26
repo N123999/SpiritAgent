@@ -65,3 +65,18 @@ test('MiniMax code-completion profile disables thinking via request body extras'
     },
   );
 });
+
+test('Xiaomi code-completion profile disables thinking via request body extras', () => {
+  const config = applyCodeCompletionTransportProfile({
+    apiKey: 'k',
+    model: 'mimo-v2',
+    llmVendor: 'xiaomi',
+  });
+
+  assert.deepEqual(
+    openAiVendorChatCompletionBodyExtras(config as import('./openai-compat.js').OpenAiTransportConfig),
+    {
+      thinking: { type: 'disabled' },
+    },
+  );
+});
