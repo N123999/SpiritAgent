@@ -23,3 +23,22 @@
 .monaco-editor .suggest-preview-text .ghost-text {
   opacity: 0.65;
 }
+
+/* Code completion delete diff: red span in editor, green preview widget. */
+.monaco-editor .spirit-code-completion-delete {
+  background-color: color-mix(in srgb, #f8514966 70%, transparent);
+  text-decoration: line-through;
+}
+
+.spirit-code-completion-delete-preview {
+  margin: 0;
+  padding: 0 2px;
+  border: none;
+  background-color: color-mix(in srgb, #3fb95066 70%, transparent);
+  color: inherit;
+  font-family: var(--monaco-monospace-font, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: var(--monaco-editor-line-height, 18px);
+  white-space: pre;
+  pointer-events: none;
+}
