@@ -264,6 +264,7 @@ export function buildResponsesProviderOptions(
     if (isGatewayZaiModel(config.llmVendor, config.model)) {
       const zaiOptions = buildGatewayZaiProviderOptions(config);
       if (Object.keys(zaiOptions).length > 0) {
+        // Gateway Z.ai 在 open-responses transport 下上游不返回可展示思考流；见 #169。
         return zaiOptions;
       }
     }
