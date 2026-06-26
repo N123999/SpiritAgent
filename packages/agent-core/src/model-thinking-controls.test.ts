@@ -64,11 +64,67 @@ test('DeepSeek R1 has no thinking switch', () => {
   assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
-test('Moonshot uses reasoning effort primary control only', () => {
+test('Moonshot kimi-k2 uses reasoning effort primary control only', () => {
+  const context = {
+    provider: 'moonshot-ai' as const,
+    model: 'kimi-k2',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+});
+
+test('Moonshot kimi-k2.5 supports thinking switch and effort when thinking enabled', () => {
   const context = {
     provider: 'moonshot-ai' as const,
     model: 'kimi-k2.5',
     transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), false);
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
+  assert.equal(shouldPinReasoningEffortToDefault(false, context), true);
+});
+
+test('Moonshot kimi-k2.7-code uses reasoning effort primary control only', () => {
+  const context = {
+    provider: 'moonshot-ai' as const,
+    model: 'kimi-k2.7-code',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+  assert.equal(modelShowsReasoningEffortControl(context, false), true);
+});
+
+test('Moonshot moonshot-v1 uses reasoning effort primary control only', () => {
+  const context = {
+    provider: 'moonshot-ai' as const,
+    model: 'moonshot-v1-8k',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+});
+
+test('Gateway Moonshot kimi-k2.5 supports thinking switch', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'moonshotai/kimi-k2.5',
+    transportKind: 'open-responses' as const,
+  };
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), false);
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
+});
+
+test('Gateway Moonshot kimi-k2.7-code uses reasoning effort primary control', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'moonshotai/kimi-k2.7-code',
+    transportKind: 'open-responses' as const,
   };
   assert.equal(modelUsesReasoningEffortPrimaryControl(context), true);
   assert.equal(modelSupportsThinkingSwitch(context), false);

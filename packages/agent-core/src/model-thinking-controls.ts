@@ -8,6 +8,7 @@ import {
   isXaiReasoningEffortModel,
 } from './reasoning-effort.js';
 import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
+import { isMoonshotThinkingSwitchModel } from './openai/moonshot-thinking-switch.js';
 import {
   isRoutedAnthropicClaudeModel,
   resolveRoutedAnthropicClaudeCapabilities,
@@ -28,7 +29,6 @@ const GATEWAY_REASONING_EFFORT_SLUGS = new Set([
   'openai',
   'google',
   'anthropic',
-  'moonshotai',
   'xai',
 ]);
 
@@ -131,6 +131,9 @@ function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): bo
   if (slug === 'deepseek') {
     return isDeepSeekV4ReasoningEffortModel(context);
   }
+  if (slug === 'moonshotai') {
+    return isMoonshotThinkingSwitchModel(context);
+  }
   return true;
 }
 
@@ -141,7 +144,13 @@ function isGatewayReasoningEffortPrimaryControlModel(
     return false;
   }
   const slug = parseGatewayUpstreamSlug(context.model ?? '');
-  return slug !== undefined && GATEWAY_REASONING_EFFORT_SLUGS.has(slug);
+  if (slug === undefined) {
+    return false;
+  }
+  if (slug === 'moonshotai') {
+    return !isMoonshotThinkingSwitchModel(context);
+  }
+  return GATEWAY_REASONING_EFFORT_SLUGS.has(slug);
 }
 
 /** OpenAI / Reasoning Effort 主控厂商：不显示 Thinking 开关（不含 DeepSeek V4 hybrid 与 Claude switchable）。 */
@@ -162,7 +171,10 @@ export function modelUsesReasoningEffortPrimaryControl(
   if (provider === 'anthropic') {
     return true;
   }
-  if (isXaiReasoningEffortModel(context) || isMoonshotReasoningEffortModel(context)) {
+  if (isXaiReasoningEffortModel(context)) {
+    return true;
+  }
+  if (isMoonshotReasoningEffortModel(context) && !isMoonshotThinkingSwitchModel(context)) {
     return true;
   }
   if (isGoogleReasoningEffortModel(context)) {
@@ -194,6 +206,9 @@ export function modelSupportsThinkingSwitch(context?: ModelReasoningEffortContex
     return true;
   }
   if (isDeepSeekThinkingSwitchModel(context)) {
+    return true;
+  }
+  if (isMoonshotThinkingSwitchModel(context)) {
     return true;
   }
   if (isGatewayThinkingSwitchModel(context)) {

@@ -94,6 +94,11 @@ import {
   isGatewayDeepSeekModel,
 } from './gateway-deepseek-thinking.js';
 import {
+  buildGatewayMoonshotProviderOptions,
+  isGatewayMoonshotModel,
+  isMoonshotThinkingSwitchModel,
+} from './moonshot-thinking-switch.js';
+import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
   isGatewayGoogleGeminiModel,
@@ -931,6 +936,13 @@ function buildAiSdkProviderOptions(
     return buildGatewayDeepSeekProviderOptions(config);
   }
 
+  if (isVercelAiGatewayProvider(config) && isGatewayMoonshotModel(config.llmVendor, config.model)) {
+    const moonshotOptions = buildGatewayMoonshotProviderOptions(config);
+    if (Object.keys(moonshotOptions).length > 0) {
+      return moonshotOptions;
+    }
+  }
+
   if (isOpenRouterAnthropicClaudeModel(config.llmVendor, config.model)) {
     return {};
   }
@@ -979,6 +991,15 @@ function buildAiSdkProviderOptions(
   }
 
   if (isMoonshotOfficialAiSdkProvider(config)) {
+    const moonshotContext = {
+      provider: 'moonshot-ai' as const,
+      model: config.model,
+      transportKind: 'openai-compatible' as const,
+    };
+    if (!isMoonshotThinkingSwitchModel(moonshotContext)) {
+      return {};
+    }
+
     const moonshotaiOptions = {
       thinking: {
         type: config.vendorExtendedThinking === false ? 'disabled' : 'enabled',

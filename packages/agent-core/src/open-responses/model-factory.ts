@@ -41,6 +41,10 @@ import {
   isGatewayDeepSeekModel,
 } from '../openai/gateway-deepseek-thinking.js';
 import {
+  buildGatewayMoonshotProviderOptions,
+  isGatewayMoonshotModel,
+} from '../openai/moonshot-thinking-switch.js';
+import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
 } from '../openai/gateway-google-thinking.js';
@@ -233,6 +237,13 @@ export function buildResponsesProviderOptions(
 
     if (isGatewayDeepSeekModel(config.llmVendor, config.model)) {
       return buildGatewayDeepSeekProviderOptions(config);
+    }
+
+    if (isGatewayMoonshotModel(config.llmVendor, config.model)) {
+      const moonshotOptions = buildGatewayMoonshotProviderOptions(config);
+      if (Object.keys(moonshotOptions).length > 0) {
+        return moonshotOptions;
+      }
     }
 
     // Gateway v3 language-model 原样转发 providerOptions；OpenAI 路由模型须用 openai 命名空间（见 Vercel AI Gateway reasoning 文档）。
