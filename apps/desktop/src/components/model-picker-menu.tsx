@@ -378,17 +378,18 @@ function ModelPickerTriggerLabel({
       : {}),
     ...(model.transportKind ? { transportKind: model.transportKind } : {}),
   };
-  const showThinkingBadge =
-    modelSupportsThinkingSwitch(modelContext)
-    && resolveModelThinkingEnabled(model.thinkingEnabled);
+  const supportsThinkingSwitch = modelSupportsThinkingSwitch(modelContext);
+  const thinkingEnabled = resolveModelThinkingEnabled(model.thinkingEnabled);
+  const secondaryLabel =
+    supportsThinkingSwitch && !thinkingEnabled
+      ? t("app.modelPickerNotThinking")
+      : modelReasoningEffortLabel(reasoningEffort);
 
   return (
     <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5">
       <span className="min-w-0 truncate">{name}</span>
       <span className={cn("shrink-0", toolCardSecondaryTextClass)}>
-        {showThinkingBadge
-          ? t("app.modelPickerThinking")
-          : modelReasoningEffortLabel(reasoningEffort)}
+        {secondaryLabel}
       </span>
     </span>
   );
