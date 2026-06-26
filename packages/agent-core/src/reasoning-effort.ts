@@ -5,7 +5,7 @@ import {
   resolveGatewayAnthropicClaudeCapabilities,
 } from './openai/gateway-anthropic-thinking.js';
 import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
-import { isGatewayGoogleGeminiModel } from './openai/gateway-google-thinking.js';
+import { isGatewayGoogleGeminiModel, isGoogleGeminiMinimalThinkingLevelModel, isGoogleGeminiThinkingLevelModel } from './openai/gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openai/openrouter-anthropic-reasoning.js';
 import {
   isRoutedAnthropicClaudeModel,
@@ -52,7 +52,7 @@ export type MoonshotReasoningEffort = 'default' | 'minimal' | 'low' | 'medium' |
 
 export type XaiReasoningEffort = 'default' | 'none' | 'low' | 'medium' | 'high';
 
-export type GoogleReasoningEffort = 'default' | 'none' | 'low' | 'medium' | 'high';
+export type GoogleReasoningEffort = 'default' | 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
 export type AnthropicReasoningEffort = 'default' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -109,7 +109,26 @@ export const XAI_REASONING_EFFORT_OPTIONS: ReadonlyArray<
   { value: 'high', label: 'High' },
 ];
 
-export const GOOGLE_REASONING_EFFORT_OPTIONS: ReadonlyArray<
+export const GOOGLE_GEMINI_MINIMAL_REASONING_EFFORT_OPTIONS: ReadonlyArray<
+  ModelReasoningEffortOption<GoogleReasoningEffort>
+> = [
+  { value: 'default', label: 'Default' },
+  { value: 'minimal', label: 'Minimal' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+export const GOOGLE_GEMINI_LEVEL_REASONING_EFFORT_OPTIONS: ReadonlyArray<
+  ModelReasoningEffortOption<GoogleReasoningEffort>
+> = [
+  { value: 'default', label: 'Default' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+export const GOOGLE_GEMINI_BUDGET_REASONING_EFFORT_OPTIONS: ReadonlyArray<
   ModelReasoningEffortOption<GoogleReasoningEffort>
 > = [
   { value: 'default', label: 'Default' },
@@ -118,6 +137,8 @@ export const GOOGLE_REASONING_EFFORT_OPTIONS: ReadonlyArray<
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
 ];
+
+export const GOOGLE_REASONING_EFFORT_OPTIONS = GOOGLE_GEMINI_BUDGET_REASONING_EFFORT_OPTIONS;
 
 export const ANTHROPIC_REASONING_EFFORT_OPTIONS: ReadonlyArray<
   ModelReasoningEffortOption<AnthropicReasoningEffort>
@@ -137,7 +158,9 @@ const ALL_REASONING_EFFORT_OPTIONS = dedupeReasoningEffortOptions([
   ...DEEPSEEK_V4_REASONING_EFFORT_OPTIONS,
   ...MOONSHOT_REASONING_EFFORT_OPTIONS,
   ...XAI_REASONING_EFFORT_OPTIONS,
-  ...GOOGLE_REASONING_EFFORT_OPTIONS,
+  ...GOOGLE_GEMINI_MINIMAL_REASONING_EFFORT_OPTIONS,
+  ...GOOGLE_GEMINI_LEVEL_REASONING_EFFORT_OPTIONS,
+  ...GOOGLE_GEMINI_BUDGET_REASONING_EFFORT_OPTIONS,
   ...ANTHROPIC_REASONING_EFFORT_OPTIONS,
 ]);
 
@@ -159,10 +182,6 @@ const MOONSHOT_REASONING_EFFORT_VALUES = new Set<string>(
 
 const XAI_REASONING_EFFORT_VALUES = new Set<string>(
   XAI_REASONING_EFFORT_OPTIONS.map((option) => option.value),
-);
-
-const GOOGLE_REASONING_EFFORT_VALUES = new Set<string>(
-  GOOGLE_REASONING_EFFORT_OPTIONS.map((option) => option.value),
 );
 
 const ANTHROPIC_REASONING_EFFORT_VALUES = new Set<string>(
@@ -244,7 +263,7 @@ export function modelReasoningEffortOptions(
   }
 
   if (isGoogleReasoningEffortModel(context)) {
-    return GOOGLE_REASONING_EFFORT_OPTIONS;
+    return googleReasoningEffortOptionsForContext(context);
   }
 
   if (isAnthropicReasoningEffortModel(context)) {
@@ -363,6 +382,23 @@ export function isGoogleReasoningEffortModel(
     );
 }
 
+export function googleReasoningEffortOptionsForContext(
+  context?: ModelReasoningEffortContext,
+): ReadonlyArray<ModelReasoningEffortOption<ModelReasoningEffort>> {
+  const model = context?.model ?? '';
+  if (isGoogleGeminiMinimalThinkingLevelModel(model)) {
+    return GOOGLE_GEMINI_MINIMAL_REASONING_EFFORT_OPTIONS;
+  }
+  if (isGoogleGeminiThinkingLevelModel(model)) {
+    return GOOGLE_GEMINI_LEVEL_REASONING_EFFORT_OPTIONS;
+  }
+  return GOOGLE_GEMINI_BUDGET_REASONING_EFFORT_OPTIONS;
+}
+
+function googleReasoningEffortValuesForModel(model: string): Set<string> {
+  return new Set(googleReasoningEffortOptionsForContext({ model }).map((option) => option.value));
+}
+
 export function isAnthropicReasoningEffortModel(
   context?: ModelReasoningEffortContext,
 ): boolean {
@@ -458,14 +494,29 @@ function resolveCompatibleModelReasoningEffort(
   }
 
   if (isGoogleReasoningEffortModel(context)) {
+    const model = context?.model ?? '';
     switch (normalized) {
+      case 'none':
+        if (isGoogleGeminiMinimalThinkingLevelModel(model)) {
+          return 'minimal';
+        }
+        if (isGoogleGeminiThinkingLevelModel(model)) {
+          return 'default';
+        }
+        return 'none';
       case 'minimal':
-        return 'low';
+        if (isGoogleGeminiMinimalThinkingLevelModel(model)) {
+          return 'minimal';
+        }
+        if (isGoogleGeminiThinkingLevelModel(model)) {
+          return 'default';
+        }
+        return 'none';
       case 'xhigh':
       case 'max':
         return 'high';
       default:
-        return GOOGLE_REASONING_EFFORT_VALUES.has(normalized) ? normalized : 'default';
+        return googleReasoningEffortValuesForModel(model).has(normalized) ? normalized : 'default';
     }
   }
 
