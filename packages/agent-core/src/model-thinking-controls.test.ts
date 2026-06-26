@@ -159,6 +159,42 @@ test('Gateway Z.ai glm-4 has no thinking switch', () => {
   assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
+test('direct MiniMax M3 supports thinking switch', () => {
+  const context = {
+    provider: 'minimax' as const,
+    model: 'MiniMax-M3',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+});
+
+test('direct MiniMax M2.5 has no thinking switch', () => {
+  const context = {
+    provider: 'minimax' as const,
+    model: 'MiniMax-M2.5',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+});
+
+test('Gateway MiniMax M3 supports thinking switch', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'minimax/minimax-m3',
+    transportKind: 'open-responses' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+});
+
+test('Gateway MiniMax M2.5 has no thinking switch', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'minimax/MiniMax-M2.5',
+    transportKind: 'open-responses' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+});
+
 test('OpenAI uses reasoning effort primary control only', () => {
   const context = {
     provider: 'openai' as const,

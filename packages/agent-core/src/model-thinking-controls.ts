@@ -8,6 +8,7 @@ import {
   isXaiReasoningEffortModel,
 } from './reasoning-effort.js';
 import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
+import { isMinimaxM3ThinkingSwitchModel } from './openai/gateway-minimax-thinking.js';
 import { isMoonshotThinkingSwitchModel } from './openai/moonshot-thinking-switch.js';
 import { isXiaomiThinkingSwitchEligibleModel } from './openai/gateway-xiaomi-thinking.js';
 import { isZaiThinkingSwitchEligibleModel } from './openai/gateway-zai-thinking.js';
@@ -20,7 +21,6 @@ import {
 const DIRECT_THINKING_SWITCH_PROVIDERS = new Set([
   'z-ai',
   'zhipu-ai',
-  'minimax',
   'xiaomi',
   'volcengine',
   'alibaba',
@@ -142,6 +142,9 @@ function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): bo
   if (slug === 'zai') {
     return isZaiThinkingSwitchEligibleModel(context.model ?? '');
   }
+  if (slug === 'minimax') {
+    return isMinimaxM3ThinkingSwitchModel(context.model ?? '');
+  }
   return true;
 }
 
@@ -210,6 +213,9 @@ export function modelSupportsThinkingSwitch(context?: ModelReasoningEffortContex
   }
 
   const provider = context?.provider;
+  if (provider === 'minimax') {
+    return isMinimaxM3ThinkingSwitchModel(context?.model ?? '');
+  }
   if (provider !== undefined && DIRECT_THINKING_SWITCH_PROVIDERS.has(provider)) {
     return true;
   }
