@@ -86,6 +86,7 @@ function applyOpenResponsesCodeCompletionProfile(
     profiled.llmVendor === 'openai'
     || profiled.llmVendor === 'xai'
     || profiled.llmVendor === 'openrouter'
+    || profiled.llmVendor === 'azure'
   ) {
     return {
       ...profiled,

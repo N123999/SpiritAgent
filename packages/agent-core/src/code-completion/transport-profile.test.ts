@@ -78,8 +78,8 @@ test('applyCodeCompletionTransportProfile disables xAI reasoning on openai-compa
 test('applyCodeCompletionTransportProfile leaves unrelated openai-compatible vendors unchanged except profile tag', () => {
   const input: OpenAiTransportConfig = {
     apiKey: 'k',
-    model: 'glm-4.7',
-    llmVendor: 'z-ai',
+    model: 'local-model',
+    llmVendor: 'custom',
     reasoningEffort: 'medium',
   };
   const result = applyCodeCompletionTransportProfile(input);
@@ -142,6 +142,21 @@ test('applyCodeCompletionTransportProfile disables OpenRouter non-Claude reasoni
   const result = applyCodeCompletionTransportProfile(input);
   assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'none');
   assert.deepEqual(openAiVendorChatCompletionBodyExtras(result as OpenAiTransportConfig), {});
+});
+
+test('applyCodeCompletionTransportProfile disables Azure OpenAI reasoning on open-responses transport', () => {
+  const input: OpenResponsesTransportConfig = {
+    transportKind: 'open-responses',
+    apiKey: 'k',
+    model: 'gpt-5',
+    llmVendor: 'azure',
+    responsesProvider: 'azure',
+    reasoningEffort: 'high',
+    reasoningSummary: 'detailed',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal((result as OpenResponsesTransportConfig).reasoningEffort, 'none');
+  assert.equal((result as OpenResponsesTransportConfig).reasoningSummary, 'off');
 });
 
 test('applyCodeCompletionTransportProfile disables Anthropic extended thinking', () => {
