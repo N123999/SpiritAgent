@@ -1,10 +1,7 @@
-import {
-  WORKSPACE_FILE_CHIP_CLASS,
-  WORKSPACE_FILE_CHIP_ICON_CLASS,
-} from "@/lib/workspace-file-chip-styles";
+export const ASK_CHIP_CLASS =
+  "inline-flex items-center gap-1 rounded-md border border-emerald-200/90 bg-emerald-50 px-1.5 py-0.5 text-xs font-medium leading-none text-emerald-900 select-none align-middle mx-0.5 dark:border-emerald-700/60 dark:bg-emerald-950 dark:text-emerald-300";
 
-export const ASK_CHIP_CLASS = WORKSPACE_FILE_CHIP_CLASS;
-export const ASK_CHIP_ICON_CLASS = WORKSPACE_FILE_CHIP_ICON_CLASS;
+export const ASK_CHIP_ICON_CLASS = "text-emerald-600 dark:text-emerald-400";
 
 export function makeAskChipNode(doc: Document, label = "Ask"): HTMLElement {
   const span = doc.createElement("span");
