@@ -101,7 +101,23 @@ test('buildCodeCompletionTransportConfig disables DeepSeek thinking', () => {
   assert.equal(config.vendorExtendedThinking, false);
 });
 
-test('buildCodeCompletionTransportConfig leaves non-DeepSeek unchanged', () => {
+test('buildCodeCompletionTransportConfig disables Moonshot AI thinking', () => {
+  const config = buildCodeCompletionTransportConfig({
+    apiKey: 'test-key',
+    model: 'kimi-k2.5',
+    baseUrl: 'https://api.moonshot.ai/v1',
+    workspaceRoot,
+    profile: {
+      provider: 'moonshot-ai',
+      capabilities: ['chat'],
+      reasoningEffort: 'default',
+    },
+  });
+  assert.equal(config.llmVendor, 'moonshot-ai');
+  assert.equal(config.vendorExtendedThinking, false);
+});
+
+test('buildCodeCompletionTransportConfig leaves other providers unchanged', () => {
   const config = buildCodeCompletionTransportConfig({
     apiKey: 'test-key',
     model: 'gpt-4o-mini',

@@ -405,12 +405,27 @@ export function buildPrimaryTransportConfig(input: {
   };
 }
 
-/** 代码补全走轻量模型；DeepSeek 默认关闭 thinking 以降低延迟。 */
+/** DeepSeek / Moonshot 等 Anthropic 风格 thinking 默认开启；代码补全需显式 disabled 以降低延迟。 */
+const CODE_COMPLETION_DISABLE_VENDOR_EXTENDED_THINKING_PROVIDERS: readonly DesktopModelProvider[] = [
+  'deepseek',
+  'moonshot-ai',
+];
+
+export function codeCompletionShouldDisableVendorExtendedThinking(
+  provider: DesktopModelProvider | undefined,
+): boolean {
+  return provider !== undefined && CODE_COMPLETION_DISABLE_VENDOR_EXTENDED_THINKING_PROVIDERS.includes(provider);
+}
+
+/** 代码补全走轻量模型；DeepSeek / Moonshot AI 默认关闭 thinking 以降低延迟。 */
 export function buildCodeCompletionTransportConfig(
   input: Parameters<typeof buildPrimaryTransportConfig>[0],
 ): LlmTransportConfig {
   const transportConfig = buildPrimaryTransportConfig(input);
-  if (input.profile?.provider !== 'deepseek' || !isOpenAiCompatibleTransportConfig(transportConfig)) {
+  if (
+    !codeCompletionShouldDisableVendorExtendedThinking(input.profile?.provider) ||
+    !isOpenAiCompatibleTransportConfig(transportConfig)
+  ) {
     return transportConfig;
   }
   return {
