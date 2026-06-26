@@ -198,13 +198,21 @@ pub(crate) fn model_add_alibaba_site_id_from_choice(selected: usize) -> &'static
 pub(crate) fn model_add_alibaba_site_requires_workspace_id(site: &str) -> bool {
     matches!(
         site.trim(),
-        "ap-southeast-1" | "eu-central-1"
+        "cn-beijing" | "ap-southeast-1" | "eu-central-1"
     )
 }
 
 fn model_add_alibaba_compatible_site_api_base(site: &str, workspace_id: &str) -> Option<String> {
     match site.trim() {
-        "cn-beijing" => Some("https://dashscope.aliyuncs.com/compatible-mode/v1".to_string()),
+        "cn-beijing" => {
+            let workspace = workspace_id.trim();
+            if workspace.is_empty() {
+                return None;
+            }
+            Some(format!(
+                "https://{workspace}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+            ))
+        }
         "us-virginia" => Some("https://dashscope-us.aliyuncs.com/compatible-mode/v1".to_string()),
         "ap-southeast-1" => {
             let workspace = workspace_id.trim();
@@ -521,20 +529,28 @@ mod tests {
         assert_eq!(
             super::model_add_alibaba_site_api_base(
                 "cn-beijing",
-                "",
+                "ws-cn",
                 ModelTransportKind::OpenAiCompatible,
             )
             .as_deref(),
-            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+            Some("https://ws-cn.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
         );
         assert_eq!(
             super::model_add_alibaba_site_api_base(
                 "cn-beijing",
-                "",
+                "ws-cn",
                 ModelTransportKind::Anthropic,
             )
             .as_deref(),
-            Some("https://dashscope.aliyuncs.com/apps/anthropic")
+            Some("https://ws-cn.cn-beijing.maas.aliyuncs.com/apps/anthropic")
+        );
+        assert!(
+            super::model_add_alibaba_site_api_base(
+                "cn-beijing",
+                "",
+                ModelTransportKind::OpenAiCompatible,
+            )
+            .is_none()
         );
         assert_eq!(
             super::model_add_alibaba_site_api_base(
