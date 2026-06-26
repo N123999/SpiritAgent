@@ -210,6 +210,7 @@ export function openAiVendorChatCompletionBodyExtras(
     || config.llmVendor === 'z-ai'
     || config.llmVendor === 'zhipu-ai'
     || config.llmVendor === 'minimax'
+    || config.llmVendor === 'xiaomi'
   ) {
     const enabled = config.vendorExtendedThinking !== false;
     extras.thinking = { type: enabled ? 'enabled' : 'disabled' };
