@@ -282,6 +282,9 @@ export function useMonacoCodeCompletion(options: {
 
     const provider = monaco.languages.registerInlineCompletionsProvider(languageId, {
       provideInlineCompletions: (model, position) => {
+        if (model !== editor.getModel()) {
+          return { items: [] };
+        }
         const cache = cacheRef.current;
         if (
           cache &&
