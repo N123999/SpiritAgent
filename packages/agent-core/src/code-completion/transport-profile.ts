@@ -95,6 +95,7 @@ function applyOpenResponsesCodeCompletionProfile(
     || profiled.llmVendor === 'xai'
     || profiled.llmVendor === 'openrouter'
     || profiled.llmVendor === 'azure'
+    || profiled.llmVendor === 'vercel-ai-gateway'
   ) {
     return {
       ...profiled,

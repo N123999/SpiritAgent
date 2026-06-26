@@ -33,6 +33,10 @@ import {
   isGatewayAnthropicClaudeModel,
 } from '../openai/gateway-anthropic-thinking.js';
 import {
+  buildGatewayCodeCompletionProviderOptions,
+  shouldUseGatewayCodeCompletionProviderOptions,
+} from '../openai/gateway-code-completion-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
 } from '../openai/gateway-google-thinking.js';
@@ -211,6 +215,10 @@ export function buildResponsesProviderOptions(
   const reasoningSummary = resolveOpenResponsesReasoningSummary(config);
 
   if (shouldUseGatewayWebSearch(config)) {
+    if (shouldUseGatewayCodeCompletionProviderOptions(config)) {
+      return buildGatewayCodeCompletionProviderOptions(config);
+    }
+
     if (isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
       return buildGatewayAnthropicProviderOptions(config);
     }
