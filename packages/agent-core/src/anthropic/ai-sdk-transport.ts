@@ -60,8 +60,10 @@ import {
 import {
   isMinimaxAnthropicConfig,
   mapMinimaxAnthropicImageContentPart,
+  mapMinimaxAnthropicVideoContentPart,
 } from './minimax-multimodal.js';
 import { pathToLocalVideoReference } from '../openai/openai-multimodal-media-path.js';
+import { resolveMinimaxVideoInAnthropicMessages } from '../openai/minimax-video-messages.js';
 
 type AnthropicToolCall = {
   toolCallId: string;
@@ -132,6 +134,11 @@ export class AiSdkAnthropicTransport
       request,
     );
     const normalizedMessages = prepareAnthropicToolStateMessages(config, messages);
+    await resolveMinimaxVideoInAnthropicMessages(
+      config,
+      normalizedMessages,
+      anthropicTransportAssetRoot(config),
+    );
     const requestTrace = buildAnthropicRequestTrace(config, 1, normalizedMessages, []);
 
     try {
@@ -168,6 +175,11 @@ export class AiSdkAnthropicTransport
 
     const requestMessages = nextState.messages.map((message) => cloneJsonValue(message));
     const normalizedRequestMessages = prepareAnthropicToolStateMessages(config, requestMessages);
+    await resolveMinimaxVideoInAnthropicMessages(
+      config,
+      normalizedRequestMessages,
+      anthropicTransportAssetRoot(config),
+    );
     const normalizedTools = normalizeToolDefinitions(tools);
     const requestTrace = buildAnthropicRequestTrace(
       config,
@@ -244,6 +256,11 @@ export class AiSdkAnthropicTransport
 
     const requestMessages = nextState.messages.map((message) => cloneJsonValue(message));
     const normalizedRequestMessages = prepareAnthropicToolStateMessages(config, requestMessages);
+    await resolveMinimaxVideoInAnthropicMessages(
+      config,
+      normalizedRequestMessages,
+      anthropicTransportAssetRoot(config),
+    );
     const normalizedTools = normalizeToolDefinitions(tools);
     const requestTrace = buildAnthropicRequestTrace(
       config,
@@ -507,6 +524,12 @@ function prepareAnthropicToolStateMessages(
   );
 }
 
+function anthropicTransportAssetRoot(
+  config: Pick<AnthropicTransportConfig, 'workspaceRoot'>,
+): string {
+  return config.workspaceRoot ?? process.cwd();
+}
+
 function stripAnthropicUserMediaWithoutCapability(
   messages: JsonValue[],
   config: Pick<AnthropicTransportConfig, 'modelCapabilities'>,
@@ -630,6 +653,13 @@ function userContentToAiSdkContent(
             parts.push(mapMinimaxAnthropicImageContentPart(part.image_url.url));
           } else {
             parts.push({ type: 'image', image: part.image_url.url });
+          }
+        }
+        break;
+      case 'video_url':
+        if (isJsonObject(part.video_url) && typeof part.video_url.url === 'string') {
+          if (isMinimaxAnthropicConfig(config)) {
+            parts.push(mapMinimaxAnthropicVideoContentPart(part.video_url.url));
           }
         }
         break;
