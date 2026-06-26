@@ -259,12 +259,22 @@ test('resolveProviderConnectApiBase prefers site apiBase for alibaba', () => {
   assert.equal(providerSupportsSiteSelection('alibaba'), true);
   assert.equal(defaultProviderConnectSite('alibaba'), 'cn-beijing');
   assert.equal(
-    resolveProviderConnectApiBase('alibaba', 'openai-compatible', { site: 'cn-beijing' }),
-    'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    resolveProviderConnectApiBase('alibaba', 'openai-compatible', {
+      site: 'cn-beijing',
+      workspaceId: 'ws-cn',
+    }),
+    'https://ws-cn.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
   );
   assert.equal(
-    resolveProviderConnectApiBase('alibaba', 'anthropic', { site: 'cn-beijing' }),
-    'https://dashscope.aliyuncs.com/apps/anthropic',
+    resolveProviderConnectApiBase('alibaba', 'anthropic', {
+      site: 'cn-beijing',
+      workspaceId: 'ws-cn',
+    }),
+    'https://ws-cn.cn-beijing.maas.aliyuncs.com/apps/anthropic',
+  );
+  assert.throws(
+    () => resolveProviderConnectApiBase('alibaba', 'openai-compatible', { site: 'cn-beijing' }),
+    /requires a workspace ID/,
   );
   assert.equal(
     resolveProviderConnectApiBase('alibaba', 'open-responses', { site: 'us-virginia' }),

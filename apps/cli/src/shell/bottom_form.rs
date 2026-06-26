@@ -2575,6 +2575,8 @@ mod tests {
         }
         sync_model_add_form_fields(&mut form);
         assert_eq!(form.fields.len(), 6);
+        form.selected_field = 4;
+        insert_text(&mut form, "ws-cn");
         form.selected_field = 5;
         insert_text(&mut form, "sk-ali");
 
@@ -2582,10 +2584,13 @@ mod tests {
         assert_eq!(parsed.provider, ModelProvider::Alibaba);
         assert!(parsed.bulk);
         assert!(parsed.model_name.is_none());
-        assert_eq!(parsed.api_base, "https://dashscope.aliyuncs.com/compatible-mode/v1");
+        assert_eq!(
+            parsed.api_base,
+            "https://ws-cn.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+        );
         assert_eq!(parsed.api_key, "sk-ali");
         assert_eq!(parsed.provider_site.as_deref(), Some("cn-beijing"));
-        assert!(parsed.alibaba_workspace_id.is_none());
+        assert_eq!(parsed.alibaba_workspace_id.as_deref(), Some("ws-cn"));
     }
 
     #[test]

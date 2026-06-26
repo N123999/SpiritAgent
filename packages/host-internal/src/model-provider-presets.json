@@ -97,7 +97,8 @@
         "cn-beijing": {
           "labelKey": "cn-beijing",
           "fallbackLabel": "cn-beijing",
-          "apiBase": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+          "apiBase": "https://{workspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+          "requiresWorkspaceId": true
         },
         "ap-southeast-1": {
           "labelKey": "ap-southeast-1",
