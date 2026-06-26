@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   isDeepSeekReasoningOnlyModel,
+  modelShowsReasoningEffortControl,
   modelSupportsReasoningEffortWhileThinking,
   modelSupportsThinkingSwitch,
   modelUsesReasoningEffortPrimaryControl,
@@ -20,6 +21,33 @@ test('DeepSeek V4 supports thinking switch and effort while thinking', () => {
   assert.equal(modelSupportsThinkingSwitch(context), true);
   assert.equal(modelSupportsReasoningEffortWhileThinking(context), true);
   assert.equal(shouldPinReasoningEffortToDefault(true, context), false);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
+});
+
+test('DeepSeek non-V4 thinking switch has no reasoning effort options', () => {
+  const context = {
+    provider: 'deepseek' as const,
+    model: 'deepseek-chat',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelSupportsReasoningEffortWhileThinking(context), false);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
+});
+
+test('Z.ai shows reasoning effort when thinking enabled', () => {
+  const context = {
+    provider: 'z-ai' as const,
+    model: 'glm-4.7',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
+  assert.equal(shouldPinReasoningEffortToDefault(true, context), false);
+  assert.equal(shouldPinReasoningEffortToDefault(false, context), true);
 });
 
 test('DeepSeek R1 has no thinking switch', () => {
@@ -52,15 +80,15 @@ test('OpenAI uses reasoning effort primary control only', () => {
   assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
-test('Z.ai supports thinking switch with pinned effort when thinking on', () => {
+test('Gateway OpenAI slug uses reasoning effort primary control', () => {
   const context = {
-    provider: 'z-ai' as const,
-    model: 'glm-4.7',
-    transportKind: 'openai-compatible' as const,
+    provider: 'vercel-ai-gateway' as const,
+    model: 'openai/gpt-5.5',
+    transportKind: 'open-responses' as const,
   };
-  assert.equal(modelSupportsThinkingSwitch(context), true);
-  assert.equal(modelSupportsReasoningEffortWhileThinking(context), false);
-  assert.equal(shouldPinReasoningEffortToDefault(true, context), true);
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+  assert.equal(modelShowsReasoningEffortControl(context, false), true);
 });
 
 test('Gateway Claude slug uses reasoning effort primary control', () => {
@@ -80,6 +108,18 @@ test('Gateway DeepSeek slug supports thinking switch', () => {
     transportKind: 'openai-compatible' as const,
   };
   assert.equal(modelSupportsThinkingSwitch(context), true);
+});
+
+test('Gateway DeepSeek V4 shows reasoning effort when thinking enabled', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'deepseek/deepseek-v4-pro',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelSupportsReasoningEffortWhileThinking(context), true);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, false), false);
 });
 
 test('resolveVendorExtendedThinking maps enabled default to undefined wire omission', () => {

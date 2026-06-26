@@ -63,6 +63,16 @@ function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): bo
   return !GATEWAY_REASONING_EFFORT_SLUGS.has(slug);
 }
 
+function isGatewayReasoningEffortPrimaryControlModel(
+  context?: ModelReasoningEffortContext,
+): boolean {
+  if (context?.provider !== 'vercel-ai-gateway') {
+    return false;
+  }
+  const slug = parseGatewayUpstreamSlug(context.model ?? '');
+  return slug !== undefined && GATEWAY_REASONING_EFFORT_SLUGS.has(slug);
+}
+
 /** OpenAI / Reasoning Effort 主控厂商：不显示 Thinking 开关（不含 DeepSeek V4 hybrid）。 */
 export function modelUsesReasoningEffortPrimaryControl(
   context?: ModelReasoningEffortContext,
@@ -82,6 +92,9 @@ export function modelUsesReasoningEffortPrimaryControl(
     return true;
   }
   if (isGoogleReasoningEffortModel(context)) {
+    return true;
+  }
+  if (isGatewayReasoningEffortPrimaryControlModel(context)) {
     return true;
   }
   if (isGatewayAnthropicClaudeReasoningModel(context) || isOpenRouterAnthropicClaudeReasoningModel(context)) {
@@ -113,11 +126,28 @@ export function modelSupportsThinkingSwitch(context?: ModelReasoningEffortContex
   return false;
 }
 
-/** DeepSeek V4 等 hybrid：thinking 开启时 Reasoning Effort 仍可调。 */
+/** DeepSeek V4：仅 thinking 开启时 API 接受 reasoning_effort（high/max）。 */
 export function modelSupportsReasoningEffortWhileThinking(
   context?: ModelReasoningEffortContext,
 ): boolean {
   return isDeepSeekV4ReasoningEffortModel(context);
+}
+
+/**
+ * Inspector：是否允许展示 Reasoning Effort 控件。
+ * Reasoning Effort 主控模型始终展示；thinking 型模型仅在 thinking 开启时展示（具体档位由 modelReasoningEffortOptions 决定）。
+ */
+export function modelShowsReasoningEffortControl(
+  context?: ModelReasoningEffortContext,
+  thinkingEnabled?: boolean,
+): boolean {
+  if (modelUsesReasoningEffortPrimaryControl(context)) {
+    return true;
+  }
+  if (!modelSupportsThinkingSwitch(context)) {
+    return false;
+  }
+  return thinkingEnabled !== false;
 }
 
 export function resolveVendorExtendedThinking(thinkingEnabled?: boolean): boolean | undefined {
@@ -127,22 +157,15 @@ export function resolveVendorExtendedThinking(thinkingEnabled?: boolean): boolea
   return undefined;
 }
 
+/** thinking 关闭时剥离 reasoning effort；开启时保留用户所选档位（含 Z.ai / DeepSeek V4）。 */
 export function shouldPinReasoningEffortToDefault(
   thinkingEnabled: boolean | undefined,
   context?: ModelReasoningEffortContext,
 ): boolean {
-  if (thinkingEnabled === false) {
-    return true;
+  if (modelUsesReasoningEffortPrimaryControl(context)) {
+    return false;
   }
-  if (thinkingEnabled === undefined || thinkingEnabled === true) {
-    if (modelSupportsReasoningEffortWhileThinking(context)) {
-      return false;
-    }
-    if (modelSupportsThinkingSwitch(context)) {
-      return true;
-    }
-  }
-  return false;
+  return thinkingEnabled === false;
 }
 
 export function resolveModelThinkingEnabled(thinkingEnabled?: boolean): boolean {

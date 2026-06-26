@@ -38,7 +38,7 @@ test('buildPrimaryTransportConfig disables DeepSeek V4 thinking and strips effor
   assert.equal(config.reasoningEffort, undefined);
 });
 
-test('buildPrimaryTransportConfig pins Z.ai effort when thinking enabled', () => {
+test('buildPrimaryTransportConfig wires Z.ai effort when thinking enabled', () => {
   const config = buildPrimaryTransportConfig({
     apiKey: 'test-key',
     model: 'glm-4.7',
@@ -52,7 +52,7 @@ test('buildPrimaryTransportConfig pins Z.ai effort when thinking enabled', () =>
     },
   });
   assert.equal(config.vendorExtendedThinking, undefined);
-  assert.equal(config.reasoningEffort, undefined);
+  assert.equal(config.reasoningEffort, 'medium');
 });
 
 test('buildPrimaryTransportConfig disables Alibaba thinking when thinkingEnabled false', () => {

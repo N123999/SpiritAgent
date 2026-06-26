@@ -615,6 +615,7 @@
     "filterModels": "Filter models",
     "modelPickerContextTokens": "Context: {{value}} tokens",
     "modelPickerReasoningEffort": "Reasoning Effort",
+    "modelPickerThinking": "Thinking",
     "noModelsAvailable": "No models available",
     "abort": "Abort",
     "send": "Send",

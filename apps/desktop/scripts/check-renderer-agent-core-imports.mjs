@@ -17,6 +17,7 @@ const RENDERER_SAFE_AGENT_CORE_SUBPATHS = new Set([
   'shell-tool-result',
   'code-completion-to-monaco',
   'code-completion-delete-diff',
+  'model-thinking-controls',
 ]);
 
 const RENDERER_SCAN_ROOTS = ['components', 'hooks', 'lib', 'App.tsx'];

@@ -1898,6 +1898,25 @@ export function useDesktopRuntime() {
       settingsRef.current = next;
       setSettings(next);
 
+      const optimisticModels = snapshot.config.models.map((item) => {
+        if (item.name !== name) {
+          return item;
+        }
+        if (enabled) {
+          const { thinkingEnabled: _removed, ...rest } = item;
+          return rest;
+        }
+        return { ...item, thinkingEnabled: false as const };
+      });
+      applySnapshot({
+        ...snapshot,
+        config: {
+          ...snapshot.config,
+          activeModel: model.name,
+          models: optimisticModels,
+        },
+      });
+
       try {
         const res = await api.updateConfig({
           ...updateConfigFromSettingsForm(next, {
@@ -1911,6 +1930,7 @@ export function useDesktopRuntime() {
         setRuntimeError("");
         setSettings((current) => ({ ...current, apiKey: "" }));
       } catch (error) {
+        applySnapshot(snapshot);
         setRuntimeError(describeError(error));
       }
     },

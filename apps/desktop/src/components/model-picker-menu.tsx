@@ -98,6 +98,7 @@ export type ModelPickerMenuProps = {
   onOpenChange?(open: boolean): void;
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect?(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
+  onModelThinkingEnabledSelect?(name: string, enabled: boolean): void;
   triggerClassName?: string;
   menuContentClassName?: string;
 };
@@ -112,6 +113,7 @@ export function ModelPickerMenu({
   onOpenChange,
   onModelSelect,
   onModelReasoningEffortSelect,
+  onModelThinkingEnabledSelect,
   triggerClassName,
   menuContentClassName,
 }: ModelPickerMenuProps) {
@@ -316,10 +318,11 @@ export function ModelPickerMenu({
             )}
           >
             {(activeItem) => {
-              const model = activeItem as ModelPickerItem | null;
-              if (!model) {
+              const hoveredModel = activeItem as ModelPickerItem | null;
+              if (!hoveredModel) {
                 return null;
               }
+              const model = models.find((entry) => entry.name === hoveredModel.name) ?? hoveredModel;
               const group = filteredModelGroups.find((entry) =>
                 entry.items.some((item) => item.name === model.name),
               );
@@ -338,6 +341,9 @@ export function ModelPickerMenu({
                     onModelSelect(modelName);
                     setModelFilter("");
                     setModelMenuOpen(false);
+                  }}
+                  onThinkingEnabledChange={(modelName, enabled) => {
+                    onModelThinkingEnabledSelect?.(modelName, enabled);
                   }}
                 />
               );

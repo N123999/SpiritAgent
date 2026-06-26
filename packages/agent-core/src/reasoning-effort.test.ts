@@ -34,6 +34,27 @@ test('deepseek v4 models normalize medium to high and preserve max', () => {
   );
 });
 
+test('deepseek non-v4 models do not expose openai-compatible reasoning effort options', () => {
+  const options = modelReasoningEffortOptions({
+    provider: 'deepseek',
+    model: 'deepseek-chat',
+    transportKind: 'openai-compatible',
+  });
+  assert.deepEqual(options, [{ value: 'default', label: 'Default' }]);
+});
+
+test('gateway deepseek v4 models use deepseek v4 reasoning effort options', () => {
+  const options = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'deepseek/deepseek-v4-pro',
+    transportKind: 'openai-compatible',
+  });
+  assert.deepEqual(
+    options.map((option) => option.value),
+    ['default', 'high', 'max'],
+  );
+});
+
 test('anthropic models normalize max to high transport effort', () => {
   assert.equal(
     resolveAnthropicTransportReasoningEffortForContext('max', {

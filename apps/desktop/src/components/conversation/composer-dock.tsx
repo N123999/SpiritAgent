@@ -345,6 +345,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                 loopEnabled={snapshot?.conversation.loopEnabled === true}
                 onModelSelect={runtime.setActiveModel}
                 onModelReasoningEffortSelect={runtime.setModelReasoningEffort}
+                onModelThinkingEnabledSelect={runtime.setModelThinkingEnabled}
                 onAgentModeChange={onComposerAgentModeChange}
                 onLoopEnabledChange={(enabled) => {
                   void runtime.setLoopEnabled(enabled);

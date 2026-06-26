@@ -4,6 +4,7 @@ import {
   isGatewayAnthropicClaudeModel,
   resolveGatewayAnthropicClaudeCapabilities,
 } from './openai/gateway-anthropic-thinking.js';
+import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
 import { isGatewayGoogleGeminiModel } from './openai/gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openai/openrouter-anthropic-reasoning.js';
 import { resolveRoutedAnthropicClaudeCapabilities } from './openai/routed-anthropic-claude-capabilities.js';
@@ -219,6 +220,11 @@ export function defaultModelReasoningEffort(
 export function modelReasoningEffortOptions(
   context?: ModelReasoningEffortContext,
 ): ReadonlyArray<ModelReasoningEffortOption<ModelReasoningEffort>> {
+  // DeepSeek 路由（直连或 Gateway deepseek/*）仅 V4 在 thinking 模式下有 reasoning_effort。
+  if (isDeepSeekRouteContext(context) && !isDeepSeekV4ReasoningEffortModel(context)) {
+    return [{ value: 'default', label: 'Default' }];
+  }
+
   if (isDeepSeekV4ReasoningEffortModel(context)) {
     return DEEPSEEK_V4_REASONING_EFFORT_OPTIONS;
   }
@@ -320,8 +326,10 @@ export function modelReasoningEffortLabel(value: ModelReasoningEffort): string {
 export function isDeepSeekV4ReasoningEffortModel(
   context?: ModelReasoningEffortContext,
 ): boolean {
-  return context?.provider === 'deepseek' &&
-    DEEPSEEK_V4_REASONING_MODEL_IDS.has(normalizeModelId(context.model));
+  if (!isDeepSeekRouteContext(context)) {
+    return false;
+  }
+  return DEEPSEEK_V4_REASONING_MODEL_IDS.has(normalizeDeepSeekModelId(context?.model ?? ''));
 }
 
 export function isMoonshotReasoningEffortModel(
@@ -373,6 +381,20 @@ export function isOpenRouterAnthropicClaudeReasoningModel(
 
 function normalizeModelId(value: unknown): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function normalizeDeepSeekModelId(model: string): string {
+  const normalized = normalizeModelId(model);
+  const slashIndex = normalized.lastIndexOf('/');
+  return slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized;
+}
+
+function isDeepSeekRouteContext(context?: ModelReasoningEffortContext): boolean {
+  if (context?.provider === 'deepseek') {
+    return true;
+  }
+  return context?.provider === 'vercel-ai-gateway'
+    && parseGatewayUpstreamSlug(context.model ?? '') === 'deepseek';
 }
 
 function resolveCompatibleModelReasoningEffort(
