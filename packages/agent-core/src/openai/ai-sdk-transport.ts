@@ -86,6 +86,10 @@ import {
   isGatewayAnthropicClaudeModel,
 } from './gateway-anthropic-thinking.js';
 import {
+  buildGatewayCodeCompletionProviderOptions,
+  shouldUseGatewayCodeCompletionProviderOptions,
+} from './gateway-code-completion-thinking.js';
+import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
   isGatewayGoogleGeminiModel,
@@ -906,6 +910,10 @@ function createAiSdkOpenAiProvider(config: OpenAiTransportConfig) {
 function buildAiSdkProviderOptions(
   config: OpenAiTransportConfig,
 ): Record<string, JsonObject> {
+  if (shouldUseGatewayCodeCompletionProviderOptions(config)) {
+    return buildGatewayCodeCompletionProviderOptions(config);
+  }
+
   if (isVercelAiGatewayProvider(config) && isGatewayAnthropicClaudeModel(config.llmVendor, config.model)) {
     return buildGatewayAnthropicProviderOptions(config);
   }
