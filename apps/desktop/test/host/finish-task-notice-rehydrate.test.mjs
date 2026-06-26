@@ -6,8 +6,8 @@ import {
   rehydrateFinishTaskNoticesInTimeline,
 } from '../../dist-electron/src/host/finish-task-notice-rehydrate.js';
 import { DesktopMessageTimeline } from '../../dist-electron/src/host/message-timeline.js';
-import { restoreMessagesFromArchive } from '../../dist-electron/src/host/message-ordering.js';
-import { buildArchiveAssistantAuxFromConversation } from '../../dist-electron/src/host/sessions.js';
+import { buildArchiveAssistantAuxFromConversation, restoreMessagesFromArchive } from '../../dist-electron/src/host/sessions.js';
+import { buildV2StoredSession } from './chat-schema-fixture.mjs';
 
 test('buildArchiveAssistantAuxFromConversation persists finishTaskNotice', () => {
   const messages = [
@@ -29,21 +29,41 @@ test('buildArchiveAssistantAuxFromConversation persists finishTaskNotice', () =>
   ]);
 });
 
-test('restoreMessagesFromArchive restores finishTaskNotice from assistantAux', () => {
-  const restored = restoreMessagesFromArchive({
-    messages: [
-      { role: 'user', content: 'hello' },
-      { role: 'assistant', content: 'hi there' },
-    ],
-    assistantAux: [
-      {
-        messageIndex: 1,
-        finishTaskNotice: '任务以 已问候 完成。',
+test('restoreMessagesFromArchive restores finishTaskNotice from v2 timeline', () => {
+  const restored = restoreMessagesFromArchive(buildV2StoredSession({
+    desktopMessageTimeline: [{
+      turnId: 1,
+      createdOrder: 1,
+      userRow: {
+        rowId: 'row-user',
+        messageId: 1,
+        turnId: 1,
+        kind: 'user',
+        createdOrder: 0,
+        content: 'hello',
+        pending: false,
       },
-    ],
-    llmHistory: [],
-    subagentSessions: [],
-  });
+      segments: [{
+        segmentId: 1,
+        turnId: 1,
+        kind: 'initial',
+        status: 'completed',
+        createdOrder: 1,
+        rows: [{
+          rowId: 'row-assistant',
+          messageId: 2,
+          turnId: 1,
+          segmentId: 1,
+          kind: 'assistant-text',
+          section: 'after-tools',
+          createdOrder: 2,
+          content: 'hi there',
+          pending: false,
+          aux: { finishTaskNotice: '任务以 已问候 完成。' },
+        }],
+      }],
+    }],
+  }));
 
   assert.equal(restored[1]?.aux?.finishTaskNotice, '任务以 已问候 完成。');
 });

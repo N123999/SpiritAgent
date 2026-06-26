@@ -430,7 +430,6 @@ import { DesktopConversationSnapshotView } from './conversation-snapshot.js';
 import { buildDesktopSnapshot, buildModelCatalogHints } from './snapshot.js';
 import {
   applyToolCallSummaryCopy,
-  restoreMessagesFromArchive,
 } from './message-ordering.js';
 import {
   mapPendingAuxState,
@@ -2466,7 +2465,6 @@ class DesktopHostService {
     const restored = restoreStoredSessionState({
       filePath: sessionPath,
       loaded,
-      fallbackMessages: restoreMessagesFromArchive(loaded),
     });
     const synced = this.sessionRegistry.reloadWarmBundleFromRestoredIfIdle(
       sessionPath,

@@ -1,7 +1,16 @@
 import path from 'node:path';
 
 import type { ChatArchive } from '@spirit-agent/core';
-import { timelineRuntimeSnapshotToMessages } from './chat-schema.js';
+import {
+  CHAT_SCHEMA_VERSION,
+  hydrateTimelineSnapshotFromPersistence,
+  normalizeTimelineSnapshotForPersistence,
+  timelinePersistedSnapshotToMessages,
+  timelineRuntimeSnapshotToMessages,
+  type PersistedDesktopTimelineTurnSnapshot,
+  validateTimelineSnapshotV2,
+} from './chat-schema.js';
+import type { StoredDesktopSession } from './contracts.js';
 
 import type {
   ActiveSessionSnapshot,
@@ -12,8 +21,9 @@ import type {
 import { extractActivePlanPathFromLlmHistory, normalizeApprovalLevel } from '@spirit-agent/host-internal';
 import type { ApprovalLevel } from '@spirit-agent/host-internal';
 import type { QueuedUserTurn } from './message-queue.js';
-import type { SessionTitleSource, StoredDesktopSession } from './contracts.js';
+import type { SessionTitleSource } from './contracts.js';
 import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
+import { DesktopMessageTimeline } from './message-timeline.js';
 import type { SessionBundle } from './session-bundle.js';
 import { isSessionBundleBusy } from './direct-media-turn.js';
 import {
@@ -23,7 +33,6 @@ import {
   shouldHideEmptyPendingAssistantSnapshot,
 } from './message-ordering.js';
 import { cloneArchiveHistory, cloneArchiveSubagentSessions } from './service-utils.js';
-import { cloneSubagentDesktopMessagesRecord } from './subagent-conversation-projection.js';
 import { createDesktopRewindMetadata, type StoredDesktopRewindMetadata } from './rewind.js';
 
 export const EPHEMERAL_COMMIT_SESSION_PREFIX = 'ephemeral://commit-message/';
@@ -141,12 +150,10 @@ export function restoreEphemeralSessionState(record: EphemeralSessionRecord): Re
 export function restoreStoredSessionState(input: {
   filePath: string;
   loaded: StoredDesktopSession;
-  fallbackMessages: ConversationMessageSnapshot[];
 }): RestoredSessionState {
-  const messages = input.loaded.desktopMessages
-    ? cloneConversationMessages(input.loaded.desktopMessages)
-    : cloneConversationMessages(input.fallbackMessages);
-  const desktopMessageTimeline = tryCloneDesktopMessageTimeline(input.loaded.desktopMessageTimeline);
+  validateTimelineSnapshotV2(input.loaded.desktopMessageTimeline);
+  const runtimeTimeline = hydrateTimelineSnapshotFromPersistence(input.loaded.desktopMessageTimeline);
+  const messages = timelinePersistedSnapshotToMessages(input.loaded.desktopMessageTimeline);
   const storedActivePlanPath = typeof input.loaded.activePlanPath === 'string'
     ? input.loaded.activePlanPath.trim()
     : '';
@@ -155,7 +162,7 @@ export function restoreStoredSessionState(input: {
     : extractActivePlanPathFromLlmHistory(input.loaded.llmHistory);
   return {
     messages,
-    ...(desktopMessageTimeline ? { desktopMessageTimeline } : {}),
+    desktopMessageTimeline: runtimeTimeline,
     activeSession: {
       filePath: path.resolve(input.filePath),
       displayName: input.loaded.sessionDisplayName ?? deriveDisplayNameFromMessages(messages),
@@ -171,10 +178,10 @@ export function restoreStoredSessionState(input: {
       ? { sessionTitleSource: input.loaded.sessionTitleSource }
       : {}),
     ...(input.loaded.contextUsage ? { contextUsage: { ...input.loaded.contextUsage } } : {}),
-    ...(input.loaded.subagentDesktopMessages
+    ...(input.loaded.subagentDesktopTimelines
       ? {
-          subagentDesktopMessagesBySessionId: cloneSubagentDesktopMessagesRecord(
-            input.loaded.subagentDesktopMessages,
+          subagentDesktopMessagesBySessionId: cloneSubagentTimelinesRecord(
+            input.loaded.subagentDesktopTimelines,
           ),
         }
       : {}),
@@ -185,28 +192,33 @@ export function restoreStoredSessionState(input: {
 }
 
 export function buildStoredDesktopSession(input: {
-  archive: ChatArchive;
+  llmHistory: ChatArchive['llmHistory'];
+  subagentSessions?: ChatArchive['subagentSessions'];
   savedAtUnixMs?: number;
   sessionDisplayName: string;
   sessionTitleSource?: SessionTitleSource;
   workspaceRoot: string;
   gitBranch?: string;
   activePlanPath?: string;
-  desktopMessages: ConversationMessageSnapshot[];
-  desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
+  desktopMessageTimeline: DesktopTimelineTurnSnapshot[];
   rewind: StoredDesktopRewindMetadata;
   loopEnabled: boolean;
   approvalLevel: ApprovalLevel;
   contextUsage?: ConversationContextUsageSnapshot;
-  subagentDesktopMessages?: Record<string, ConversationMessageSnapshot[]>;
+  subagentDesktopTimelines?: Record<string, PersistedDesktopTimelineTurnSnapshot[]>;
   queuedUserTurns?: QueuedUserTurn[];
   automationId?: string;
   automationRunId?: string;
 }): StoredDesktopSession {
+  const desktopMessageTimeline = normalizeTimelineSnapshotForPersistence(input.desktopMessageTimeline);
+  validateTimelineSnapshotV2(desktopMessageTimeline);
   return {
-    ...input.archive,
+    chatSchemaVersion: CHAT_SCHEMA_VERSION,
+    llmHistory: input.llmHistory,
+    ...(input.subagentSessions?.length ? { subagentSessions: input.subagentSessions } : {}),
     loopEnabled: input.loopEnabled,
     approvalLevel: input.approvalLevel,
+    desktopMessageTimeline,
     savedAtUnixMs: input.savedAtUnixMs ?? Date.now(),
     sessionDisplayName: input.sessionDisplayName,
     ...(input.sessionTitleSource ? { sessionTitleSource: input.sessionTitleSource } : {}),
@@ -215,13 +227,9 @@ export function buildStoredDesktopSession(input: {
     ...(input.automationId ? { automationId: input.automationId } : {}),
     ...(input.automationRunId ? { automationRunId: input.automationRunId } : {}),
     ...(input.activePlanPath ? { activePlanPath: input.activePlanPath } : {}),
-    desktopMessages: sanitizeConversationMessagesForPersistence(input.desktopMessages),
-    ...(input.desktopMessageTimeline
-      ? { desktopMessageTimeline: cloneDesktopMessageTimeline(input.desktopMessageTimeline) }
-      : {}),
     rewind: input.rewind,
     ...(input.contextUsage ? { contextUsage: { ...input.contextUsage } } : {}),
-    ...(input.subagentDesktopMessages ? { subagentDesktopMessages: input.subagentDesktopMessages } : {}),
+    ...(input.subagentDesktopTimelines ? { subagentDesktopTimelines: input.subagentDesktopTimelines } : {}),
     ...(input.queuedUserTurns?.length
       ? { queuedUserTurns: cloneQueuedUserTurns(input.queuedUserTurns) }
       : {}),
@@ -315,6 +323,12 @@ export function nextMessageIdFromMessages(messages: ConversationMessageSnapshot[
   return Math.max(0, ...messages.map((message) => message.id)) + 1;
 }
 
+export function restoreMessagesFromArchive(
+  archive: StoredDesktopSession,
+): ConversationMessageSnapshot[] {
+  return timelinePersistedSnapshotToMessages(archive.desktopMessageTimeline);
+}
+
 export function deriveDisplayNameFromSeed(seed: string): string {
   const trimmed = seed.trim();
   if (!trimmed) {
@@ -334,6 +348,44 @@ function cloneConversationMessages(
   messages: ConversationMessageSnapshot[],
 ): ConversationMessageSnapshot[] {
   return messages.map((message) => ({ ...message }));
+}
+
+function cloneSubagentTimelinesRecord(
+  record: Record<string, PersistedDesktopTimelineTurnSnapshot[]>,
+): Map<string, ConversationMessageSnapshot[]> {
+  const next = new Map<string, ConversationMessageSnapshot[]>();
+  for (const [sessionId, timeline] of Object.entries(record)) {
+    next.set(sessionId, timelinePersistedSnapshotToMessages(timeline));
+  }
+  return next;
+}
+
+export function serializeSubagentTimelinesFromMessages(
+  record: Map<string, ConversationMessageSnapshot[]>,
+): Record<string, PersistedDesktopTimelineTurnSnapshot[]> | undefined {
+  if (record.size === 0) {
+    return undefined;
+  }
+  const serialized: Record<string, PersistedDesktopTimelineTurnSnapshot[]> = {};
+  for (const [sessionId, messages] of record.entries()) {
+    if (messages.length === 0) {
+      continue;
+    }
+    let nextMessageId = 1;
+    const timeline = DesktopMessageTimeline.fromMessages(messages, {
+      allocateMessageId: () => nextMessageId++,
+      reserveMessageId: (messageId) => {
+        if (messageId >= nextMessageId) {
+          nextMessageId = messageId + 1;
+        }
+      },
+    });
+    const persisted = normalizeTimelineSnapshotForPersistence(timeline.snapshot());
+    if (persisted.length > 0) {
+      serialized[sessionId] = persisted;
+    }
+  }
+  return Object.keys(serialized).length > 0 ? serialized : undefined;
 }
 
 function tryCloneDesktopMessageTimeline(

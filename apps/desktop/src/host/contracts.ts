@@ -1,13 +1,12 @@
 import type { ChatArchive } from '@spirit-agent/core';
 import type { HostToolRequest, ApprovalLevel } from '@spirit-agent/host-internal';
-import type { DesktopTimelineTurnSnapshot } from './message-timeline.js';
+import type { PersistedDesktopTimelineTurnSnapshot } from './chat-schema.js';
 import type { StoredDesktopRewindMetadata } from './rewind.js';
 
 import type {
   CommitChangesRequest,
   AskQuestionsQuestionSpec,
   ConversationContextUsageSnapshot,
-  ConversationMessageSnapshot,
 } from '../types.js';
 
 export type HostCommandName =
@@ -121,20 +120,22 @@ export type DesktopToolRequest = HostToolRequest<AskQuestionsQuestionSpec>;
 
 export type SessionTitleSource = 'seed' | 'llm';
 
-export interface StoredDesktopSession extends ChatArchive {
-  chatSchemaVersion?: 2;
+export interface StoredDesktopSession {
+  chatSchemaVersion: 2;
+  llmHistory: ChatArchive['llmHistory'];
+  subagentSessions?: ChatArchive['subagentSessions'];
+  loopEnabled?: boolean;
+  approvalLevel?: ApprovalLevel;
+  desktopMessageTimeline: PersistedDesktopTimelineTurnSnapshot[];
   savedAtUnixMs: number;
   sessionDisplayName?: string;
   sessionTitleSource?: SessionTitleSource;
   workspaceRoot?: string;
   gitBranch?: string;
   activePlanPath?: string;
-  desktopMessages?: ConversationMessageSnapshot[];
-  desktopMessageTimeline?: DesktopTimelineTurnSnapshot[];
   rewind?: StoredDesktopRewindMetadata;
-  approvalLevel?: ApprovalLevel;
   contextUsage?: ConversationContextUsageSnapshot;
-  subagentDesktopMessages?: Record<string, ConversationMessageSnapshot[]>;
+  subagentDesktopTimelines?: Record<string, PersistedDesktopTimelineTurnSnapshot[]>;
   queuedUserTurns?: import('./message-queue.js').QueuedUserTurn[];
   automationId?: string;
   automationRunId?: string;

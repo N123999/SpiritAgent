@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import { SessionRegistry } from '../../dist-electron/src/host/session-registry.js';
 import { restoreStoredSessionState } from '../../dist-electron/src/host/sessions.js';
+import { buildV2StoredSession } from './chat-schema-fixture.mjs';
 import {
   isProvisionalSessionPath,
   provisionalNewSessionPath,
@@ -13,14 +14,7 @@ test('SessionRegistry tracks active bundle after upsertFromRestored', () => {
   const registry = new SessionRegistry();
   const restored = restoreStoredSessionState({
     filePath: 'D:/SpiritAgent/chats/test-session.json',
-    loaded: {
-      llmHistory: [],
-      subagentSessions: [],
-      desktopMessages: [
-        { id: 1, role: 'user', content: 'hello', pending: false },
-      ],
-    },
-    fallbackMessages: [],
+    loaded: buildV2StoredSession({ userContent: 'hello' }),
   });
 
   const bundle = registry.upsertFromRestored(
@@ -121,12 +115,7 @@ test('SessionRegistry upsertFromRestored finds bundle after rekey and keeps runt
 
   const stale = restoreStoredSessionState({
     filePath: sessionPath,
-    loaded: {
-      llmHistory: [],
-      subagentSessions: [],
-      desktopMessages: [{ id: 1, role: 'user', content: 'stale', pending: false }],
-    },
-    fallbackMessages: [],
+    loaded: buildV2StoredSession({ userContent: 'stale' }),
   });
   registry.upsertFromRestored(
     'D:/SpiritAgent/repo',
@@ -147,12 +136,7 @@ test('SessionRegistry upsertFromRestored does not clobber bundle with attached r
   const filePath = 'D:/SpiritAgent/chats/session-live.json';
   const live = restoreStoredSessionState({
     filePath,
-    loaded: {
-      llmHistory: [],
-      subagentSessions: [],
-      desktopMessages: [{ id: 1, role: 'user', content: 'live turn', pending: false }],
-    },
-    fallbackMessages: [],
+    loaded: buildV2StoredSession({ userContent: 'live turn' }),
   });
   const bundle = registry.upsertFromRestored(
     'D:/SpiritAgent/repo',
@@ -172,12 +156,7 @@ test('SessionRegistry upsertFromRestored does not clobber bundle with attached r
 
   const staleDisk = restoreStoredSessionState({
     filePath,
-    loaded: {
-      llmHistory: [],
-      subagentSessions: [],
-      desktopMessages: [{ id: 1, role: 'user', content: 'stale from disk', pending: false }],
-    },
-    fallbackMessages: [],
+    loaded: buildV2StoredSession({ userContent: 'stale from disk' }),
   });
   registry.upsertFromRestored(
     'D:/SpiritAgent/repo',
@@ -201,12 +180,7 @@ test('SessionRegistry beginNewActive keeps prior bundle in memory', () => {
   const filePath = 'D:/SpiritAgent/chats/session-a.json';
   const restored = restoreStoredSessionState({
     filePath,
-    loaded: {
-      llmHistory: [],
-      subagentSessions: [],
-      desktopMessages: [{ id: 1, role: 'user', content: 'keep me', pending: false }],
-    },
-    fallbackMessages: [],
+    loaded: buildV2StoredSession({ userContent: 'keep me' }),
   });
   registry.upsertFromRestored(
     'D:/SpiritAgent/repo',

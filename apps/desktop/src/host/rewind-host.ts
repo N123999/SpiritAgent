@@ -20,7 +20,11 @@ import {
   type DesktopRewindCheckpointSnapshot,
 } from './rewind.js';
 import type { DesktopMessageTimeline } from './message-timeline.js';
-import { sanitizeConversationMessagesForPersistence } from './sessions.js';
+import {
+  hydrateTimelineSnapshotFromPersistence,
+  normalizeTimelineSnapshotForPersistence,
+  timelinePersistedSnapshotToMessages,
+} from './chat-schema.js';
 import {
   archiveBeforeLastUser,
   cloneArchiveHistory,
@@ -53,7 +57,10 @@ export interface RewindHostContext {
   resolveTodoSessionKeyForBundle(bundle: SessionBundle): string;
   cancelTodoClearing(sessionKey: string): void;
   refreshTodoSnapshotForBundle(bundle: SessionBundle): Promise<void>;
-  createMessageTimelineFromMessages(messages: ConversationMessageSnapshot[]): DesktopMessageTimeline;
+  createMessageTimelineFromMessages(
+    messages: ConversationMessageSnapshot[],
+    timelineSnapshot?: import('./message-timeline.js').DesktopTimelineTurnSnapshot[],
+  ): DesktopMessageTimeline;
   resetStreamingPlacementState(full: boolean): void;
 }
 
@@ -157,18 +164,21 @@ export async function recordRewindCheckpoint(
       } satisfies ChatArchive;
   const sessionKey = ctx.resolveTodoSessionKeyForBundle(ctx.activeBundle());
   const currentTodos = cloneHostTodoRecords(await listSessionTodos(sessionKey));
+  const desktopMessageTimeline = normalizeTimelineSnapshotForPersistence(
+    ctx.activeBundle().messageTimeline.snapshot(),
+  );
   await saveRewindCheckpointSnapshot(
     spiritAgentDataDir(),
     ctx.activeBundle().rewind.sessionId,
     checkpoint.id,
     {
       archive,
-      desktopMessages: sanitizeConversationMessagesForPersistence(desktopMessages),
+      desktopMessageTimeline,
       todos: currentTodos,
       ...(beforeUserCheckpoint
         ? {
             beforeArchive: cloneChatArchive(beforeUserCheckpoint.archive),
-            beforeDesktopMessages: beforeUserCheckpoint.desktopMessages.map((message) => ({ ...message })),
+            beforeDesktopMessageTimeline: beforeUserCheckpoint.desktopMessageTimeline,
             ...(beforeUserCheckpoint.todos
               ? { beforeTodos: cloneHostTodoRecords(beforeUserCheckpoint.todos) }
               : {}),
@@ -211,7 +221,9 @@ export async function buildRewindCheckpointSnapshot(
   const todos = cloneHostTodoRecords(await listSessionTodos(sessionKey));
   return {
     archive,
-    desktopMessages: sanitizeConversationMessagesForPersistence(desktopMessages),
+    desktopMessageTimeline: normalizeTimelineSnapshotForPersistence(
+      ctx.activeBundle().messageTimeline.snapshot(),
+    ),
     todos,
   };
 }
@@ -223,10 +235,15 @@ export function restoreBeforeRewindCheckpoint(
 ): void {
   ctx.requireState();
   const archive = snapshot.beforeArchive ?? archiveBeforeLastUser(snapshot.archive);
-  const desktopMessages = snapshot.beforeDesktopMessages ?? snapshot.desktopMessages.slice(0, -1);
+  const timeline = snapshot.beforeDesktopMessageTimeline
+    ?? snapshot.desktopMessageTimeline.slice(0, -1);
+  const desktopMessages = timelinePersistedSnapshotToMessages(timeline);
 
   ctx.activeBundle().messages = desktopMessages.map((message) => ({ ...message }));
-  ctx.activeBundle().messageTimeline = ctx.createMessageTimelineFromMessages(ctx.activeBundle().messages);
+  ctx.activeBundle().messageTimeline = ctx.createMessageTimelineFromMessages(
+    ctx.activeBundle().messages,
+    hydrateTimelineSnapshotFromPersistence(timeline),
+  );
   ctx.activeBundle().archiveHistory = cloneArchiveHistory(archive.llmHistory);
   ctx.activeBundle().archiveSubagentSessions = cloneArchiveSubagentSessions(archive.subagentSessions ?? []);
   ctx.activeBundle().loopEnabled = archive.loopEnabled === true;
