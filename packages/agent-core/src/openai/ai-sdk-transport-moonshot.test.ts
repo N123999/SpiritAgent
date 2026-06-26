@@ -99,7 +99,7 @@ test('Moonshot transport uses official provider trace kind and base URL', async 
   }
 });
 
-test('Moonshot code-completion profile sends thinking.type disabled via provider options', async () => {
+test('Moonshot code-completion profile sends thinking.type disabled without reasoning_effort', async () => {
   let capturedBody: Record<string, unknown> | undefined;
   setLlmFetchTransportOverrideForTests(async (_input, init) => {
     capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -123,6 +123,7 @@ test('Moonshot code-completion profile sends thinking.type disabled via provider
       model: 'kimi-k2.5',
       baseUrl: 'https://api.moonshot.cn/v1',
       llmVendor: 'moonshot-ai',
+      reasoningEffort: 'high',
       workspaceRoot: process.cwd(),
     }) as import('./openai-compat.js').OpenAiTransportConfig;
 
@@ -133,6 +134,7 @@ test('Moonshot code-completion profile sends thinking.type disabled via provider
     });
 
     assert.deepEqual(capturedBody?.thinking, { type: 'disabled' });
+    assert.equal(capturedBody?.reasoning_effort, undefined);
   } finally {
     setLlmFetchTransportOverrideForTests(undefined);
   }

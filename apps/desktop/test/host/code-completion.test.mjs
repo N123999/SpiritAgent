@@ -94,10 +94,11 @@ test('buildCodeCompletionTransportConfig disables DeepSeek thinking', () => {
     profile: {
       provider: 'deepseek',
       capabilities: ['chat'],
-      reasoningEffort: 'default',
+      reasoningEffort: 'high',
     },
   });
   assert.equal(config.llmVendor, 'deepseek');
+  assert.equal(config.reasoningEffort, 'default');
   assert.equal(config.vendorExtendedThinking, false);
   assert.equal(config.transportRequestProfile, 'code-completion');
 });
@@ -111,10 +112,11 @@ test('buildCodeCompletionTransportConfig disables Moonshot AI thinking', () => {
     profile: {
       provider: 'moonshot-ai',
       capabilities: ['chat'],
-      reasoningEffort: 'default',
+      reasoningEffort: 'high',
     },
   });
   assert.equal(config.llmVendor, 'moonshot-ai');
+  assert.equal(config.reasoningEffort, 'default');
   assert.equal(config.vendorExtendedThinking, false);
   assert.equal(config.transportRequestProfile, 'code-completion');
 });

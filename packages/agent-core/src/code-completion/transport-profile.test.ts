@@ -18,14 +18,16 @@ test('isCodeCompletionTransportProfile matches code-completion only', () => {
   assert.equal(isCodeCompletionTransportProfile({}), false);
 });
 
-test('applyCodeCompletionTransportProfile tags openai-compatible and disables DeepSeek thinking', () => {
+test('applyCodeCompletionTransportProfile disables DeepSeek thinking', () => {
   const input: OpenAiTransportConfig = {
     apiKey: 'k',
     model: 'deepseek-v4-flash',
     llmVendor: 'deepseek',
+    reasoningEffort: 'high',
   };
   const result = applyCodeCompletionTransportProfile(input);
   assert.equal(result.transportRequestProfile, 'code-completion');
+  assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'default');
   assert.equal((result as OpenAiTransportConfig).vendorExtendedThinking, false);
 });
 
@@ -34,9 +36,11 @@ test('applyCodeCompletionTransportProfile disables Moonshot thinking', () => {
     apiKey: 'k',
     model: 'kimi-k2.5',
     llmVendor: 'moonshot-ai',
+    reasoningEffort: 'high',
   };
   const result = applyCodeCompletionTransportProfile(input);
   assert.equal(result.transportRequestProfile, 'code-completion');
+  assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'default');
   assert.equal((result as OpenAiTransportConfig).vendorExtendedThinking, false);
 });
 
