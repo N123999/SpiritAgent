@@ -41,7 +41,7 @@ function applyOpenAiCompatibleCodeCompletionProfile(
 ): OpenAiTransportConfig {
   const profiled = withCodeCompletionProfile(config);
   const vendor = profiled.llmVendor;
-  if (vendor === 'openai') {
+  if (vendor === 'openai' || vendor === 'xai') {
     return {
       ...profiled,
       reasoningEffort: 'none',
@@ -75,7 +75,7 @@ function applyOpenResponsesCodeCompletionProfile(
   config: OpenResponsesTransportConfig,
 ): OpenResponsesTransportConfig {
   const profiled = withCodeCompletionProfile(config);
-  if (profiled.llmVendor === 'openai') {
+  if (profiled.llmVendor === 'openai' || profiled.llmVendor === 'xai') {
     return {
       ...profiled,
       reasoningEffort: 'none',
