@@ -92,6 +92,7 @@ import {
 } from './gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openrouter-anthropic-reasoning.js';
 import { generateSiliconFlowImage } from '../image-generation/siliconflow-backend.js';
+import { isCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 import { generateVideoWithRouter } from '../video-generation/router.js';
 import { getLlmFetch } from '../llm-fetch.js';
 import { createAlibabaChatCompletionsAwareFetch } from '../open-responses/alibaba-chat-completions-fetch.js';
@@ -1005,6 +1006,25 @@ function buildAiSdkProviderOptions(
 
     return {
       vertex: vertexOptions as JsonObject,
+    };
+  }
+
+  if (isOpenAiOfficialAiSdkProvider(config)) {
+    const reasoningEffort = openAiReasoningEffort(config) as
+      | OpenAICompatibleLanguageModelChatOptions['reasoningEffort']
+      | undefined;
+    const openaiOptions: JsonObject = {};
+    if (reasoningEffort !== undefined) {
+      openaiOptions.reasoningEffort = reasoningEffort;
+    }
+    if (isCodeCompletionTransportProfile(config) && reasoningEffort === 'none') {
+      openaiOptions.reasoningSummary = 'off';
+    }
+    if (Object.keys(openaiOptions).length === 0) {
+      return {};
+    }
+    return {
+      openai: openaiOptions as JsonObject,
     };
   }
 

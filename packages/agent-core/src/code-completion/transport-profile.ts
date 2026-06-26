@@ -35,6 +35,12 @@ function applyOpenAiCompatibleCodeCompletionProfile(
 ): OpenAiTransportConfig {
   const profiled = withCodeCompletionProfile(config);
   const vendor = profiled.llmVendor;
+  if (vendor === 'openai') {
+    return {
+      ...profiled,
+      reasoningEffort: 'none',
+    };
+  }
   if (vendor !== undefined && OPENAI_COMPAT_THINKING_TYPE_VENDORS.has(vendor)) {
     return {
       ...profiled,
@@ -53,7 +59,15 @@ function applyAnthropicCodeCompletionProfile(
 function applyOpenResponsesCodeCompletionProfile(
   config: OpenResponsesTransportConfig,
 ): OpenResponsesTransportConfig {
-  return withCodeCompletionProfile(config);
+  const profiled = withCodeCompletionProfile(config);
+  if (profiled.llmVendor === 'openai') {
+    return {
+      ...profiled,
+      reasoningEffort: 'none',
+      reasoningSummary: 'off',
+    };
+  }
+  return profiled;
 }
 
 function applyBedrockCodeCompletionProfile(

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildResponsesGenerateTools, buildResponsesProviderOptions } from './model-factory.js';
+import { applyCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 
 const hostTool = {
   type: 'function',
@@ -235,4 +236,27 @@ test('buildResponsesProviderOptions maps azure provider options', () => {
       reasoningSummary: 'auto',
     },
   });
+});
+
+test('buildResponsesProviderOptions omits reasoning for code-completion OpenAI profile', () => {
+  const config = applyCodeCompletionTransportProfile({
+    transportKind: 'open-responses',
+    apiKey: 'test-key',
+    model: 'gpt-5',
+    llmVendor: 'openai',
+    responsesProvider: 'openai',
+    reasoningEffort: 'high',
+    reasoningSummary: 'detailed',
+  });
+
+  assert.deepEqual(
+    buildResponsesProviderOptions(config as import('./responses-compat.js').OpenResponsesTransportConfig),
+    {
+      openai: {
+        store: false,
+        truncation: 'disabled',
+        reasoningEffort: 'none',
+      },
+    },
+  );
 });

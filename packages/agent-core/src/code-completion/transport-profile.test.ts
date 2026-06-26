@@ -38,17 +38,44 @@ test('applyCodeCompletionTransportProfile disables Moonshot thinking', () => {
   assert.equal((result as OpenAiTransportConfig).vendorExtendedThinking, false);
 });
 
+test('applyCodeCompletionTransportProfile disables OpenAI reasoning on openai-compatible transport', () => {
+  const input: OpenAiTransportConfig = {
+    apiKey: 'k',
+    model: 'gpt-5',
+    llmVendor: 'openai',
+    reasoningEffort: 'medium',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal(result.transportRequestProfile, 'code-completion');
+  assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'none');
+});
+
 test('applyCodeCompletionTransportProfile leaves unrelated openai-compatible vendors unchanged except profile tag', () => {
   const input: OpenAiTransportConfig = {
     apiKey: 'k',
-    model: 'gpt-4o-mini',
-    llmVendor: 'openai',
+    model: 'gemini-2.5-flash',
+    llmVendor: 'google',
     reasoningEffort: 'medium',
   };
   const result = applyCodeCompletionTransportProfile(input);
   assert.equal(result.transportRequestProfile, 'code-completion');
   assert.equal((result as OpenAiTransportConfig).vendorExtendedThinking, undefined);
   assert.equal((result as OpenAiTransportConfig).reasoningEffort, 'medium');
+});
+
+test('applyCodeCompletionTransportProfile disables OpenAI reasoning on open-responses transport', () => {
+  const input: OpenResponsesTransportConfig = {
+    transportKind: 'open-responses',
+    apiKey: 'k',
+    model: 'gpt-5',
+    llmVendor: 'openai',
+    reasoningEffort: 'high',
+    reasoningSummary: 'detailed',
+  };
+  const result = applyCodeCompletionTransportProfile(input);
+  assert.equal(result.transportRequestProfile, 'code-completion');
+  assert.equal((result as OpenResponsesTransportConfig).reasoningEffort, 'none');
+  assert.equal((result as OpenResponsesTransportConfig).reasoningSummary, 'off');
 });
 
 test('applyCodeCompletionTransportProfile tags anthropic, open-responses, and bedrock transports', () => {
@@ -61,7 +88,7 @@ test('applyCodeCompletionTransportProfile tags anthropic, open-responses, and be
     transportKind: 'open-responses',
     apiKey: 'k',
     model: 'gpt-5',
-    llmVendor: 'openai',
+    llmVendor: 'xai',
   };
   const bedrock: BedrockTransportConfig = {
     transportKind: 'bedrock',
