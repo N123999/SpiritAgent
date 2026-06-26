@@ -380,14 +380,6 @@ export function WorkspaceFilesTab({
   const prevSelectedEntryRef = useRef(selectedEntry);
   const journalFlushRef = useRef<{ path: string; baseline: string; current: string } | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (api) {
-        void api.resetCodeCompletionJournal();
-      }
-    };
-  }, [api]);
-
   latestFileTreeWidthPxRef.current = fileTreeWidthPx;
 
   const maxFileTreeWidthPx = useMemo(
