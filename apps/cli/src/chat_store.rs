@@ -7,7 +7,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::rewind::{ConversationMessageRole, ConversationMessageSnapshot, MessageAuxSnapshot};
+use crate::chat_timeline::{
+    CHAT_SCHEMA_VERSION, PersistedTimelineTurn, build_persisted_timeline,
+    derive_archive_projection, hydrate_desktop_messages_from_timeline,
+    normalize_desktop_messages_for_persistence,
+};
+use crate::rewind::ConversationMessageSnapshot;
 
 use crate::mcp::spirit_agent_data_dir;
 
@@ -17,14 +22,12 @@ fn default_chat_approval_level() -> String {
     "default".to_string()
 }
 
-/// Desktop 会话 JSON 可能含 `sessionTitleSource`（seed/llm）；CLI 读取时忽略该字段。
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatFile {
+    chat_schema_version: i32,
     saved_at_unix_ms: u128,
-    messages: Vec<StoredChatMessage>,
-    #[serde(default)]
-    assistant_aux: Vec<StoredAssistantAux>,
+    desktop_message_timeline: Vec<PersistedTimelineTurn>,
     llm_history: Vec<crate::ports::ArchivedLlmMessage>,
     #[serde(default)]
     loop_enabled: bool,
@@ -40,27 +43,6 @@ struct ChatFile {
     workspace_root: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     git_branch: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    desktop_messages: Option<Vec<ConversationMessageSnapshot>>,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StoredAssistantAux {
-    message_index: usize,
-    #[serde(default)]
-    thinking: Option<String>,
-    #[serde(default)]
-    compaction: Option<String>,
-    #[serde(default)]
-    finish_task_notice: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -86,12 +68,7 @@ struct StoredSubagentSessionSummary {
     error: Option<String>,
 }
 
-struct SanitizedChatData {
-    messages: Vec<StoredChatMessage>,
-    assistant_aux: Vec<StoredAssistantAux>,
-    desktop_messages: Vec<ConversationMessageSnapshot>,
-}
-
+#[derive(Debug)]
 pub struct LoadedChat {
     pub messages: Vec<(String, String)>,
     pub assistant_aux: Vec<crate::ports::AssistantAuxArchiveEntry>,
@@ -144,13 +121,20 @@ pub fn save_chat(
             .with_context(|| format!("创建对话目录失败: {}", parent.display()))?;
     }
 
-    let sanitized = sanitize_chat_data(messages, assistant_aux, desktop_messages);
+    let desktop_messages = desktop_messages
+        .map(normalize_desktop_messages_for_persistence)
+        .filter(|messages| !messages.is_empty())
+        .unwrap_or_else(|| build_fallback_desktop_messages(messages, assistant_aux));
+    let desktop_message_timeline = build_persisted_timeline(&desktop_messages);
+    if desktop_message_timeline.is_empty() {
+        return Err(anyhow!("chat schema v2 拒绝写入空会话 timeline"));
+    }
     let workspace_root = current_workspace_root();
 
     let file = ChatFile {
+        chat_schema_version: CHAT_SCHEMA_VERSION,
         saved_at_unix_ms: current_unix_millis(),
-        messages: sanitized.messages,
-        assistant_aux: sanitized.assistant_aux,
+        desktop_message_timeline,
         llm_history: llm_history.to_vec(),
         loop_enabled,
         approval_level: crate::ports::normalize_approval_level(approval_level),
@@ -175,15 +159,13 @@ pub fn save_chat(
         rewind: rewind.cloned(),
         session_display_name: session_display_name_override
             .map(str::to_string)
-            .or_else(|| derive_session_display_name(&sanitized.desktop_messages)),
+            .or_else(|| derive_session_display_name(&desktop_messages)),
         workspace_root: workspace_root
             .as_ref()
             .map(|path| path.to_string_lossy().to_string()),
         git_branch: workspace_root
             .as_ref()
             .and_then(|path| detect_git_branch(path)),
-        desktop_messages: (!sanitized.desktop_messages.is_empty())
-            .then_some(sanitized.desktop_messages),
     };
 
     let content = serde_json::to_string_pretty(&file)?;
@@ -195,73 +177,32 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
     let path = resolve_load_path(path_arg)?;
     let text = fs::read_to_string(&path)
         .with_context(|| format!("读取对话文件失败: {}", path.display()))?;
-    let parsed: ChatFile = serde_json::from_str(&text)
+    let parsed: Value = serde_json::from_str(&text)
         .with_context(|| format!("解析对话文件失败: {}", path.display()))?;
 
-    let ChatFile {
-        messages: parsed_messages,
-        assistant_aux: parsed_assistant_aux,
-        llm_history,
-        loop_enabled,
-        approval_level,
-        subagent_sessions,
-        rewind,
-        desktop_messages,
-        session_display_name,
-        ..
-    } = parsed;
+    ensure_chat_schema_v2(&parsed)?;
+    reject_legacy_conversation_fields(&parsed)?;
 
-    let messages = parsed_messages
-        .into_iter()
-        .map(|m| (m.role, m.content))
-        .collect::<Vec<_>>();
-    let assistant_aux = parsed_assistant_aux
-        .into_iter()
-        .filter(|entry| {
-            entry
-                .thinking
-                .as_ref()
-                .is_some_and(|value| !value.trim().is_empty())
-                || entry
-                    .compaction
-                    .as_ref()
-                    .is_some_and(|value| !value.trim().is_empty())
-                || entry
-                    .finish_task_notice
-                    .as_ref()
-                    .is_some_and(|value| !value.trim().is_empty())
-        })
-        .map(|entry| crate::ports::AssistantAuxArchiveEntry {
-            message_index: entry.message_index,
-            thinking: entry.thinking.filter(|value| !value.trim().is_empty()),
-            compaction: entry.compaction.filter(|value| !value.trim().is_empty()),
-            finish_task_notice: entry
-                .finish_task_notice
-                .filter(|value| !value.trim().is_empty()),
-        })
-        .collect::<Vec<_>>();
-    let sanitized = sanitize_chat_data(&messages, &assistant_aux, desktop_messages.as_deref());
+    let parsed: ChatFile = serde_json::from_value(parsed)
+        .with_context(|| format!("解析 chat schema v2 失败: {}", path.display()))?;
+    if parsed.desktop_message_timeline.is_empty() {
+        return Err(anyhow!("chat schema v2 要求非空 desktopMessageTimeline"));
+    }
+
+    let desktop_messages = hydrate_desktop_messages_from_timeline(&parsed.desktop_message_timeline);
+    if desktop_messages.is_empty() {
+        return Err(anyhow!("chat schema v2 timeline 未还原出任何消息"));
+    }
+    let (messages, assistant_aux) = derive_archive_projection(&desktop_messages);
 
     Ok(LoadedChat {
-        messages: sanitized
-            .messages
-            .into_iter()
-            .map(|m| (m.role, m.content))
-            .collect(),
-        assistant_aux: sanitized
-            .assistant_aux
-            .into_iter()
-            .map(|entry| crate::ports::AssistantAuxArchiveEntry {
-                message_index: entry.message_index,
-                thinking: entry.thinking,
-                compaction: entry.compaction,
-                finish_task_notice: entry.finish_task_notice,
-            })
-            .collect(),
-        llm_history,
-        loop_enabled,
-        approval_level: crate::ports::normalize_approval_level(&approval_level),
-        subagent_sessions: subagent_sessions
+        messages,
+        assistant_aux,
+        llm_history: parsed.llm_history,
+        loop_enabled: parsed.loop_enabled,
+        approval_level: crate::ports::normalize_approval_level(&parsed.approval_level),
+        subagent_sessions: parsed
+            .subagent_sessions
             .into_iter()
             .map(|entry| crate::ports::SubagentSessionArchiveEntry {
                 summary: crate::ports::SubagentSessionSummary {
@@ -279,11 +220,35 @@ pub fn load_chat(path_arg: &str) -> Result<LoadedChat> {
                 llm_history: entry.llm_history,
             })
             .collect(),
-        desktop_messages: (!sanitized.desktop_messages.is_empty())
-            .then_some(sanitized.desktop_messages),
-        rewind,
-        session_display_name,
+        desktop_messages: Some(desktop_messages),
+        rewind: parsed.rewind,
+        session_display_name: parsed.session_display_name,
     })
+}
+
+fn ensure_chat_schema_v2(parsed: &Value) -> Result<()> {
+    match parsed.get("chatSchemaVersion").and_then(Value::as_i64) {
+        Some(version) if version == CHAT_SCHEMA_VERSION as i64 => Ok(()),
+        Some(version) => Err(anyhow!(
+            "chat schema v2 required (chatSchemaVersion={CHAT_SCHEMA_VERSION}), got {version}"
+        )),
+        None => Err(anyhow!(
+            "chat schema v2 required (chatSchemaVersion={CHAT_SCHEMA_VERSION}), got none"
+        )),
+    }
+}
+
+fn reject_legacy_conversation_fields(parsed: &Value) -> Result<()> {
+    if parsed.get("messages").is_some() {
+        return Err(anyhow!("chat schema v2 must not include messages"));
+    }
+    if parsed.get("assistantAux").is_some() {
+        return Err(anyhow!("chat schema v2 must not include assistantAux"));
+    }
+    if parsed.get("desktopMessages").is_some() {
+        return Err(anyhow!("chat schema v2 must not include desktopMessages"));
+    }
+    Ok(())
 }
 
 fn current_unix_millis() -> u128 {
@@ -293,147 +258,44 @@ fn current_unix_millis() -> u128 {
         .unwrap_or(0)
 }
 
-fn sanitize_chat_data(
+fn build_fallback_desktop_messages(
     messages: &[(String, String)],
     assistant_aux: &[crate::ports::AssistantAuxArchiveEntry],
-    desktop_messages: Option<&[ConversationMessageSnapshot]>,
-) -> SanitizedChatData {
-    let normalized_aux = assistant_aux
-        .iter()
-        .filter_map(|entry| {
-            let thinking = entry
-                .thinking
-                .clone()
-                .filter(|value| !value.trim().is_empty());
-            let compaction = entry
-                .compaction
-                .clone()
-                .filter(|value| !value.trim().is_empty());
-            let finish_task_notice = entry
-                .finish_task_notice
-                .clone()
-                .filter(|value| !value.trim().is_empty());
-            if thinking.is_none() && compaction.is_none() && finish_task_notice.is_none() {
-                None
-            } else {
-                Some((
-                    entry.message_index,
-                    StoredAssistantAux {
-                        message_index: 0,
-                        thinking,
-                        compaction,
-                        finish_task_notice,
-                    },
-                ))
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let mut persisted_messages = Vec::new();
-    let mut persisted_aux = Vec::new();
-
-    for (original_index, (role, content)) in messages.iter().enumerate() {
-        let aux = normalized_aux
-            .iter()
-            .find(|(index, _)| *index == original_index)
-            .map(|(_, entry)| entry.clone());
-        if role == "assistant" && content.trim().is_empty() && aux.is_none() {
-            continue;
-        }
-
-        let message_index = persisted_messages.len();
-        persisted_messages.push(StoredChatMessage {
-            role: role.clone(),
-            content: content.clone(),
-        });
-
-        aux.map(|mut entry| {
-            entry.message_index = message_index;
-            persisted_aux.push(entry.clone());
-        });
-    }
-
-    let desktop_messages = sanitize_desktop_messages(desktop_messages)
-        .unwrap_or_else(|| build_fallback_desktop_messages(&persisted_messages, &persisted_aux));
-
-    SanitizedChatData {
-        messages: persisted_messages,
-        assistant_aux: persisted_aux,
-        desktop_messages,
-    }
-}
-
-fn sanitize_desktop_messages(
-    desktop_messages: Option<&[ConversationMessageSnapshot]>,
-) -> Option<Vec<ConversationMessageSnapshot>> {
-    let sanitized = desktop_messages?
-        .iter()
-        .filter_map(|message| {
-            let aux = sanitize_message_aux_snapshot(message.aux.as_ref());
-            if message.role == ConversationMessageRole::Assistant
-                && message.content.trim().is_empty()
-                && message.tool.is_none()
-                && aux.is_none()
-            {
-                return None;
-            }
-            Some(ConversationMessageSnapshot {
-                id: message.id,
-                role: message.role,
-                content: message.content.clone(),
-                tool: message.tool.clone(),
-                aux,
-                pending: message.pending,
-            })
-        })
-        .collect::<Vec<_>>();
-    (!sanitized.is_empty()).then_some(sanitized)
-}
-
-fn sanitize_message_aux_snapshot(aux: Option<&MessageAuxSnapshot>) -> Option<MessageAuxSnapshot> {
-    let aux = aux?;
-    let thinking = aux
-        .thinking
-        .clone()
-        .filter(|value| !value.trim().is_empty());
-    let compaction = aux
-        .compaction
-        .clone()
-        .filter(|value| !value.trim().is_empty());
-    if thinking.is_none() && compaction.is_none() {
-        None
-    } else {
-        Some(MessageAuxSnapshot {
-            thinking,
-            compaction,
-        })
-    }
-}
-
-fn build_fallback_desktop_messages(
-    messages: &[StoredChatMessage],
-    assistant_aux: &[StoredAssistantAux],
 ) -> Vec<ConversationMessageSnapshot> {
+    use crate::rewind::{ConversationMessageRole, MessageAuxSnapshot};
+
     messages
         .iter()
         .enumerate()
-        .map(|(index, message)| ConversationMessageSnapshot {
+        .map(|(index, (role, content))| ConversationMessageSnapshot {
             id: index + 1,
-            role: if message.role == "user" {
+            role: if role == "user" {
                 ConversationMessageRole::User
             } else {
                 ConversationMessageRole::Assistant
             },
-            content: message.content.clone(),
+            content: content.clone(),
             tool: None,
             aux: assistant_aux
                 .iter()
                 .find(|entry| entry.message_index == index)
                 .and_then(|entry| {
-                    sanitize_message_aux_snapshot(Some(&MessageAuxSnapshot {
-                        thinking: entry.thinking.clone(),
-                        compaction: entry.compaction.clone(),
-                    }))
+                    let thinking = entry
+                        .thinking
+                        .clone()
+                        .filter(|value| !value.trim().is_empty());
+                    let compaction = entry
+                        .compaction
+                        .clone()
+                        .filter(|value| !value.trim().is_empty());
+                    if thinking.is_none() && compaction.is_none() {
+                        None
+                    } else {
+                        Some(MessageAuxSnapshot {
+                            thinking,
+                            compaction,
+                        })
+                    }
                 }),
             pending: false,
         })
@@ -441,6 +303,8 @@ fn build_fallback_desktop_messages(
 }
 
 fn derive_session_display_name(messages: &[ConversationMessageSnapshot]) -> Option<String> {
+    use crate::rewind::ConversationMessageRole;
+
     let seed = messages
         .iter()
         .find(|message| {
@@ -555,11 +419,12 @@ pub fn display_name(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rewind::{ConversationMessageRole, MessageAuxSnapshot};
     use serde_json::json;
 
     #[test]
-    fn save_chat_writes_desktop_compatible_schema_and_reloads() {
-        let file_path = test_file_path("desktop-compatible-save");
+    fn save_chat_writes_v2_schema_and_reloads() {
+        let file_path = test_file_path("v2-save");
         let messages = vec![
             ("user".to_string(), "hello".to_string()),
             ("assistant".to_string(), "".to_string()),
@@ -577,6 +442,35 @@ mod tests {
             "hello".to_string(),
             Vec::new(),
         )];
+        let desktop_messages = vec![
+            ConversationMessageSnapshot {
+                id: 1,
+                role: ConversationMessageRole::User,
+                content: "hello".to_string(),
+                tool: None,
+                aux: None,
+                pending: false,
+            },
+            ConversationMessageSnapshot {
+                id: 2,
+                role: ConversationMessageRole::Assistant,
+                content: String::new(),
+                tool: None,
+                aux: Some(MessageAuxSnapshot {
+                    thinking: Some("reasoning".to_string()),
+                    compaction: None,
+                }),
+                pending: false,
+            },
+            ConversationMessageSnapshot {
+                id: 3,
+                role: ConversationMessageRole::Assistant,
+                content: "answer".to_string(),
+                tool: None,
+                aux: None,
+                pending: false,
+            },
+        ];
 
         let saved = save_chat(
             Some(file_path.to_string_lossy().as_ref()),
@@ -587,30 +481,19 @@ mod tests {
             "default",
             &[],
             None,
-            None,
+            Some(&desktop_messages),
             None,
         )
         .expect("save chat");
 
         let raw = fs::read_to_string(&saved).expect("read saved chat");
         let parsed: Value = serde_json::from_str(&raw).expect("parse saved chat json");
-        assert!(parsed.get("savedAtUnixMs").is_some());
-        assert!(parsed.get("saved_at_unix_ms").is_none());
-        assert!(parsed.get("assistantAux").is_some());
-        assert!(parsed.get("assistant_aux").is_none());
-        assert!(parsed.get("llmHistory").is_some());
+        assert_eq!(parsed["chatSchemaVersion"], json!(2));
+        assert!(parsed.get("messages").is_none());
+        assert!(parsed.get("assistantAux").is_none());
+        assert!(parsed.get("desktopMessages").is_none());
+        assert!(parsed["desktopMessageTimeline"].is_array());
         assert_eq!(parsed["loopEnabled"], json!(true));
-        assert!(parsed["llmHistory"][0]["content"].is_array());
-        assert!(parsed["llmHistory"][0].get("imagePaths").is_none());
-
-        let stored_messages = parsed["messages"].as_array().expect("messages array");
-        assert_eq!(stored_messages.len(), 3);
-        let desktop_messages = parsed["desktopMessages"]
-            .as_array()
-            .expect("desktop messages array");
-        assert_eq!(desktop_messages.len(), 3);
-        assert_eq!(parsed["assistantAux"][0]["messageIndex"], json!(1));
-        assert_eq!(desktop_messages[1]["aux"]["thinking"], json!("reasoning"));
 
         let loaded = load_chat(saved.to_string_lossy().as_ref()).expect("reload chat");
         assert_eq!(loaded.messages.len(), 3);
@@ -624,29 +507,18 @@ mod tests {
                 .len(),
             3
         );
-        assert_eq!(loaded.assistant_aux[0].message_index, 1);
-        assert_eq!(
-            loaded.assistant_aux[0].thinking.as_deref(),
-            Some("reasoning")
-        );
 
         let _ = fs::remove_file(saved);
     }
 
     #[test]
-    fn load_chat_upgrades_legacy_llm_history_shape() {
-        let file_path = test_file_path("legacy-llm-history");
+    fn load_chat_rejects_legacy_schema() {
+        let file_path = test_file_path("legacy-schema");
         let raw = json!({
             "savedAtUnixMs": current_unix_millis(),
             "messages": [{ "role": "user", "content": "hello" }],
             "assistantAux": [],
-            "llmHistory": [
-                {
-                    "role": "user",
-                    "content": "hello",
-                    "imagePaths": ["demo.png"]
-                }
-            ],
+            "llmHistory": [],
             "subagentSessions": [],
         });
         fs::write(
@@ -655,73 +527,74 @@ mod tests {
         )
         .expect("write legacy chat");
 
-        let loaded = load_chat(file_path.to_string_lossy().as_ref()).expect("load legacy chat");
-        assert_eq!(loaded.llm_history.len(), 1);
-        assert_eq!(loaded.llm_history[0].text_content(), "hello");
-        assert_eq!(
-            loaded.llm_history[0].image_paths(),
-            vec!["demo.png".to_string()]
-        );
-        assert_eq!(
-            loaded
-                .desktop_messages
-                .as_ref()
-                .expect("fallback desktop messages")
-                .len(),
-            1
-        );
+        let error = load_chat(file_path.to_string_lossy().as_ref()).expect_err("legacy load");
+        assert!(error.to_string().contains("chat schema v2"));
 
         let _ = fs::remove_file(file_path);
     }
 
     #[test]
-    fn load_chat_preserves_desktop_tool_snapshots() {
-        let file_path = test_file_path("desktop-tool-snapshot");
+    fn load_chat_preserves_v2_tool_timeline_rows() {
+        let file_path = test_file_path("v2-tool-snapshot");
         let raw = json!({
+            "chatSchemaVersion": 2,
             "savedAtUnixMs": current_unix_millis(),
-            "messages": [{ "role": "user", "content": "画一张图" }],
-            "assistantAux": [],
-            "llmHistory": [],
-            "subagentSessions": [],
-            "desktopMessages": [
-                {
-                    "id": 1,
-                    "role": "user",
+            "desktopMessageTimeline": [{
+                "turnId": 1,
+                "createdOrder": 0,
+                "userRow": {
+                    "rowId": "row-user",
+                    "messageId": 1,
+                    "turnId": 1,
+                    "kind": "user",
+                    "createdOrder": 0,
                     "content": "画一张图",
                     "pending": false
                 },
-                {
-                    "id": 2,
-                    "role": "assistant",
-                    "content": "",
-                    "pending": false,
-                    "tool": {
-                        "toolName": "generate_image",
-                        "phase": "succeeded",
-                        "headline": "图片生成完成",
-                        "detailLines": [
-                            "path: C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png"
-                        ],
-                        "outputExcerpt": "[generated image]\npath: C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png",
-                        "imagePaths": [
-                            "C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png"
-                        ]
-                    }
-                }
-            ]
+                "segments": [{
+                    "segmentId": 1,
+                    "turnId": 1,
+                    "kind": "initial",
+                    "status": "completed",
+                    "createdOrder": 1,
+                    "rows": [{
+                        "rowId": "row-tool",
+                        "messageId": 2,
+                        "turnId": 1,
+                        "segmentId": 1,
+                        "kind": "tool",
+                        "section": "tools",
+                        "createdOrder": 2,
+                        "pending": false,
+                        "tool": {
+                            "toolName": "generate_image",
+                            "phase": "succeeded",
+                            "headline": "图片生成完成",
+                            "detailLines": [
+                                "path: C:\\\\Users\\\\pc\\\\AppData\\\\Roaming\\\\SpiritAgent\\\\generated-images\\\\demo.png"
+                            ],
+                            "outputExcerpt": "[generated image]",
+                            "imagePaths": [
+                                "C:\\\\Users\\\\pc\\\\AppData\\\\Roaming\\\\SpiritAgent\\\\generated-images\\\\demo.png"
+                            ]
+                        }
+                    }]
+                }]
+            }],
+            "llmHistory": [],
+            "subagentSessions": []
         });
         fs::write(
             &file_path,
-            serde_json::to_string_pretty(&raw).expect("serialize desktop json"),
+            serde_json::to_string_pretty(&raw).expect("serialize v2 json"),
         )
-        .expect("write desktop chat");
+        .expect("write v2 chat");
 
-        let loaded = load_chat(file_path.to_string_lossy().as_ref()).expect("load desktop chat");
+        let loaded = load_chat(file_path.to_string_lossy().as_ref()).expect("load v2 chat");
         let desktop_messages = loaded
             .desktop_messages
             .as_ref()
             .expect("desktop tool snapshots");
-        assert_eq!(loaded.messages.len(), 1);
         assert_eq!(desktop_messages.len(), 2);
         assert_eq!(
             desktop_messages[1]
@@ -730,14 +603,6 @@ mod tests {
                 .expect("tool snapshot")
                 .tool_name,
             "generate_image"
-        );
-        assert_eq!(
-            desktop_messages[1]
-                .tool
-                .as_ref()
-                .expect("tool snapshot")
-                .image_paths,
-            vec!["C:\\Users\\pc\\AppData\\Roaming\\SpiritAgent\\generated-images\\demo.png"]
         );
 
         let _ = fs::remove_file(file_path);
