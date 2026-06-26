@@ -53,7 +53,7 @@ import type {
   PendingAssistantAux,
   ToolBlockSnapshot,
 } from '../types.js';
-import type { DesktopToolRequest, StoredDesktopSession } from './contracts.js';
+import type { DesktopToolRequest } from './contracts.js';
 
 export {
   hasActiveRunSubagentToolInMessages,
@@ -1224,27 +1224,6 @@ function displayPathForReadFile(path: string): string {
 
   const segments = normalized.split('/').filter(Boolean);
   return segments[segments.length - 1] || normalized;
-}
-
-export function restoreMessagesFromArchive(
-  archive: StoredDesktopSession,
-): ConversationMessageSnapshot[] {
-  const auxByIndex = new Map<number, MessageAuxSnapshot>();
-  for (const entry of archive.assistantAux) {
-    auxByIndex.set(entry.messageIndex, {
-      ...(entry.thinking ? { thinking: entry.thinking } : {}),
-      ...(entry.compaction ? { compaction: entry.compaction } : {}),
-      ...(entry.finishTaskNotice ? { finishTaskNotice: entry.finishTaskNotice } : {}),
-    });
-  }
-
-  return archive.messages.map((message, index) => ({
-    id: index + 1,
-    role: message.role,
-    content: message.content,
-    ...(auxByIndex.get(index) ? { aux: auxByIndex.get(index) } : {}),
-    pending: false,
-  }));
 }
 
 export function toolMessageKey(

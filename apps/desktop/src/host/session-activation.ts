@@ -20,7 +20,6 @@ import {
   type EphemeralSessionRecord,
 } from './sessions.js';
 import type { DesktopTimelineTurnSnapshot, DesktopMessageTimeline } from './message-timeline.js';
-import { restoreMessagesFromArchive } from './message-ordering.js';
 import { currentApiBase, sameWorkspaceRoot } from './service-utils.js';
 import type { HostExtensionEvent } from '@spirit-agent/host-internal';
 import { cancelPendingWorktreeBootstrapOnBundle } from './worktree-bootstrap-orchestrator.js';
@@ -198,7 +197,6 @@ export async function openSessionCommand(
     const restored = restoreStoredSessionState({
       filePath,
       loaded,
-      fallbackMessages: restoreMessagesFromArchive(loaded),
     });
     const bundle = ctx.sessionRegistry().upsertFromRestored(
       workspaceRoot,

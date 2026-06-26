@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { ChatArchive } from '@spirit-agent/core';
 import type { HostRecordedFileChange, HostTodoRecord } from '@spirit-agent/host-internal';
 
+import type { PersistedDesktopTimelineTurnSnapshot } from './chat-schema.js';
 import type { ConversationMessageSnapshot } from '../types.js';
 
 const REWIND_DIR_NAME = 'rewind';
@@ -45,9 +46,9 @@ export interface DesktopStoredFileChange extends HostRecordedFileChange {
 
 export interface DesktopRewindCheckpointSnapshot {
   archive: ChatArchive;
-  desktopMessages: ConversationMessageSnapshot[];
+  desktopMessageTimeline: PersistedDesktopTimelineTurnSnapshot[];
   beforeArchive?: ChatArchive;
-  beforeDesktopMessages?: ConversationMessageSnapshot[];
+  beforeDesktopMessageTimeline?: PersistedDesktopTimelineTurnSnapshot[];
   todos?: HostTodoRecord[];
   beforeTodos?: HostTodoRecord[];
 }

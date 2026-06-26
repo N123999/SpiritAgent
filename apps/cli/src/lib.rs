@@ -2,6 +2,7 @@ pub mod adapters;
 pub mod ask_questions;
 pub mod bedrock_mantle;
 pub mod chat_store;
+pub mod chat_timeline;
 pub mod cli;
 #[cfg(feature = "tui")]
 pub mod conversation_select;

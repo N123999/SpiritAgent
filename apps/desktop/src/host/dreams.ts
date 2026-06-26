@@ -40,6 +40,10 @@ import {
   type DesktopConfigFile,
 } from './storage.js';
 import { DesktopToolExecutor } from './tool-executor.js';
+import { DesktopMessageTimeline } from './message-timeline.js';
+import { createDesktopRewindMetadata } from './rewind.js';
+import { buildStoredDesktopSession } from './sessions.js';
+import { timelinePersistedSnapshotToMessages } from './chat-schema.js';
 import {
   currentApiBase,
   sameWorkspaceRoot,
@@ -448,7 +452,7 @@ function normalizeDreamCollectorMessages(
           content: llmMessageTextContent(normalized.content),
         };
       })
-    : archive.messages.map((message) => ({
+    : timelinePersistedSnapshotToMessages(archive.desktopMessageTimeline).map((message) => ({
         role: message.role,
         content: message.content,
       }));
@@ -606,22 +610,25 @@ async function persistDreamCollectorDebugSession(input: {
     },
   ];
   const sessionFile = path.join(chatsDirPath(), `${DREAM_DEBUG_SESSION_FILE_PREFIX}${now}-${input.runId}.json`);
-  await saveStoredSession(sessionFile, {
-    messages,
-    assistantAux: [],
+  let nextMessageId = 1;
+  const timeline = DesktopMessageTimeline.fromMessages(messages, {
+    allocateMessageId: () => nextMessageId++,
+  });
+  await saveStoredSession(sessionFile, buildStoredDesktopSession({
     llmHistory: messages.map((message) => ({
       role: message.role,
       content: message.content,
       imagePaths: [],
-      videoPaths: [],
     })),
-    subagentSessions: [],
     savedAtUnixMs: now,
     sessionDisplayName: i18n.t('error.dreamSessionDisplayName', { name: input.sourceSession.displayName }),
     workspaceRoot: input.workspaceRoot,
     gitBranch: input.gitBranch,
-    desktopMessages: messages,
-  });
+    desktopMessageTimeline: timeline.snapshot(),
+    rewind: createDesktopRewindMetadata(),
+    loopEnabled: false,
+    approvalLevel: 'default',
+  }));
 }
 
 export function isDreamCollectorDebugSessionPath(filePath: string): boolean {

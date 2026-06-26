@@ -7,9 +7,8 @@ import {
   buildArchiveMessagesFromConversation,
   buildStoredDesktopSession,
   cloneQueuedUserTurns,
-  sanitizeConversationMessagesForPersistence,
+  serializeSubagentTimelinesFromMessages,
 } from './sessions.js';
-import { serializeSubagentDesktopMessagesRecord } from './subagent-conversation-projection.js';
 import type { SessionBundle } from './session-bundle.js';
 import type { DesktopRuntime } from './runtime.js';
 import { saveStoredSession } from './storage.js';
@@ -64,22 +63,22 @@ export async function persistDesktopSessionBundle(
   const sessionTitleSource = bundle.sessionTitleSource ?? 'seed';
   bundle.sessionTitleSource = sessionTitleSource;
   const stored = buildStoredDesktopSession({
-    archive,
+    llmHistory: archive.llmHistory,
+    subagentSessions: archive.subagentSessions,
     savedAtUnixMs,
     sessionDisplayName: activeSession.displayName,
     sessionTitleSource,
     workspaceRoot: input.workspaceRoot,
     gitBranch: input.gitBranch,
     ...(bundle.activePlanPath ? { activePlanPath: bundle.activePlanPath } : {}),
-    desktopMessages: sanitizeConversationMessagesForPersistence(desktopMessages),
     desktopMessageTimeline: bundle.messageTimeline.snapshot(),
     rewind: bundle.rewind,
     loopEnabled: bundle.loopEnabled,
     approvalLevel: bundle.approvalLevel,
     ...(bundle.contextUsage ? { contextUsage: { ...bundle.contextUsage } } : {}),
-    ...(serializeSubagentDesktopMessagesRecord(bundle.subagentDesktopMessagesBySessionId)
+    ...(serializeSubagentTimelinesFromMessages(bundle.subagentDesktopMessagesBySessionId)
       ? {
-          subagentDesktopMessages: serializeSubagentDesktopMessagesRecord(
+          subagentDesktopTimelines: serializeSubagentTimelinesFromMessages(
             bundle.subagentDesktopMessagesBySessionId,
           ),
         }

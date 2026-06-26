@@ -56,6 +56,14 @@ import type {
 } from '../types.js';
 import type { StoredDesktopSession } from './contracts.js';
 import {
+  assertChatSchemaVersionV2,
+  assertNoLegacyConversationFields,
+  ChatSessionSchemaError,
+  timelinePersistedSnapshotToMessages,
+  validateTimelineSnapshotV2,
+  type PersistedDesktopTimelineTurnSnapshot,
+} from './chat-schema.js';
+import {
   buildModelSecretKeyPresence,
   hasBedrockRuntimeCredentials,
   hasGoogleVertexRuntimeCredentials,
@@ -593,16 +601,32 @@ export async function loadHostMetadata(
 }
 
 function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDesktopSession {
+  const raw = parsed as Record<string, unknown>;
+  assertChatSchemaVersionV2(parsed.chatSchemaVersion);
+  assertNoLegacyConversationFields(raw);
+  if ('subagentDesktopMessages' in raw) {
+    throw new ChatSessionSchemaError('chat schema v2 must not include subagentDesktopMessages');
+  }
+  if (!Array.isArray(parsed.desktopMessageTimeline)) {
+    throw new ChatSessionSchemaError('desktopMessageTimeline is required in chat schema v2');
+  }
+  const desktopMessageTimeline = parsed.desktopMessageTimeline as PersistedDesktopTimelineTurnSnapshot[];
+  validateTimelineSnapshotV2(desktopMessageTimeline);
+
   const contextUsage = normalizeContextUsageSnapshot(parsed.contextUsage);
   return {
-    savedAtUnixMs:
-      typeof parsed.savedAtUnixMs === 'number' ? parsed.savedAtUnixMs : Date.now(),
-    messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-    assistantAux: Array.isArray(parsed.assistantAux) ? parsed.assistantAux : [],
+    chatSchemaVersion: 2,
     llmHistory: Array.isArray(parsed.llmHistory) ? parsed.llmHistory : [],
     subagentSessions: Array.isArray(parsed.subagentSessions)
       ? parsed.subagentSessions
       : [],
+    loopEnabled: parsed.loopEnabled === true,
+    ...(parsed.approvalLevel === 'default' || parsed.approvalLevel === 'full-approval'
+      ? { approvalLevel: parsed.approvalLevel }
+      : {}),
+    desktopMessageTimeline,
+    savedAtUnixMs:
+      typeof parsed.savedAtUnixMs === 'number' ? parsed.savedAtUnixMs : Date.now(),
     ...(normalizeDisplayName(parsed.sessionDisplayName)
       ? { sessionDisplayName: normalizeDisplayName(parsed.sessionDisplayName) }
       : {}),
@@ -616,16 +640,10 @@ function normalizeStoredSession(parsed: Partial<StoredDesktopSession>): StoredDe
     ...(typeof parsed.activePlanPath === 'string' && parsed.activePlanPath.trim()
       ? { activePlanPath: parsed.activePlanPath.trim() }
       : {}),
-    ...(Array.isArray(parsed.desktopMessages)
-      ? { desktopMessages: parsed.desktopMessages as ConversationMessageSnapshot[] }
-      : {}),
-    ...(Array.isArray(parsed.desktopMessageTimeline)
-      ? { desktopMessageTimeline: parsed.desktopMessageTimeline }
-      : {}),
     ...(contextUsage ? { contextUsage } : {}),
     rewind: normalizeDesktopRewindMetadata(parsed.rewind),
-    ...(parsed.subagentDesktopMessages && typeof parsed.subagentDesktopMessages === 'object'
-      ? { subagentDesktopMessages: parsed.subagentDesktopMessages as Record<string, ConversationMessageSnapshot[]> }
+    ...(parsed.subagentDesktopTimelines && typeof parsed.subagentDesktopTimelines === 'object'
+      ? { subagentDesktopTimelines: parsed.subagentDesktopTimelines as Record<string, PersistedDesktopTimelineTurnSnapshot[]> }
       : {}),
     ...(typeof parsed.automationId === 'string' && parsed.automationId.trim()
       ? { automationId: parsed.automationId.trim() }
@@ -659,7 +677,7 @@ export async function listStoredSessions(): Promise<SessionListItem[]> {
           path: filePath,
           displayName:
             normalizeDisplayName(parsed.sessionDisplayName) ??
-            deriveDisplayName(parsed.desktopMessages, parsed.messages),
+            deriveDisplayNameFromTimeline(parsed.desktopMessageTimeline),
           workspaceRoot:
             resolveStoredWorkspaceRoot(parsed.workspaceRoot) ?? discoverWorkspaceRoot(),
           ...(gitBranch ? { gitBranch } : {}),
@@ -1141,19 +1159,17 @@ function resolveSessionPath(filePath: string | undefined): string {
   return absolute.toLowerCase().endsWith('.json') ? absolute : `${absolute}.json`;
 }
 
-function deriveDisplayName(
-  desktopMessages: ConversationMessageSnapshot[] | undefined,
-  archiveMessages:
-    | Array<{ role: 'user' | 'assistant'; content: string }>
-    | undefined,
+function deriveDisplayNameFromTimeline(
+  timeline: PersistedDesktopTimelineTurnSnapshot[] | undefined,
 ): string {
-  const fromDesktop = desktopMessages?.find(
+  if (!timeline?.length) {
+    return 'New conversation';
+  }
+  const messages = timelinePersistedSnapshotToMessages(timeline);
+  const firstUser = messages.find(
     (message) => message.role === 'user' && message.content.trim().length > 0,
-  )?.content;
-  const fromArchive = archiveMessages?.find(
-    (message) => message.role === 'user' && message.content.trim().length > 0,
-  )?.content;
-  const seed = fromDesktop ?? fromArchive ?? 'New conversation';
+  );
+  const seed = firstUser?.content ?? 'New conversation';
   return seed.length > 28 ? `${seed.slice(0, 28)}…` : seed;
 }
 

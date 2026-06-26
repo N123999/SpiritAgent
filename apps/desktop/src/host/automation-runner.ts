@@ -281,7 +281,6 @@ async function persistAutomationSession(
   approvalLevel: HostAutomationDefinition['approvalLevel'];
   },
 ): Promise<void> {
-  const desktopMessages = input.projection.toMessages();
   const archivePayload = input.projection.buildArchivePayload();
   const archive = input.runtime.toArchive(archivePayload.messages, archivePayload.assistantAux);
   const timelineSnapshot = input.projection.timelineSnapshot();
@@ -289,13 +288,13 @@ async function persistAutomationSession(
   await saveStoredSession(
     input.sessionPath,
     buildStoredDesktopSession({
-      archive,
+      llmHistory: archive.llmHistory,
+      subagentSessions: archive.subagentSessions,
       savedAtUnixMs: Date.now(),
       sessionDisplayName: input.sessionDisplayName,
       sessionTitleSource: 'seed',
       workspaceRoot: input.workspaceRoot,
       ...(input.gitBranch ? { gitBranch: input.gitBranch } : {}),
-      desktopMessages,
       desktopMessageTimeline: timelineSnapshot,
       rewind: createDesktopRewindMetadata(),
       loopEnabled: archive.loopEnabled === true,
