@@ -93,6 +93,16 @@ test('toolCallSummaryCopyForRequest: search tools use Chinese headline + detail'
     headline: '搜索',
     headlineDetail: 'TODO',
   });
+  assert.deepEqual(
+    toolCallSummaryCopyForRequest('grep', {
+      query: 'ratatui',
+      glob: 'apps/cli/**/*.{rs,toml}',
+    }),
+    {
+      headline: '搜索',
+      headlineDetail: 'ratatui 于 apps/cli/**/*.{rs,toml}',
+    },
+  );
   assert.deepEqual(toolCallSummaryCopyForRequest('glob', { pattern: 'src/**/*.ts' }), {
     headline: '匹配',
     headlineDetail: 'src/**/*.ts',
@@ -419,6 +429,14 @@ test('toolCallSummaryCopyForRequest: English verbs use progressive in running ph
     assert.deepEqual(
       toolCallSummaryCopyForRequest('grep', { query: 'TODO' }, 'running'),
       { headline: 'Searching', headlineDetail: 'TODO' },
+    );
+    assert.deepEqual(
+      toolCallSummaryCopyForRequest(
+        'grep',
+        { query: 'ratatui', glob: 'apps/cli/**/*.{rs,toml}' },
+        'running',
+      ),
+      { headline: 'Searching', headlineDetail: 'ratatui in apps/cli/**/*.{rs,toml}' },
     );
   } finally {
     await i18n.changeLanguage('zh-CN');

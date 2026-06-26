@@ -305,12 +305,14 @@ export function toolCallSummaryCopyForRequest(
       const query = typeof record.query === 'string' ? record.query.trim() : '';
       const prefix = record.is_regexp === true ? i18n.t('tool.regexPrefix') : '';
       const glob = typeof record.glob === 'string' ? record.glob.trim() : '';
-      const detailParts = [`${prefix}${query}`, glob].filter((part) => part.length > 0);
+      const queryLabel = `${prefix}${query}`;
+      const headlineDetail =
+        queryLabel && glob
+          ? i18n.t('tool.searchQueryInGlob', { query: queryLabel, glob })
+          : queryLabel || glob;
       return {
         headline: i18n.t('tool.search', tOpts),
-        ...(detailParts.length > 0
-          ? { headlineDetail: truncateSummaryDetail(detailParts.join(' · ')) }
-          : {}),
+        ...(headlineDetail ? { headlineDetail: truncateSummaryDetail(headlineDetail) } : {}),
       };
     }
     case 'glob': {

@@ -1115,6 +1115,7 @@
     "diffArgsTruncated": "无法展示 Diff：工具参数在会话记录中已被截断。",
     "diffFileTooLarge": "无法展示 Diff：文件超过大小限制。",
     "regexPrefix": "正则: ",
+    "searchQueryInGlob": "{{query}} 于 {{glob}}",
     "search": "搜索",
     "webSearch": "联网搜索",
     "webSearchSourceCount": "{{count}} 个来源",
