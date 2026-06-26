@@ -216,6 +216,10 @@ export function openAiVendorChatCompletionBodyExtras(
     extras.thinking = { type: enabled ? 'enabled' : 'disabled' };
   }
 
+  if (config.llmVendor === 'siliconflow' && config.transportRequestProfile === 'code-completion') {
+    extras.enable_thinking = false;
+  }
+
   const openRouterReasoning = buildOpenRouterClaudeReasoningBody(config);
   if (openRouterReasoning !== undefined) {
     extras.reasoning = openRouterReasoning;
