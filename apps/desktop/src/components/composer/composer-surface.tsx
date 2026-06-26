@@ -67,6 +67,7 @@ export type ComposerSurfaceProps = {
   onAbort?(): void;
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
+  onModelThinkingEnabledSelect?(name: string, enabled: boolean): void | Promise<boolean>;
   onAgentModeChange(mode: DesktopAgentMode): void;
   onLoopEnabledChange?(enabled: boolean): void;
   richInputRef?: RefObject<ComposerRichInputHandle | null>;
@@ -108,6 +109,7 @@ export function ComposerSurface({
   onAbort,
   onModelSelect,
   onModelReasoningEffortSelect,
+  onModelThinkingEnabledSelect,
   onAgentModeChange,
   onLoopEnabledChange,
   richInputRef,
@@ -250,6 +252,7 @@ export function ComposerSurface({
               disabled={readOnly}
               onModelSelect={onModelSelect}
               onModelReasoningEffortSelect={onModelReasoningEffortSelect}
+              onModelThinkingEnabledSelect={onModelThinkingEnabledSelect}
               triggerClassName="max-w-[min(12rem,100%)] pr-0.5 pl-1"
               menuContentClassName="z-[100]"
             />

@@ -11,7 +11,7 @@ import type { OpenResponsesTransportConfig } from '../open-responses/responses-c
 
 export type OpenRouterClaudeReasoningConfig = Pick<
   OpenAiTransportConfig,
-  'llmVendor' | 'model' | 'reasoningEffort'
+  'llmVendor' | 'model' | 'reasoningEffort' | 'vendorExtendedThinking'
 >;
 
 export function isOpenRouterAnthropicClaudeModel(
@@ -39,17 +39,22 @@ export function buildOpenRouterClaudeReasoningBody(
   );
 
   if (capabilities.thinkingMode === 'adaptive') {
+    if (config.vendorExtendedThinking === false) {
+      return { enabled: false };
+    }
     if (effort !== undefined) {
       return { enabled: true, effort };
     }
     return { enabled: true };
   }
 
-  if (capabilities.thinkingMode === 'budget' && effort !== undefined) {
-    const budgetKey = effort === 'low' || effort === 'medium' || effort === 'high' ? effort : 'high';
+  if (capabilities.thinkingMode === 'budget') {
+    if (config.vendorExtendedThinking === false) {
+      return { enabled: false };
+    }
     return {
       enabled: true,
-      max_tokens: ROUTED_ANTHROPIC_BUDGET_TOKENS_BY_EFFORT[budgetKey],
+      max_tokens: ROUTED_ANTHROPIC_BUDGET_TOKENS_BY_EFFORT.high,
     };
   }
 

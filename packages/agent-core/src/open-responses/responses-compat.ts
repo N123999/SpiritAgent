@@ -66,6 +66,8 @@ export interface OpenResponsesTransportConfig {
   azureResourceName?: string;
   /** 代码补全等非 Agent 轻量请求的策略画像；缺省为 agent 路径默认行为。 */
   transportRequestProfile?: TransportRequestProfile;
+  /** 厂商 extended thinking；false 关闭 Claude / DeepSeek 等 thinking 开关。 */
+  vendorExtendedThinking?: boolean;
 }
 
 export type OpenResponsesRequestTraceKind =

@@ -18,7 +18,6 @@ import {
 } from '@ai-sdk/moonshotai';
 import {
   createXai,
-  type XaiLanguageModelChatOptions,
 } from '@ai-sdk/xai';
 import { createGateway } from '@ai-sdk/gateway';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -82,6 +81,14 @@ import {
   type OpenAiVideoGenerationConfig,
 } from './openai-compat.js';
 import {
+  buildGatewayMinimaxProviderOptions,
+  isGatewayMinimaxModel,
+} from './gateway-minimax-thinking.js';
+import {
+  buildGatewayAlibabaProviderOptions,
+  isGatewayAlibabaModel,
+} from './gateway-alibaba-thinking.js';
+import {
   buildGatewayAnthropicProviderOptions,
   isGatewayAnthropicClaudeModel,
 } from './gateway-anthropic-thinking.js';
@@ -89,6 +96,28 @@ import {
   buildGatewayCodeCompletionProviderOptions,
   shouldUseGatewayCodeCompletionProviderOptions,
 } from './gateway-code-completion-thinking.js';
+import {
+  buildGatewayDeepSeekProviderOptions,
+  isGatewayDeepSeekModel,
+} from './gateway-deepseek-thinking.js';
+import {
+  buildGatewayMoonshotProviderOptions,
+  isGatewayMoonshotModel,
+  isMoonshotThinkingSwitchModel,
+} from './moonshot-thinking-switch.js';
+import {
+  buildGatewayXiaomiProviderOptions,
+  isGatewayXiaomiModel,
+} from './gateway-xiaomi-thinking.js';
+import {
+  buildGatewayZaiProviderOptions,
+  isGatewayZaiModel,
+} from './gateway-zai-thinking.js';
+import {
+  buildGatewayXaiProviderOptions,
+  isGatewayXaiModel,
+  resolveXaiProviderReasoningEffort,
+} from './gateway-xai-reasoning.js';
 import {
   buildGatewayGoogleProviderOptions,
   buildGoogleThinkingConfigForEffort,
@@ -923,6 +952,56 @@ function buildAiSdkProviderOptions(
     return buildGatewayGoogleProviderOptions(config, openAiReasoningEffort(config));
   }
 
+  if (isVercelAiGatewayProvider(config) && isGatewayDeepSeekModel(config.llmVendor, config.model)) {
+    return buildGatewayDeepSeekProviderOptions(config);
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayMoonshotModel(config.llmVendor, config.model)) {
+    const moonshotOptions = buildGatewayMoonshotProviderOptions(config);
+    if (Object.keys(moonshotOptions).length > 0) {
+      return moonshotOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayXiaomiModel(config.llmVendor, config.model)) {
+    const xiaomiOptions = buildGatewayXiaomiProviderOptions(config);
+    if (Object.keys(xiaomiOptions).length > 0) {
+      return xiaomiOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayZaiModel(config.llmVendor, config.model)) {
+    const zaiOptions = buildGatewayZaiProviderOptions(config);
+    if (Object.keys(zaiOptions).length > 0) {
+      return zaiOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayAlibabaModel(config.llmVendor, config.model)) {
+    const alibabaOptions = buildGatewayAlibabaProviderOptions(config);
+    if (Object.keys(alibabaOptions).length > 0) {
+      return alibabaOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayMinimaxModel(config.llmVendor, config.model)) {
+    const minimaxOptions = buildGatewayMinimaxProviderOptions(config);
+    if (Object.keys(minimaxOptions).length > 0) {
+      return minimaxOptions;
+    }
+  }
+
+  if (isVercelAiGatewayProvider(config) && isGatewayXaiModel(config.llmVendor, config.model)) {
+    const xaiOptions = buildGatewayXaiProviderOptions(
+      config.llmVendor,
+      config.model,
+      openAiReasoningEffort(config),
+    );
+    if (Object.keys(xaiOptions).length > 0) {
+      return xaiOptions;
+    }
+  }
+
   if (isOpenRouterAnthropicClaudeModel(config.llmVendor, config.model)) {
     return {};
   }
@@ -931,23 +1010,30 @@ function buildAiSdkProviderOptions(
     if (isCodeCompletionTransportProfile(config)) {
       return {
         alibaba: {
-          enable_thinking: false,
+          enableThinking: false,
         } as JsonObject,
       };
+    }
+
+    const alibabaOptions: JsonObject = {};
+    if (config.vendorExtendedThinking === false) {
+      alibabaOptions.enableThinking = false;
     }
 
     const extraBody = shouldUseAlibabaChatCompletionsBuiltInTools(config)
       ? buildAlibabaChatCompletionsExtraBody({ streaming: true })
       : undefined;
 
-    if (extraBody === undefined) {
+    if (extraBody !== undefined) {
+      alibabaOptions.extraBody = extraBody;
+    }
+
+    if (Object.keys(alibabaOptions).length === 0) {
       return {};
     }
 
     return {
-      alibaba: {
-        extraBody,
-      } as JsonObject,
+      alibaba: alibabaOptions,
     };
   }
 
@@ -964,6 +1050,15 @@ function buildAiSdkProviderOptions(
   }
 
   if (isMoonshotOfficialAiSdkProvider(config)) {
+    const moonshotContext = {
+      provider: 'moonshot-ai' as const,
+      model: config.model,
+      transportKind: 'openai-compatible' as const,
+    };
+    if (!isMoonshotThinkingSwitchModel(moonshotContext)) {
+      return {};
+    }
+
     const moonshotaiOptions = {
       thinking: {
         type: config.vendorExtendedThinking === false ? 'disabled' : 'enabled',
@@ -976,17 +1071,15 @@ function buildAiSdkProviderOptions(
   }
 
   if (isXaiOfficialAiSdkProvider(config)) {
-    const reasoningEffort = xaiChatReasoningEffort(openAiReasoningEffort(config));
+    const reasoningEffort = resolveXaiProviderReasoningEffort(openAiReasoningEffort(config));
     if (reasoningEffort === undefined) {
       return {};
     }
 
-    const xaiOptions = {
-      reasoningEffort,
-    } satisfies XaiLanguageModelChatOptions;
-
     return {
-      xai: xaiOptions as JsonObject,
+      xai: {
+        reasoningEffort,
+      } as JsonObject,
     };
   }
 
@@ -1798,16 +1891,6 @@ function isGoogleOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
 
 function isGoogleVertexOfficialAiSdkProvider(config: OpenAiTransportConfig): boolean {
   return config.llmVendor === 'google-vertex-ai';
-}
-
-function xaiChatReasoningEffort(
-  effort: string | undefined,
-): XaiLanguageModelChatOptions['reasoningEffort'] | undefined {
-  if (effort === 'low' || effort === 'high') {
-    return effort;
-  }
-
-  return effort === 'medium' ? 'high' : undefined;
 }
 
 function buildAiSdkImageGenerationUrl(config: OpenAiImageGenerationConfig): string {

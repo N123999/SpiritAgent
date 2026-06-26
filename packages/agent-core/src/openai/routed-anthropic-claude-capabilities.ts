@@ -9,8 +9,6 @@ export interface RoutedAnthropicClaudeCapabilities {
   adaptiveDisplay?: 'summarized';
 }
 
-const LEGACY_BUDGET_EFFORTS: readonly AnthropicEffort[] = ['low', 'medium', 'high'];
-
 export const ROUTED_ANTHROPIC_BUDGET_TOKENS_BY_EFFORT: Record<'low' | 'medium' | 'high', number> = {
   low: 4_000,
   medium: 8_000,
@@ -59,7 +57,7 @@ export function resolveRoutedAnthropicClaudeCapabilities(
   if (isLegacyRoutedAnthropicClaudeModel(modelId)) {
     return {
       thinkingMode: 'budget',
-      supportedEfforts: LEGACY_BUDGET_EFFORTS,
+      supportedEfforts: [],
     };
   }
 

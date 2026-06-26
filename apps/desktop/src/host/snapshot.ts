@@ -77,6 +77,7 @@ export function buildDesktopSnapshot(input: BuildDesktopSnapshotInput): DesktopS
         name: model.name,
         apiBase: model.apiBase,
         reasoningEffort: model.reasoningEffort,
+        ...(model.thinkingEnabled === false ? { thinkingEnabled: false } : {}),
         ...(model.supportedReasoningEfforts !== undefined
           ? { supportedReasoningEfforts: [...model.supportedReasoningEfforts] }
           : {}),

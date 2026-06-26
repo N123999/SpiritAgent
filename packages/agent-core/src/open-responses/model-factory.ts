@@ -29,6 +29,14 @@ import {
   shouldUseOpenAiSdkApplyPatchTool,
 } from './apply-patch-eligibility.js';
 import {
+  buildGatewayMinimaxProviderOptions,
+  isGatewayMinimaxModel,
+} from '../openai/gateway-minimax-thinking.js';
+import {
+  buildGatewayAlibabaProviderOptions,
+  isGatewayAlibabaModel,
+} from '../openai/gateway-alibaba-thinking.js';
+import {
   buildGatewayAnthropicProviderOptions,
   isGatewayAnthropicClaudeModel,
 } from '../openai/gateway-anthropic-thinking.js';
@@ -36,6 +44,27 @@ import {
   buildGatewayCodeCompletionProviderOptions,
   shouldUseGatewayCodeCompletionProviderOptions,
 } from '../openai/gateway-code-completion-thinking.js';
+import {
+  buildGatewayDeepSeekProviderOptions,
+  isGatewayDeepSeekModel,
+} from '../openai/gateway-deepseek-thinking.js';
+import {
+  buildGatewayMoonshotProviderOptions,
+  isGatewayMoonshotModel,
+} from '../openai/moonshot-thinking-switch.js';
+import {
+  buildGatewayXiaomiProviderOptions,
+  isGatewayXiaomiModel,
+} from '../openai/gateway-xiaomi-thinking.js';
+import {
+  buildGatewayZaiProviderOptions,
+  isGatewayZaiModel,
+} from '../openai/gateway-zai-thinking.js';
+import {
+  buildGatewayXaiProviderOptions,
+  isGatewayXaiModel,
+  resolveXaiProviderReasoningEffort,
+} from '../openai/gateway-xai-reasoning.js';
 import {
   buildGatewayGoogleProviderOptions,
   isGatewayGoogleGeminiModel,
@@ -227,6 +256,58 @@ export function buildResponsesProviderOptions(
       return buildGatewayGoogleProviderOptions(config, reasoningEffort);
     }
 
+    if (isGatewayDeepSeekModel(config.llmVendor, config.model)) {
+      return buildGatewayDeepSeekProviderOptions(config);
+    }
+
+    if (isGatewayMoonshotModel(config.llmVendor, config.model)) {
+      const moonshotOptions = buildGatewayMoonshotProviderOptions(config);
+      if (Object.keys(moonshotOptions).length > 0) {
+        return moonshotOptions;
+      }
+    }
+
+    if (isGatewayXiaomiModel(config.llmVendor, config.model)) {
+      const xiaomiOptions = buildGatewayXiaomiProviderOptions(config);
+      if (Object.keys(xiaomiOptions).length > 0) {
+        return xiaomiOptions;
+      }
+    }
+
+    if (isGatewayZaiModel(config.llmVendor, config.model)) {
+      const zaiOptions = buildGatewayZaiProviderOptions(config);
+      if (Object.keys(zaiOptions).length > 0) {
+        // Gateway Z.ai 在 open-responses transport 下上游不返回可展示思考流；见 #169。
+        return zaiOptions;
+      }
+    }
+
+    if (isGatewayAlibabaModel(config.llmVendor, config.model)) {
+      const alibabaOptions = buildGatewayAlibabaProviderOptions(config);
+      if (Object.keys(alibabaOptions).length > 0) {
+        return alibabaOptions;
+      }
+    }
+
+    if (isGatewayMinimaxModel(config.llmVendor, config.model)) {
+      const minimaxOptions = buildGatewayMinimaxProviderOptions(config);
+      if (Object.keys(minimaxOptions).length > 0) {
+        // Gateway MiniMax M3 在 open-responses 下不返回可展示思考流；见 #170。
+        return minimaxOptions;
+      }
+    }
+
+    if (isGatewayXaiModel(config.llmVendor, config.model)) {
+      const xaiOptions = buildGatewayXaiProviderOptions(
+        config.llmVendor,
+        config.model,
+        openResponsesReasoningEffort(config),
+      );
+      if (Object.keys(xaiOptions).length > 0) {
+        return xaiOptions;
+      }
+    }
+
     // Gateway v3 language-model 原样转发 providerOptions；OpenAI 路由模型须用 openai 命名空间（见 Vercel AI Gateway reasoning 文档）。
     const openaiOptions: JsonObject = {
       ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
@@ -238,13 +319,16 @@ export function buildResponsesProviderOptions(
 
   const provider = resolveOpenResponsesSdkProvider(config);
   if (provider === 'xai') {
-    const xaiOptions = {
-      ...(xaiResponsesReasoningEffort(reasoningEffort) !== undefined
-        ? { reasoningEffort: xaiResponsesReasoningEffort(reasoningEffort) }
-        : {}),
-    } satisfies XaiLanguageModelResponsesOptions;
+    const xaiReasoningEffort = resolveXaiProviderReasoningEffort(reasoningEffort);
+    if (xaiReasoningEffort === undefined) {
+      return {};
+    }
 
-    return Object.keys(xaiOptions).length > 0 ? { xai: xaiOptions as JsonObject } : {};
+    return {
+      xai: {
+        reasoningEffort: xaiReasoningEffort,
+      } as JsonObject,
+    };
   }
 
   if (provider === 'azure') {
@@ -309,12 +393,6 @@ export function buildResponsesProviderOptions(
   }
 
   return { openai: openaiOptions };
-}
-
-function xaiResponsesReasoningEffort(
-  effort: string | undefined,
-): XaiLanguageModelResponsesOptions['reasoningEffort'] | undefined {
-  return effort === 'low' || effort === 'medium' || effort === 'high' ? effort : undefined;
 }
 
 function shouldAttachPreviousResponseId(config: OpenResponsesTransportConfig): boolean {

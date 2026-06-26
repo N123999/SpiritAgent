@@ -1879,6 +1879,49 @@ export function useDesktopRuntime() {
     [api, applySnapshot, snapshot],
   );
 
+  const setModelThinkingEnabled = useCallback(
+    async (name: string, enabled: boolean): Promise<boolean> => {
+      if (!api || !snapshot) {
+        return false;
+      }
+
+      const model = snapshot.config.models.find((item) => item.name === name);
+      if (!model) {
+        return false;
+      }
+
+      const previousSettings = settingsRef.current;
+      const next = {
+        ...previousSettings,
+        activeModel: model.name,
+        apiBase: model.apiBase,
+      };
+      settingsRef.current = next;
+      setSettings(next);
+
+      try {
+        const res = await api.updateConfig({
+          ...updateConfigFromSettingsForm(next, {
+            enabled: next.webHostEnabled,
+            host: next.webHostHost,
+            port: next.webHostPort,
+          }),
+          thinkingEnabled: enabled,
+        });
+        applySnapshot(res);
+        setRuntimeError("");
+        setSettings((current) => ({ ...current, apiKey: "" }));
+        return true;
+      } catch (error) {
+        settingsRef.current = previousSettings;
+        setSettings(previousSettings);
+        setRuntimeError(describeError(error));
+        return false;
+      }
+    },
+    [api, applySnapshot, snapshot],
+  );
+
   const resetWebHostPairing = useCallback(async () => {
     if (!api) {
       return;
@@ -3031,6 +3074,7 @@ export function useDesktopRuntime() {
     approvalGuidance,
     setActiveModel,
     setModelReasoningEffort,
+    setModelThinkingEnabled,
     setApprovalGuidance,
     setAgentModeChipDismissed,
     setComposer,

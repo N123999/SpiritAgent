@@ -85,6 +85,7 @@ export function MessageCard({
   onRewindDrop,
   onModelSelect,
   onModelReasoningEffortSelect,
+  onModelThinkingEnabledSelect,
   onAgentModeChange,
   pendingAuxState,
   readManagedImagePreviewDataUrl,
@@ -148,6 +149,7 @@ export function MessageCard({
   onRewindDrop(event: ReactDragEvent<HTMLElement>): void;
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
+  onModelThinkingEnabledSelect?(name: string, enabled: boolean): void | Promise<boolean>;
   onAgentModeChange(mode: DesktopAgentMode): void;
   readManagedImagePreviewDataUrl: ReadManagedImagePreview;
   readManagedVideoPreviewUrl: ReadManagedVideoPreview;
@@ -285,6 +287,7 @@ export function MessageCard({
             loopEnabled={false}
             onModelSelect={onModelSelect}
             onModelReasoningEffortSelect={onModelReasoningEffortSelect}
+            onModelThinkingEnabledSelect={onModelThinkingEnabledSelect}
             onAgentModeChange={onAgentModeChange}
             onLoopEnabledChange={() => {}}
             canSend={rewindCanSubmit}

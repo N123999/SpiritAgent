@@ -67,6 +67,13 @@ export function ModelCatalogDetailPanel({
       }),
     [catalogEntry?.pricing, contextLength, t],
   );
+  const hasDetailFields = detailFields.length > 0;
+  const hasFollowingSection = Boolean(children || hasDetailFields);
+  const controlsIsLast = !hasDetailFields;
+  const sectionPadding = isList ? 'px-2 py-1.5' : 'px-3 py-2.5';
+  const sectionPaddingLast = isList ? 'px-2 pt-1.5' : 'px-3 pt-2.5';
+  const sectionDivider = 'border-b border-border/40';
+
   return (
     <div className={cn(isList ? 'flex flex-col' : '-mx-3 flex flex-col')}>
       <div
@@ -102,17 +109,28 @@ export function ModelCatalogDetailPanel({
         ) : null}
       </div>
       {description ? (
-        <div className={cn(isList ? 'px-2 py-1.5 text-xs' : 'px-3 pt-3 text-xs')}>
+        <div
+          className={cn(
+            hasFollowingSection ? sectionPadding : sectionPaddingLast,
+            hasFollowingSection && sectionDivider,
+            'text-xs',
+          )}
+        >
           <p className="whitespace-pre-wrap leading-5 text-foreground/90">{description}</p>
         </div>
       ) : null}
       {children ? (
-        <div className={cn(description ? 'border-y' : 'border-b', 'border-border/40', isList ? 'px-2 py-1.5' : 'px-3 py-2.5')}>
+        <div
+          className={cn(
+            controlsIsLast ? sectionPaddingLast : sectionPadding,
+            !controlsIsLast && sectionDivider,
+          )}
+        >
           {children}
         </div>
       ) : null}
-      {detailFields.length > 0 ? (
-        <div className={cn(isList ? 'space-y-2 px-2 py-1.5 text-xs' : 'space-y-2 px-3 pt-3 text-xs')}>
+      {hasDetailFields ? (
+        <div className={cn(sectionPaddingLast, 'space-y-2 text-xs')}>
           {detailFields.map((field) => (
             <ModelCatalogDetailFieldSection
               key={field.id}

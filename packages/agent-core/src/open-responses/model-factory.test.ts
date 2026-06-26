@@ -125,6 +125,71 @@ test('buildResponsesProviderOptions maps gateway openai reasoning options', () =
   });
 });
 
+test('buildResponsesProviderOptions maps gateway xai reasoning via xai namespace', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'xai/grok-4.3',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'none',
+    }),
+    {
+      xai: {
+        reasoningEffort: 'none',
+      },
+    },
+  );
+});
+
+test('buildResponsesProviderOptions maps gateway alibaba qwen to enable_thinking false', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'alibaba/qwen3-max',
+      llmVendor: 'vercel-ai-gateway',
+      vendorExtendedThinking: false,
+    }),
+    {
+      alibaba: {
+        enableThinking: false,
+      },
+    },
+  );
+});
+
+test('buildResponsesProviderOptions maps gateway minimax m3 to adaptive thinking', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'minimax/minimax-m3',
+      llmVendor: 'vercel-ai-gateway',
+    }),
+    {
+      minimax: {
+        thinking: { type: 'adaptive' },
+      },
+    },
+  );
+
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'minimax/minimax-m3',
+      llmVendor: 'vercel-ai-gateway',
+      vendorExtendedThinking: false,
+    }),
+    {
+      minimax: {
+        thinking: { type: 'disabled' },
+      },
+    },
+  );
+});
+
 test('buildResponsesProviderOptions maps gateway anthropic claude to adaptive thinking', () => {
   assert.deepEqual(
     buildResponsesProviderOptions({
@@ -277,6 +342,25 @@ test('buildResponsesProviderOptions routes gateway code-completion by upstream s
       anthropic: {
         thinking: { type: 'disabled' },
         toolStreaming: true,
+      },
+    },
+  );
+});
+
+test('buildResponsesProviderOptions disables Gateway DeepSeek V4 thinking via deepseek namespace', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'deepseek/deepseek-v4-pro',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'default',
+      reasoningSummary: 'auto',
+      vendorExtendedThinking: false,
+    }),
+    {
+      deepseek: {
+        thinking: { type: 'disabled' },
       },
     },
   );

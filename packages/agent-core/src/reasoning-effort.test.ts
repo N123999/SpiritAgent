@@ -34,6 +34,27 @@ test('deepseek v4 models normalize medium to high and preserve max', () => {
   );
 });
 
+test('deepseek non-v4 models do not expose openai-compatible reasoning effort options', () => {
+  const options = modelReasoningEffortOptions({
+    provider: 'deepseek',
+    model: 'deepseek-chat',
+    transportKind: 'openai-compatible',
+  });
+  assert.deepEqual(options, [{ value: 'default', label: 'Default' }]);
+});
+
+test('gateway deepseek v4 models use deepseek v4 reasoning effort options', () => {
+  const options = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'deepseek/deepseek-v4-pro',
+    transportKind: 'openai-compatible',
+  });
+  assert.deepEqual(
+    options.map((option) => option.value),
+    ['default', 'high', 'max'],
+  );
+});
+
 test('anthropic models normalize max to high transport effort', () => {
   assert.equal(
     resolveAnthropicTransportReasoningEffortForContext('max', {
@@ -93,21 +114,40 @@ test('google models normalize reasoning efforts to supported values', () => {
   assert.equal(
     resolveModelReasoningEffortForContext('minimal', {
       provider: 'google',
+      model: 'gemini-3-flash-preview',
       transportKind: 'openai-compatible',
     }),
-    'low',
+    'minimal',
   );
   assert.equal(
-    resolveOpenAiTransportReasoningEffortForContext('none', {
+    resolveModelReasoningEffortForContext('minimal', {
       provider: 'google',
+      model: 'gemini-2.5-flash',
       transportKind: 'openai-compatible',
     }),
     'none',
   );
   assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('none', {
+      provider: 'google',
+      model: 'gemini-2.5-flash',
+      transportKind: 'openai-compatible',
+    }),
+    'none',
+  );
+  assert.equal(
+    resolveOpenAiTransportReasoningEffortForContext('none', {
+      provider: 'google',
+      model: 'gemini-3-flash-preview',
+      transportKind: 'openai-compatible',
+    }),
+    'minimal',
+  );
+  assert.equal(
     resolveOpenAiTransportReasoningEffortForContext('max', {
       provider: 'google',
       transportKind: 'openai-compatible',
+      model: 'gemini-2.5-flash',
     }),
     'high',
   );
@@ -133,23 +173,43 @@ test('anthropic supported efforts restrict unavailable levels', () => {
 });
 
 test('gateway gemini models use google effort options', () => {
-  const geminiOptions = modelReasoningEffortOptions({
+  const geminiProOptions = modelReasoningEffortOptions({
     provider: 'vercel-ai-gateway',
     model: 'google/gemini-3.1-pro-preview',
     transportKind: 'open-responses',
   });
   assert.deepEqual(
-    geminiOptions.map((option) => option.value),
+    geminiProOptions.map((option) => option.value),
+    ['default', 'low', 'medium', 'high'],
+  );
+
+  const geminiFlashOptions = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'google/gemini-3-flash-preview',
+    transportKind: 'open-responses',
+  });
+  assert.deepEqual(
+    geminiFlashOptions.map((option) => option.value),
+    ['default', 'minimal', 'low', 'medium', 'high'],
+  );
+
+  const gemini25Options = modelReasoningEffortOptions({
+    provider: 'vercel-ai-gateway',
+    model: 'google/gemini-2.5-flash',
+    transportKind: 'openai-compatible',
+  });
+  assert.deepEqual(
+    gemini25Options.map((option) => option.value),
     ['default', 'none', 'low', 'medium', 'high'],
   );
 
   assert.equal(
-    resolveModelReasoningEffortForContext('minimal', {
+    resolveModelReasoningEffortForContext('none', {
       provider: 'vercel-ai-gateway',
-      model: 'google/gemini-3.1-pro-preview',
+      model: 'google/gemini-3-flash-preview',
       transportKind: 'open-responses',
     }),
-    'low',
+    'minimal',
   );
   assert.equal(
     resolveOpenAiTransportReasoningEffortForContext('medium', {

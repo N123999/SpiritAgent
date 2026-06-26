@@ -8,6 +8,7 @@ import {
   resolveModelReasoningEffortForContext,
   type ModelReasoningEffort,
 } from '@spirit-agent/core/reasoning-effort';
+import { shouldPinReasoningEffortToDefault } from '@spirit-agent/core/model-thinking-controls';
 
 import { resolveDesktopAgentMode } from '../lib/agent-mode.js';
 import { parseModelContextLength } from '../lib/context-usage.js';
@@ -130,6 +131,7 @@ export async function updateConfigCommand(
     const activeModel = request.activeModel.trim();
     const apiBase = request.apiBase.trim();
     const reasoningEffort = request.reasoningEffort;
+    const thinkingEnabled = request.thinkingEnabled;
     let existing = activeModel
       ? state.config.models.find((model) => model.name === activeModel)
       : undefined;
@@ -152,6 +154,24 @@ export async function updateConfigCommand(
               ? { supportedEfforts: existing.supportedReasoningEfforts }
               : {}),
           });
+        }
+        if (thinkingEnabled !== undefined) {
+          const modelContext = {
+            ...(existing.provider ? { provider: existing.provider } : {}),
+            model: existing.name,
+            ...(existing.transportKind ? { transportKind: existing.transportKind } : {}),
+            ...(existing.supportedReasoningEfforts !== undefined
+              ? { supportedEfforts: existing.supportedReasoningEfforts }
+              : {}),
+          };
+          if (thinkingEnabled) {
+            delete existing.thinkingEnabled;
+          } else {
+            existing.thinkingEnabled = false;
+          }
+          if (shouldPinReasoningEffortToDefault(thinkingEnabled, modelContext)) {
+            existing.reasoningEffort = resolveModelReasoningEffortForContext('default', modelContext);
+          }
         }
       } else {
         state.config.models.push({

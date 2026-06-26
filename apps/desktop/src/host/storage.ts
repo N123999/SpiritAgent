@@ -899,6 +899,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(vertexLocation ? { vertexLocation } : {}),
             ...(azureResourceName ? { azureResourceName } : {}),
             ...(contextLength !== undefined ? { contextLength } : {}),
+            ...(model.thinkingEnabled === false ? { thinkingEnabled: false } : {}),
           };
         })
         .filter((model): model is ModelProfileSnapshot => model !== null)

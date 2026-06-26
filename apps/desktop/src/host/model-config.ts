@@ -9,7 +9,14 @@ import {
 import {
   resolveAnthropicTransportReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
+  type ModelReasoningEffortContext,
 } from '@spirit-agent/core/reasoning-effort';
+import {
+  modelSupportsThinkingSwitch,
+  resolveAnthropicExplicitThinkingConfig,
+  resolveVendorExtendedThinking,
+  shouldPinReasoningEffortToDefault,
+} from '@spirit-agent/core/model-thinking-controls';
 import {
   listProviderModels,
   resolveProviderConnectApiBase,
@@ -173,6 +180,67 @@ export function openAiCompatibleVendorFromProvider(
     : undefined;
 }
 
+type AgentModelProfileFields = Pick<
+  ModelProfileSnapshot,
+  | 'provider'
+  | 'transportKind'
+  | 'reasoningEffort'
+  | 'supportedReasoningEfforts'
+  | 'thinkingEnabled'
+>;
+
+function buildAgentModelReasoningContext(
+  profile: AgentModelProfileFields | undefined,
+  model: string,
+): ModelReasoningEffortContext {
+  return {
+    ...(profile?.provider ? { provider: profile.provider } : {}),
+    ...(profile?.transportKind ? { transportKind: profile.transportKind } : {}),
+    ...(profile?.supportedReasoningEfforts !== undefined
+      ? { supportedEfforts: profile.supportedReasoningEfforts }
+      : {}),
+    model,
+  };
+}
+
+function resolveAgentOpenAiReasoningEffort(
+  profile: AgentModelProfileFields | undefined,
+  model: string,
+  transportKind: NonNullable<ModelReasoningEffortContext['transportKind']>,
+) {
+  const context = {
+    ...buildAgentModelReasoningContext(profile, model),
+    transportKind,
+  };
+  const thinkingEnabled = profile?.thinkingEnabled !== false;
+  if (
+    modelSupportsThinkingSwitch(context)
+    && shouldPinReasoningEffortToDefault(thinkingEnabled, context)
+  ) {
+    return undefined;
+  }
+  return resolveOpenAiTransportReasoningEffortForContext(profile?.reasoningEffort, context);
+}
+
+function resolveAgentVendorExtendedThinking(
+  profile: AgentModelProfileFields | undefined,
+  model: string,
+): boolean | undefined {
+  const context = buildAgentModelReasoningContext(profile, model);
+  if (!modelSupportsThinkingSwitch(context)) {
+    return undefined;
+  }
+  return resolveVendorExtendedThinking(profile?.thinkingEnabled);
+}
+
+function resolveAgentAnthropicExplicitThinking(
+  profile: AgentModelProfileFields | undefined,
+  model: string,
+): AnthropicTransportConfig['thinking'] | undefined {
+  const context = buildAgentModelReasoningContext(profile, model);
+  return resolveAnthropicExplicitThinkingConfig(profile?.thinkingEnabled, context);
+}
+
 export function buildPrimaryTransportConfig(input: {
   apiKey: string;
   model: string;
@@ -188,6 +256,7 @@ export function buildPrimaryTransportConfig(input: {
     | 'capabilities'
     | 'reasoningEffort'
     | 'supportedReasoningEfforts'
+    | 'thinkingEnabled'
     | 'awsRegion'
     | 'vertexProject'
     | 'vertexLocation'
@@ -261,16 +330,10 @@ export function buildPrimaryTransportConfig(input: {
 
   if (transportKind === 'open-responses') {
     const llmVendor = openAiCompatibleVendorFromProvider(input.profile?.provider);
-    const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
-      input.profile?.reasoningEffort,
-      {
-        ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-        transportKind: 'open-responses',
-        ...(input.profile?.supportedReasoningEfforts !== undefined
-          ? { supportedEfforts: input.profile.supportedReasoningEfforts }
-          : {}),
-        model: input.model,
-      },
+    const normalizedReasoningEffort = resolveAgentOpenAiReasoningEffort(
+      input.profile,
+      input.model,
+      'open-responses',
     );
     const responsesProvider: OpenResponsesSdkProvider | undefined =
       input.profile?.provider === 'openai'
@@ -286,6 +349,7 @@ export function buildPrimaryTransportConfig(input: {
       model: input.model,
       ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
     });
+    const vendorExtendedThinking = resolveAgentVendorExtendedThinking(input.profile, input.model);
 
     return {
       transportKind: 'open-responses',
@@ -302,6 +366,7 @@ export function buildPrimaryTransportConfig(input: {
         : {}),
       ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
       ...(reasoningSummary ? { reasoningSummary } : {}),
+      ...(vendorExtendedThinking === false ? { vendorExtendedThinking: false as const } : {}),
     };
   }
 
@@ -320,6 +385,7 @@ export function buildPrimaryTransportConfig(input: {
         model: input.model,
       },
     );
+    const explicitThinking = resolveAgentAnthropicExplicitThinking(input.profile, input.model);
     return {
       transportKind: 'anthropic',
       apiKey: input.apiKey,
@@ -333,6 +399,7 @@ export function buildPrimaryTransportConfig(input: {
         ? { supportedEfforts: supportedAnthropicEfforts }
         : {}),
       ...(anthropicEffort ? { effort: anthropicEffort } : {}),
+      ...(explicitThinking ? { thinking: explicitThinking } : {}),
     };
   }
 
@@ -372,17 +439,12 @@ export function buildPrimaryTransportConfig(input: {
   }
 
   const llmVendor = openAiCompatibleVendorFromProvider(input.profile?.provider);
-  const normalizedReasoningEffort = resolveOpenAiTransportReasoningEffortForContext(
-    input.profile?.reasoningEffort,
-    {
-      ...(input.profile?.provider ? { provider: input.profile.provider } : {}),
-      ...(input.profile?.transportKind ? { transportKind: input.profile.transportKind } : {}),
-      ...(input.profile?.supportedReasoningEfforts !== undefined
-        ? { supportedEfforts: input.profile.supportedReasoningEfforts }
-        : {}),
-      model: input.model,
-    },
+  const normalizedReasoningEffort = resolveAgentOpenAiReasoningEffort(
+    input.profile,
+    input.model,
+    'openai-compatible',
   );
+  const vendorExtendedThinking = resolveAgentVendorExtendedThinking(input.profile, input.model);
   const vertexCredentials = input.googleVertexCredentials;
   const vertexProject = input.profile?.vertexProject?.trim();
   const vertexLocation = input.profile?.vertexLocation?.trim();
@@ -402,6 +464,7 @@ export function buildPrimaryTransportConfig(input: {
       ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
       : {}),
     ...(normalizedReasoningEffort ? { reasoningEffort: normalizedReasoningEffort } : {}),
+    ...(vendorExtendedThinking === false ? { vendorExtendedThinking: false as const } : {}),
   };
 }
 

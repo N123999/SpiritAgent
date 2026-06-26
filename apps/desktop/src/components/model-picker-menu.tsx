@@ -35,8 +35,12 @@ import {
 } from "@/lib/model-catalog-detail";
 import { toolCardSecondaryTextClass } from "@/lib/file-tool-lsp-diagnostics-display";
 import { modelReasoningEffortLabel } from "@spirit-agent/core/reasoning-effort";
+import {
+  modelSupportsThinkingSwitch,
+  resolveModelThinkingEnabled,
+} from "@spirit-agent/core/model-thinking-controls";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
-import type { DesktopModelReasoningEffort, DesktopSnapshot } from "@/types";
+import type { DesktopModelReasoningEffort, DesktopSnapshot, ModelProfileSnapshot } from "@/types";
 import { cn } from "@/lib/utils";
 
 type ModelPickerItem = DesktopSnapshot["config"]["models"][number];
@@ -98,6 +102,7 @@ export type ModelPickerMenuProps = {
   onOpenChange?(open: boolean): void;
   onModelSelect(name: string): void;
   onModelReasoningEffortSelect?(name: string, reasoningEffort: DesktopModelReasoningEffort): void;
+  onModelThinkingEnabledSelect?(name: string, enabled: boolean): void | Promise<boolean>;
   triggerClassName?: string;
   menuContentClassName?: string;
 };
@@ -112,6 +117,7 @@ export function ModelPickerMenu({
   onOpenChange,
   onModelSelect,
   onModelReasoningEffortSelect,
+  onModelThinkingEnabledSelect,
   triggerClassName,
   menuContentClassName,
 }: ModelPickerMenuProps) {
@@ -263,6 +269,7 @@ export function ModelPickerMenu({
                       reasoningEffort={
                         activeReasoningEffort ?? activeModelProfile.reasoningEffort
                       }
+                      model={activeModelProfile}
                     />
                   ) : (
                     <span className="min-w-0 truncate">{activeModelName}</span>
@@ -316,10 +323,11 @@ export function ModelPickerMenu({
             )}
           >
             {(activeItem) => {
-              const model = activeItem as ModelPickerItem | null;
-              if (!model) {
+              const hoveredModel = activeItem as ModelPickerItem | null;
+              if (!hoveredModel) {
                 return null;
               }
+              const model = models.find((entry) => entry.name === hoveredModel.name) ?? hoveredModel;
               const group = filteredModelGroups.find((entry) =>
                 entry.items.some((item) => item.name === model.name),
               );
@@ -339,6 +347,9 @@ export function ModelPickerMenu({
                     setModelFilter("");
                     setModelMenuOpen(false);
                   }}
+                  onThinkingEnabledChange={(modelName, enabled) => {
+                    onModelThinkingEnabledSelect?.(modelName, enabled);
+                  }}
                 />
               );
             }}
@@ -352,15 +363,33 @@ export function ModelPickerMenu({
 function ModelPickerTriggerLabel({
   name,
   reasoningEffort,
+  model,
 }: {
   name: string;
   reasoningEffort: DesktopModelReasoningEffort;
+  model: ModelProfileSnapshot;
 }) {
+  const { t } = useTranslation();
+  const modelContext = {
+    ...(model.provider ? { provider: model.provider } : {}),
+    model: model.name,
+    ...(model.supportedReasoningEfforts !== undefined
+      ? { supportedEfforts: model.supportedReasoningEfforts }
+      : {}),
+    ...(model.transportKind ? { transportKind: model.transportKind } : {}),
+  };
+  const supportsThinkingSwitch = modelSupportsThinkingSwitch(modelContext);
+  const thinkingEnabled = resolveModelThinkingEnabled(model.thinkingEnabled);
+  const secondaryLabel =
+    supportsThinkingSwitch && !thinkingEnabled
+      ? t("app.modelPickerNotThinking")
+      : modelReasoningEffortLabel(reasoningEffort);
+
   return (
     <span className="inline-flex min-w-0 max-w-full items-baseline gap-1.5">
       <span className="min-w-0 truncate">{name}</span>
       <span className={cn("shrink-0", toolCardSecondaryTextClass)}>
-        {modelReasoningEffortLabel(reasoningEffort)}
+        {secondaryLabel}
       </span>
     </span>
   );

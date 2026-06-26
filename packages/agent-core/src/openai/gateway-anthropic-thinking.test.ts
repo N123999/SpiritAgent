@@ -54,7 +54,7 @@ test('resolveGatewayAnthropicClaudeCapabilities maps adaptive models and effort 
 test('resolveGatewayAnthropicClaudeCapabilities maps legacy claude models to budget thinking', () => {
   assert.deepEqual(resolveGatewayAnthropicClaudeCapabilities('anthropic/claude-sonnet-4-5'), {
     thinkingMode: 'budget',
-    supportedEfforts: ['low', 'medium', 'high'],
+    supportedEfforts: [],
   });
 });
 
@@ -99,7 +99,7 @@ test('buildGatewayAnthropicProviderOptions maps effort and summarized display fo
   );
 });
 
-test('buildGatewayAnthropicProviderOptions uses budget thinking for legacy claude when effort selected', () => {
+test('buildGatewayAnthropicProviderOptions uses fixed budget thinking for legacy claude', () => {
   assert.deepEqual(
     buildGatewayAnthropicProviderOptions({
       llmVendor: 'vercel-ai-gateway',
@@ -109,14 +109,13 @@ test('buildGatewayAnthropicProviderOptions uses budget thinking for legacy claud
     {
       anthropic: {
         toolStreaming: true,
-        thinking: { type: 'enabled', budgetTokens: 8_000 },
-        effort: 'medium',
+        thinking: { type: 'enabled', budgetTokens: 12_000 },
       },
     },
   );
 });
 
-test('buildGatewayAnthropicProviderOptions omits budget thinking for legacy claude at default effort', () => {
+test('buildGatewayAnthropicProviderOptions enables budget thinking for legacy claude at default effort', () => {
   assert.deepEqual(
     buildGatewayAnthropicProviderOptions({
       llmVendor: 'vercel-ai-gateway',
@@ -126,6 +125,41 @@ test('buildGatewayAnthropicProviderOptions omits budget thinking for legacy clau
     {
       anthropic: {
         toolStreaming: true,
+        thinking: { type: 'enabled', budgetTokens: 12_000 },
+      },
+    },
+  );
+});
+
+test('buildGatewayAnthropicProviderOptions disables budget thinking when vendorExtendedThinking false', () => {
+  assert.deepEqual(
+    buildGatewayAnthropicProviderOptions({
+      llmVendor: 'vercel-ai-gateway',
+      model: 'anthropic/claude-opus-4-5',
+      reasoningEffort: 'medium',
+      vendorExtendedThinking: false,
+    }),
+    {
+      anthropic: {
+        toolStreaming: true,
+        thinking: { type: 'disabled' },
+      },
+    },
+  );
+});
+
+test('buildGatewayAnthropicProviderOptions disables adaptive thinking when vendorExtendedThinking false', () => {
+  assert.deepEqual(
+    buildGatewayAnthropicProviderOptions({
+      llmVendor: 'vercel-ai-gateway',
+      model: 'anthropic/claude-opus-4-8',
+      reasoningEffort: 'high',
+      vendorExtendedThinking: false,
+    }),
+    {
+      anthropic: {
+        toolStreaming: true,
+        thinking: { type: 'disabled' },
       },
     },
   );

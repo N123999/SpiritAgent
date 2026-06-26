@@ -46,25 +46,37 @@ test('buildOpenRouterClaudeReasoningBody maps effort for opus 4.8', () => {
   );
 });
 
-test('buildOpenRouterClaudeReasoningBody uses budget max_tokens for legacy claude', () => {
+test('buildOpenRouterClaudeReasoningBody uses fixed budget max_tokens for legacy claude', () => {
   assert.deepEqual(
     buildOpenRouterClaudeReasoningBody({
       llmVendor: 'openrouter',
       model: 'anthropic/claude-sonnet-4-5',
       reasoningEffort: 'medium',
     }),
-    { enabled: true, max_tokens: 8_000 },
+    { enabled: true, max_tokens: 12_000 },
   );
 });
 
-test('buildOpenRouterClaudeReasoningBody omits thinking for legacy claude at default effort', () => {
-  assert.equal(
+test('buildOpenRouterClaudeReasoningBody enables budget thinking for legacy claude at default effort', () => {
+  assert.deepEqual(
     buildOpenRouterClaudeReasoningBody({
       llmVendor: 'openrouter',
       model: 'anthropic/claude-sonnet-4-5',
       reasoningEffort: 'default',
     }),
-    undefined,
+    { enabled: true, max_tokens: 12_000 },
+  );
+});
+
+test('buildOpenRouterClaudeReasoningBody disables budget thinking when vendorExtendedThinking false', () => {
+  assert.deepEqual(
+    buildOpenRouterClaudeReasoningBody({
+      llmVendor: 'openrouter',
+      model: 'anthropic/claude-opus-4-5',
+      reasoningEffort: 'medium',
+      vendorExtendedThinking: false,
+    }),
+    { enabled: false },
   );
 });
 
@@ -76,6 +88,18 @@ test('buildOpenRouterClaudeReasoningBody maps none to effort none', () => {
       reasoningEffort: 'none',
     }),
     { effort: 'none' },
+  );
+});
+
+test('buildOpenRouterClaudeReasoningBody disables adaptive thinking when vendorExtendedThinking false', () => {
+  assert.deepEqual(
+    buildOpenRouterClaudeReasoningBody({
+      llmVendor: 'openrouter',
+      model: 'anthropic/claude-opus-4-8',
+      reasoningEffort: 'high',
+      vendorExtendedThinking: false,
+    }),
+    { enabled: false },
   );
 });
 
