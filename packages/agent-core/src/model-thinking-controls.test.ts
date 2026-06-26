@@ -29,15 +29,15 @@ test('DeepSeek V4 supports thinking switch and effort while thinking', () => {
   assert.equal(modelShowsReasoningEffortControl(context, false), false);
 });
 
-test('DeepSeek non-V4 thinking switch has no reasoning effort options', () => {
+test('DeepSeek non-V4 has no thinking switch or reasoning effort control', () => {
   const context = {
     provider: 'deepseek' as const,
     model: 'deepseek-chat',
     transportKind: 'openai-compatible' as const,
   };
-  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
   assert.equal(modelSupportsReasoningEffortWhileThinking(context), false);
-  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+  assert.equal(modelShowsReasoningEffortControl(context, true), false);
   assert.equal(modelShowsReasoningEffortControl(context, false), false);
 });
 
@@ -136,13 +136,23 @@ test('Gateway Claude without extended thinking stays hidden', () => {
   assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
-test('Gateway DeepSeek slug supports thinking switch', () => {
+test('Gateway DeepSeek non-V4 has no thinking switch', () => {
   const context = {
     provider: 'vercel-ai-gateway' as const,
     model: 'deepseek/deepseek-v3',
     transportKind: 'openai-compatible' as const,
   };
-  assert.equal(modelSupportsThinkingSwitch(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+  assert.equal(modelShowsReasoningEffortControl(context, true), false);
+});
+
+test('Gateway DeepSeek V3.2 has no thinking switch', () => {
+  const context = {
+    provider: 'vercel-ai-gateway' as const,
+    model: 'deepseek/deepseek-v3.2',
+    transportKind: 'openai-compatible' as const,
+  };
+  assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
 test('Gateway DeepSeek V4 shows reasoning effort when thinking enabled', () => {

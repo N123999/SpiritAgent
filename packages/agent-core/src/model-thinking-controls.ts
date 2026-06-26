@@ -113,7 +113,7 @@ function isDeepSeekThinkingSwitchModel(context?: ModelReasoningEffortContext): b
   if (isDeepSeekReasoningOnlyModel(context)) {
     return false;
   }
-  return true;
+  return isDeepSeekV4ReasoningEffortModel(context);
 }
 
 function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): boolean {
@@ -124,7 +124,14 @@ function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): bo
   if (slug === undefined) {
     return false;
   }
-  return !GATEWAY_REASONING_EFFORT_SLUGS.has(slug);
+  if (GATEWAY_REASONING_EFFORT_SLUGS.has(slug)) {
+    return false;
+  }
+  // DeepSeek V3 及以下靠模型名区分 thinking 变体，无 extended thinking 开关。
+  if (slug === 'deepseek') {
+    return isDeepSeekV4ReasoningEffortModel(context);
+  }
+  return true;
 }
 
 function isGatewayReasoningEffortPrimaryControlModel(
