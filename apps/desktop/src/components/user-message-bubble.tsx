@@ -276,6 +276,23 @@ export function UserMessageBubble({
 
   return (
     <div className="flex w-full flex-col items-end gap-1.5">
+      {hasAttachments ? (
+        <div
+          className={cn("w-full", !showText && queued && "opacity-60", !showText && canStartRewind &&
+            "cursor-pointer transition-colors hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none")}
+          role={!showText && canStartRewind ? "button" : undefined}
+          tabIndex={!showText && canStartRewind ? 0 : undefined}
+          onClick={!showText && canStartRewind ? onRewindStart : undefined}
+          onKeyDown={!showText && canStartRewind ? handleRewindKeyDown : undefined}
+        >
+          <ComposerLocalFileStrip
+            readOnly
+            attachments={attachmentViews}
+            className="flex flex-wrap justify-end gap-1.5"
+            saveLocalImageAs={saveLocalImageAs}
+          />
+        </div>
+      ) : null}
       {showText ? (
         <div
           data-spirit-surface="message-bubble"
@@ -317,23 +334,6 @@ export function UserMessageBubble({
               return display;
             })}
           </pre>
-        </div>
-      ) : null}
-      {hasAttachments ? (
-        <div
-          className={cn("w-full", !showText && queued && "opacity-60", !showText && canStartRewind &&
-            "cursor-pointer transition-colors hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none")}
-          role={!showText && canStartRewind ? "button" : undefined}
-          tabIndex={!showText && canStartRewind ? 0 : undefined}
-          onClick={!showText && canStartRewind ? onRewindStart : undefined}
-          onKeyDown={!showText && canStartRewind ? handleRewindKeyDown : undefined}
-        >
-          <ComposerLocalFileStrip
-            readOnly
-            attachments={attachmentViews}
-            className="flex flex-wrap justify-end gap-1.5"
-            saveLocalImageAs={saveLocalImageAs}
-          />
         </div>
       ) : null}
     </div>
