@@ -145,6 +145,7 @@ import {
   resolveMoonshotVideoUrlsInOpenAiMessages,
 } from './openai-multimodal-messages.js';
 import { resolveXiaomiVideoUrlsInOpenAiMessages } from './xiaomi-video-messages.js';
+import { resolveMinimaxVideoUrlsInOpenAiMessages } from './minimax-video-messages.js';
 import { normalizeMoonshotApiBase } from './moonshot-files.js';
 import {
   buildJsonSchemaCompletionMessages,
@@ -1783,6 +1784,7 @@ async function resolveOpenAiCompatibleVideoInputsInMessages(
 ): Promise<void> {
   await resolveMoonshotVideoUrlsInOpenAiMessages(config, messages, assetRoot);
   resolveXiaomiVideoUrlsInOpenAiMessages(config, messages, assetRoot);
+  await resolveMinimaxVideoUrlsInOpenAiMessages(config, messages, assetRoot);
 }
 
 function prepareMoonshotChatCompletionRequest(
@@ -1806,7 +1808,7 @@ function clearMoonshotChatCompletionRequest(config: OpenAiTransportConfig): void
 function usesOpenAiCompatibleVideoMessageStash(
   vendor: OpenAiTransportConfig['llmVendor'],
 ): boolean {
-  return vendor === 'moonshot-ai' || vendor === 'xiaomi';
+  return vendor === 'moonshot-ai' || vendor === 'xiaomi' || vendor === 'minimax';
 }
 
 function normalizeMessagesForRequest(

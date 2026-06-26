@@ -172,6 +172,13 @@ export function resolveOpenAiModelCompatibilityProfile(
     };
   }
 
+  if (config.llmVendor === 'minimax') {
+    return {
+      hasExplicitCapabilities: true,
+      capabilities: {},
+    };
+  }
+
   if (config.llmVendor === 'siliconflow') {
     return {
       hasExplicitCapabilities: true,
