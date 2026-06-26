@@ -226,7 +226,7 @@ test('parseVercelAiGatewayModelEntriesPayload infers supportedReasoningEfforts f
     },
     {
       id: 'google/gemini-2.5-flash',
-      supportedReasoningEfforts: ['low', 'medium', 'high'],
+      supportedReasoningEfforts: ['none', 'low', 'medium', 'high'],
     },
     {
       id: 'google/imagen-4',

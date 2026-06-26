@@ -6,6 +6,7 @@ import {
   buildGoogleThinkingConfigForEffort,
   gatewayGoogleGeminiSupportedEfforts,
   isGatewayGoogleGeminiModel,
+  isGoogleGeminiMinimalThinkingLevelModel,
 } from './gateway-google-thinking.js';
 
 test('isGatewayGoogleGeminiModel matches vercel-ai-gateway google gemini routes only', () => {
@@ -31,6 +32,17 @@ test('isGatewayGoogleGeminiModel matches vercel-ai-gateway google gemini routes 
   );
 });
 
+test('isGoogleGeminiMinimalThinkingLevelModel matches flash routes only', () => {
+  assert.equal(
+    isGoogleGeminiMinimalThinkingLevelModel('google/gemini-3-flash-preview'),
+    true,
+  );
+  assert.equal(
+    isGoogleGeminiMinimalThinkingLevelModel('google/gemini-3.1-pro-preview'),
+    false,
+  );
+});
+
 test('buildGoogleThinkingConfigForEffort maps Gemini 3 and 2.5 effort levels', () => {
   assert.deepEqual(
     buildGoogleThinkingConfigForEffort('google/gemini-3.1-pro-preview', 'high'),
@@ -47,7 +59,17 @@ test('buildGoogleThinkingConfigForEffort maps Gemini 3 and 2.5 effort levels', (
     },
   );
   assert.deepEqual(
+    buildGoogleThinkingConfigForEffort('google/gemini-3-flash-preview', 'minimal'),
+    {
+      thinkingLevel: 'minimal',
+    },
+  );
+  assert.equal(
     buildGoogleThinkingConfigForEffort('google/gemini-3.1-pro-preview', 'none'),
+    undefined,
+  );
+  assert.deepEqual(
+    buildGoogleThinkingConfigForEffort('google/gemini-3-flash-preview', 'none'),
     {
       thinkingLevel: 'minimal',
     },
@@ -79,6 +101,14 @@ test('gatewayGoogleGeminiSupportedEfforts exports effort vocabulary for catalog 
   assert.deepEqual(
     gatewayGoogleGeminiSupportedEfforts('google/gemini-3.1-pro-preview'),
     ['low', 'medium', 'high'],
+  );
+  assert.deepEqual(
+    gatewayGoogleGeminiSupportedEfforts('google/gemini-3-flash-preview'),
+    ['minimal', 'low', 'medium', 'high'],
+  );
+  assert.deepEqual(
+    gatewayGoogleGeminiSupportedEfforts('google/gemini-2.5-flash'),
+    ['none', 'low', 'medium', 'high'],
   );
   assert.equal(gatewayGoogleGeminiSupportedEfforts('openai/gpt-5'), undefined);
 });
