@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { setLlmFetchTransportOverrideForTests } from '../llm-fetch.js';
+import { applyCodeCompletionTransportProfile } from '../code-completion/transport-profile.js';
 import { AiSdkOpenAiCompatibleTransport } from './ai-sdk-transport.js';
 
 function googleGenerateContentResponse(text: string) {
@@ -99,6 +100,44 @@ test('Google Gemini 3 models map reasoning effort to thinkingLevel', async () =>
     assert.deepEqual((generationConfig as Record<string, unknown>).thinkingConfig, {
       thinkingLevel: 'high',
       includeThoughts: true,
+    });
+  } finally {
+    setLlmFetchTransportOverrideForTests(undefined);
+  }
+});
+
+test('Google code-completion profile sends thinkingBudget 0 for Gemini 2.5', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  setLlmFetchTransportOverrideForTests(async (_input, init) => {
+    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify(googleGenerateContentResponse('GOOGLE_CC_OK')), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  const transport = new AiSdkOpenAiCompatibleTransport();
+  try {
+    const config = applyCodeCompletionTransportProfile({
+      apiKey: 'test-key',
+      model: 'gemini-2.5-flash',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+      llmVendor: 'google',
+      reasoningEffort: 'high',
+      workspaceRoot: process.cwd(),
+    }) as import('./openai-compat.js').OpenAiTransportConfig;
+
+    const result = await transport.startToolAgentRound(
+      config,
+      { messages: [{ role: 'user', content: 'hello' }], steps: 0 },
+      [],
+    );
+
+    assert.equal(result.kind, 'success');
+    const generationConfig = capturedBody?.generationConfig;
+    assert.ok(generationConfig && typeof generationConfig === 'object' && !Array.isArray(generationConfig));
+    assert.deepEqual((generationConfig as Record<string, unknown>).thinkingConfig, {
+      thinkingBudget: 0,
     });
   } finally {
     setLlmFetchTransportOverrideForTests(undefined);

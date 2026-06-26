@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '../ports.js';
-import type { LlmModelCapabilities } from '../llm-provider-shared.js';
+import type { LlmModelCapabilities, TransportRequestProfile } from '../llm-provider-shared.js';
 import { resolveOpenAiTransportReasoningEffortForContext } from '../reasoning-effort.js';
 import { cloneJsonValue } from '../tool-agent.js';
 import {
@@ -110,6 +110,8 @@ export interface OpenAiTransportConfig {
   vertexClientEmail?: string;
   /** 服务账号 `private_key`（与 `vertexClientEmail` 成对）。 */
   vertexPrivateKey?: string;
+  /** 代码补全等非 Agent 轻量请求的策略画像；缺省为 agent 路径默认行为。 */
+  transportRequestProfile?: TransportRequestProfile;
   /**
    * 透传 `createVertex` 的 `googleAuthOptions`（如 ADC 自定义或测试用 `authClient`）。
    * 若已设置 `vertexClientEmail` / `vertexPrivateKey`，宿主构建的 credentials 优先于此字段。
@@ -200,12 +202,23 @@ export function openAiReasoningEffort(
  * Moonshot 已改用 `@ai-sdk/moonshotai` 的 `providerOptions.moonshotai.thinking`。
  */
 export function openAiVendorChatCompletionBodyExtras(
-  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'reasoningEffort' | 'vendorExtendedThinking'>,
+  config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model' | 'reasoningEffort' | 'vendorExtendedThinking' | 'transportRequestProfile'>,
 ): Record<string, unknown> {
   const extras: Record<string, unknown> = {};
-  if (config.llmVendor === 'deepseek') {
+  if (
+    config.llmVendor === 'deepseek'
+    || config.llmVendor === 'z-ai'
+    || config.llmVendor === 'zhipu-ai'
+    || config.llmVendor === 'minimax'
+    || config.llmVendor === 'xiaomi'
+    || config.llmVendor === 'volcengine'
+  ) {
     const enabled = config.vendorExtendedThinking !== false;
     extras.thinking = { type: enabled ? 'enabled' : 'disabled' };
+  }
+
+  if (config.llmVendor === 'siliconflow' && config.transportRequestProfile === 'code-completion') {
+    extras.enable_thinking = false;
   }
 
   const openRouterReasoning = buildOpenRouterClaudeReasoningBody(config);

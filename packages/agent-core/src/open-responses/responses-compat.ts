@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue, SpiritAgentMode } from '../ports.js';
-import type { LlmModelCapabilities } from '../llm-provider-shared.js';
+import type { LlmModelCapabilities, TransportRequestProfile } from '../llm-provider-shared.js';
 import type {
   OpenAiImageGenerationConfig,
   OpenAiLlmVendor,
@@ -64,6 +64,8 @@ export interface OpenResponsesTransportConfig {
   };
   /** Azure 资源名；与 `@ai-sdk/azure` 的 `resourceName` 对齐。 */
   azureResourceName?: string;
+  /** 代码补全等非 Agent 轻量请求的策略画像；缺省为 agent 路径默认行为。 */
+  transportRequestProfile?: TransportRequestProfile;
 }
 
 export type OpenResponsesRequestTraceKind =
