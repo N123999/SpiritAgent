@@ -24,7 +24,7 @@ export function isMinimaxM3ThinkingSwitchModel(model: string): boolean {
 
 /**
  * Gateway MiniMax：经 minimax 命名空间注入 thinking.type。
- * M3 经 Gateway open-responses 当前不产出 reasoning-delta，Thought UI 仍可能为空。
+ * M3 在 open-responses 下不返回可展示思考流；见 #170。
  */
 export function buildGatewayMinimaxProviderOptions(
   config: Pick<

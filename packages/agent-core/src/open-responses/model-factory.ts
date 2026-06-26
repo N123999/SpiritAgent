@@ -292,7 +292,7 @@ export function buildResponsesProviderOptions(
     if (isGatewayMinimaxModel(config.llmVendor, config.model)) {
       const minimaxOptions = buildGatewayMinimaxProviderOptions(config);
       if (Object.keys(minimaxOptions).length > 0) {
-        // Gateway MiniMax M3 经 open-responses 当前不产出 reasoning-delta，Thought UI 仍可能为空。
+        // Gateway MiniMax M3 在 open-responses 下不返回可展示思考流；见 #170。
         return minimaxOptions;
       }
     }
