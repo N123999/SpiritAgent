@@ -11,13 +11,13 @@ import {
 import type { TFunction } from "i18next";
 
 import {
-  currentWorkspaceFileReferenceQuery,
   codeUnitIndexToCharCount,
 } from "@spirit-agent/host-internal/workspace-file-reference-query";
 
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { segmentsToMessageText } from "@/components/composer-rich-input";
 import { cycleAgentMode, type DesktopAgentMode } from "@/lib/agent-mode";
+import { currentWorkspaceFileReferenceQueryFromSegments } from "@/lib/composer-file-reference-query";
 import {
   resolveComposerDirectMediaTool,
 } from "@/lib/composer-direct-media";
@@ -185,10 +185,14 @@ export function useComposerController({
     [slashQuery, snapshot?.skillsList],
   );
 
-  const fileReferenceQuery = useMemo(
-    () => currentWorkspaceFileReferenceQuery(runtime.composer, composerCursorChars),
-    [composerCursorChars, runtime.composer],
-  );
+  const fileReferenceQuery = useMemo(() => {
+    const segments = composerRichInputRef.current?.getSegments() ?? [];
+    return currentWorkspaceFileReferenceQueryFromSegments(
+      segments,
+      runtime.composer,
+      composerCursorChars,
+    );
+  }, [composerCursorChars, runtime.composer]);
 
   useEffect(() => {
     if (!fileReferenceQuery && dismissedFileReferenceKey !== null) {
