@@ -30,6 +30,7 @@ import {
 import {
   canDrainQueuedUserTurn,
   explicitWorkspaceFilesFromQueuedItem,
+  turnSkillsFromQueuedItem,
   findQueuedUserTurnIndex,
   isSessionBundleQueueBlocked,
   removeQueuedUserTurn,
@@ -277,6 +278,7 @@ export async function sendQueuedUserTurnNowCommand(
       displayText: item.displayText,
       preallocatedMessageId: item.messageId,
       explicitWorkspaceFiles: explicitWorkspaceFilesFromQueuedItem(item),
+      turnSkills: turnSkillsFromQueuedItem(item),
     });
   } catch (error) {
     bundle.queuedUserTurns.splice(index, 0, item);
@@ -301,6 +303,7 @@ export async function drainQueuedUserTurnIfIdle(
       displayText: next.displayText,
       preallocatedMessageId: next.messageId,
       explicitWorkspaceFiles: explicitWorkspaceFilesFromQueuedItem(next),
+      turnSkills: turnSkillsFromQueuedItem(next),
     });
   } catch (error) {
     bundle.queuedUserTurns.unshift(next);

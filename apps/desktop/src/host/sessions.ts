@@ -242,6 +242,14 @@ export function cloneQueuedUserTurns(queued: readonly QueuedUserTurn[]): QueuedU
     ...(item.explicitWorkspaceFiles
       ? { explicitWorkspaceFiles: item.explicitWorkspaceFiles.map((file) => ({ ...file })) }
       : {}),
+    ...(item.turnSkills
+      ? {
+          turnSkills: item.turnSkills.map((skill) => ({
+            ...skill,
+            resources: skill.resources.map((resource) => ({ ...resource })),
+          })),
+        }
+      : {}),
     ...(item.localFileAttachments
       ? { localFileAttachments: item.localFileAttachments.map((attachment) => ({ ...attachment })) }
       : {}),

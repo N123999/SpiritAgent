@@ -33,7 +33,6 @@ import {
   persistPreCompactionHistoryArchive,
   persistToolOutputArchive,
   removePreCompactionHistoryArchive,
-  resolveWorkspaceFileReferenceAttachmentsFromInput,
 } from '@spirit-agent/host-internal';
 
 import type { DesktopToolRequest } from './contracts.js';
@@ -141,10 +140,7 @@ export function createDesktopRuntime(input: {
         resolveLoopEnabled(),
         input.mcpToolCatalog,
       ),
-    resolveWorkspaceFilesFromInput: (userInput) =>
-      resolveWorkspaceFileReferenceAttachmentsFromInput(input.workspaceRoot, userInput),
-    resolveWorkspaceFilesForRoot: (workspaceRoot, userInput) =>
-      resolveWorkspaceFileReferenceAttachmentsFromInput(workspaceRoot, userInput),
+    resolveWorkspaceFilesFromInput: async () => [],
     generateImage: (request) =>
       input.llmTransport.generateImage(
         input.transportConfig,
