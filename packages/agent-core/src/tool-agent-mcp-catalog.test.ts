@@ -22,7 +22,7 @@ test('buildMcpCatalogSystemMessage lists MCP tools and references gateway tools'
     totalToolCount: 1,
   });
 
-  assert.ok(message?.includes('[SPIRIT_MCP_CATALOG]'));
+  assert.ok(message?.includes('<mcp_catalog>'));
   assert.ok(message?.includes('tool_describe'));
   assert.ok(message?.includes('tool_call'));
   assert.ok(message?.includes('<mcp-server name="github"'));

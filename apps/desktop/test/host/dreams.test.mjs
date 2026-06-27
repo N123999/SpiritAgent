@@ -75,7 +75,7 @@ test('desktop dreams context is injected into the main agent system message', as
 
     const systemMessage = state.messages[0]?.content;
     assert.equal(typeof systemMessage, 'string');
-    assert.match(systemMessage, /\[SPIRIT_DREAMS\]/);
+    assert.match(systemMessage, /<dreams>/);
     assert.match(systemMessage, /Dream catalog/);
     assert.match(systemMessage, /Route dream summaries into the main agent/);
     assert.match(systemMessage, /dream_list/);

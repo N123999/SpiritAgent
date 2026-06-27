@@ -13,20 +13,29 @@ import {
   normalizeSpiritAgentMode,
 } from './ports.js';
 import type { ToolAgentMcpToolCatalogSnapshot } from './mcp/types.js';
+import {
+  findEarliestContextBlockIndex,
+  includesLlmContextBlock,
+  LLM_CONTEXT_TAGS,
+  wrapLlmContextBlock,
+} from './llm-context-block.js';
 
 const TOOL_OUTPUT_RETRY_MAX_CHARS = 12_000;
 const TOOL_TRUNCATION_HEAD_RATIO_NUM = 2;
 const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
-const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
-const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
-const MCP_CATALOG_SECTION_PREFIX = '[SPIRIT_MCP_CATALOG]';
-const AGENT_MODE_SECTION_PREFIX = '[SPIRIT_AGENT_MODE]';
-const LOOP_MODE_SECTION_PREFIX = '[SPIRIT_LOOP_MODE]';
-const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
-const DREAMS_SECTION_PREFIX = '[SPIRIT_DREAMS]';
-const BASIC_INFO_SECTION_PREFIX = '[SPIRIT_BASIC_INFO]';
 
 export const COMPACT_SUMMARY_PREFIX = '[SPIRIT_COMPACT_SUMMARY]';
+
+const SPIRIT_CONTEXT_BLOCK_TAGS = [
+  LLM_CONTEXT_TAGS.rules,
+  LLM_CONTEXT_TAGS.skills_catalog,
+  LLM_CONTEXT_TAGS.mcp_catalog,
+  LLM_CONTEXT_TAGS.agent_mode,
+  LLM_CONTEXT_TAGS.loop_mode,
+  LLM_CONTEXT_TAGS.extensions,
+  LLM_CONTEXT_TAGS.dreams,
+  LLM_CONTEXT_TAGS.basic_info,
+] as const;
 
 export const PRE_COMPACTION_ARCHIVE_READ_FILE_GUIDANCE =
   'Important details may be recovered by reading this file with read_file.';
@@ -546,7 +555,6 @@ export function buildRulesSystemMessage(
   }
 
   const lines = [
-    RULES_SECTION_PREFIX,
     'Apply the following enabled rules as additive constraints from their source files.',
     'These rules do not replace the main system prompt; they extend it.',
     '',
@@ -561,7 +569,7 @@ export function buildRulesSystemMessage(
     lines.push('');
   }
 
-  return lines.join('\n').trimEnd();
+  return wrapLlmContextBlock(LLM_CONTEXT_TAGS.rules, lines.join('\n'));
 }
 
 export function buildSkillsCatalogSystemMessage(
@@ -572,7 +580,6 @@ export function buildSkillsCatalogSystemMessage(
   }
 
   const lines = [
-    SKILLS_CATALOG_SECTION_PREFIX,
     'The host exposes the following enabled skills as metadata only.',
     'Do not assume a skill\'s full instructions unless the user message includes an <active_skill> block for it.',
     'If a listed skill seems relevant, you may read it proactively or ask the user to activate it explicitly with its top-level slash command, e.g. /llm-debug.',
@@ -588,7 +595,7 @@ export function buildSkillsCatalogSystemMessage(
     lines.push('');
   }
 
-  return lines.join('\n').trimEnd();
+  return wrapLlmContextBlock(LLM_CONTEXT_TAGS.skills_catalog, lines.join('\n'));
 }
 
 export function buildMcpCatalogSystemMessage(
@@ -599,7 +606,6 @@ export function buildMcpCatalogSystemMessage(
   }
 
   const lines = [
-    MCP_CATALOG_SECTION_PREFIX,
     'The host lists enabled MCP tools as metadata only.',
     'Use tool_describe to fetch a tool input schema before tool_call.',
     '',
@@ -631,14 +637,14 @@ export function buildMcpCatalogSystemMessage(
     lines.push('');
   }
 
-  return lines.join('\n').trimEnd();
+  return wrapLlmContextBlock(LLM_CONTEXT_TAGS.mcp_catalog, lines.join('\n'));
 }
 
 export function buildAgentModeSystemMessage(
   planMetadata?: ToolAgentPlanMetadata,
 ): string {
   const agentMode = normalizeSpiritAgentMode(planMetadata);
-  const lines = [AGENT_MODE_SECTION_PREFIX, `You are in ${agentModeLabel(agentMode)} mode.`, ''];
+  const lines = [`You are in ${agentModeLabel(agentMode)} mode.`, ''];
 
   if (agentMode === 'plan') {
     lines.push(
@@ -678,7 +684,7 @@ export function buildAgentModeSystemMessage(
     );
   }
 
-  return lines.join('\n').trimEnd();
+  return wrapLlmContextBlock(LLM_CONTEXT_TAGS.agent_mode, lines.join('\n'));
 }
 
 function agentModeLabel(agentMode: SpiritAgentMode): string {
@@ -695,7 +701,7 @@ function agentModeLabel(agentMode: SpiritAgentMode): string {
 }
 
 export function hasAgentModeSystemMessage(content: string): boolean {
-  return content.includes(AGENT_MODE_SECTION_PREFIX);
+  return includesLlmContextBlock(content, LLM_CONTEXT_TAGS.agent_mode);
 }
 
 export function buildLoopModeSystemMessage(loopEnabled?: boolean): string | undefined {
@@ -703,17 +709,19 @@ export function buildLoopModeSystemMessage(loopEnabled?: boolean): string | unde
     return undefined;
   }
 
-  return [
-    LOOP_MODE_SECTION_PREFIX,
-    'Loop mode is enabled.',
-    'Do not end the conversation until you are confident that the user\'s task is fully complete.',
-    'Ordinary assistant replies do not stop the loop; keep working, calling tools, and verifying results until the task is done.',
-    'Call `finish_task` only when no further work is needed.',
-  ].join('\n');
+  return wrapLlmContextBlock(
+    LLM_CONTEXT_TAGS.loop_mode,
+    [
+      'Loop mode is enabled.',
+      'Do not end the conversation until you are confident that the user\'s task is fully complete.',
+      'Ordinary assistant replies do not stop the loop; keep working, calling tools, and verifying results until the task is done.',
+      'Call `finish_task` only when no further work is needed.',
+    ].join('\n'),
+  );
 }
 
 export function hasLoopModeSystemMessage(content: string): boolean {
-  return content.includes(LOOP_MODE_SECTION_PREFIX);
+  return includesLlmContextBlock(content, LLM_CONTEXT_TAGS.loop_mode);
 }
 
 export function buildActiveSkillsBlockContent(
@@ -769,16 +777,18 @@ export function buildExtensionsSystemMessage(
     return undefined;
   }
 
-  return [
-    EXTENSIONS_SECTION_PREFIX,
-    'The following block contains additive host-provided instructions contributed by installed extensions.',
-    'Treat them as additional system-level context; do not interpret them as tool definitions or permission grants.',
-    ...normalized.map((entry) => [
-      `<extension id="${escapeRuleAttribute(entry.extensionId)}" name="${escapeRuleAttribute(entry.extensionName)}">`,
-      entry.content,
-      '</extension>',
-    ].join('\n')),
-  ].join('\n');
+  return wrapLlmContextBlock(
+    LLM_CONTEXT_TAGS.extensions,
+    [
+      'The following block contains additive host-provided instructions contributed by installed extensions.',
+      'Treat them as additional system-level context; do not interpret them as tool definitions or permission grants.',
+      ...normalized.map((entry) => [
+        `<extension id="${escapeRuleAttribute(entry.extensionId)}" name="${escapeRuleAttribute(entry.extensionName)}">`,
+        entry.content,
+        '</extension>',
+      ].join('\n')),
+    ].join('\n'),
+  );
 }
 
 export function buildDreamsSystemMessage(
@@ -789,19 +799,21 @@ export function buildDreamsSystemMessage(
     return undefined;
   }
 
-  return [
-    DREAMS_SECTION_PREFIX,
-    'Dream catalog',
-    '',
-    'These are short-lived host-provided summaries of recent work movement for the current workspace and Git branch.',
-    'Treat them as background continuity, not as authoritative current state.',
-    'Prefer the current user request, visible conversation, and tool results when they conflict with these summaries.',
-    'Only summary-level dream catalog entries are embedded here; full dream details are not included in this system message.',
-    'Use `dream_list` to refresh the current dream catalog and `dream_read` with a relevant dream id when you need more detail.',
-    'Do not assume details that are not present in the catalog or returned by the dream tools.',
-    '',
-    trimmed,
-  ].join('\n');
+  return wrapLlmContextBlock(
+    LLM_CONTEXT_TAGS.dreams,
+    [
+      'Dream catalog',
+      '',
+      'These are short-lived host-provided summaries of recent work movement for the current workspace and Git branch.',
+      'Treat them as background continuity, not as authoritative current state.',
+      'Prefer the current user request, visible conversation, and tool results when they conflict with these summaries.',
+      'Only summary-level dream catalog entries are embedded here; full dream details are not included in this system message.',
+      'Use `dream_list` to refresh the current dream catalog and `dream_read` with a relevant dream id when you need more detail.',
+      'Do not assume details that are not present in the catalog or returned by the dream tools.',
+      '',
+      trimmed,
+    ].join('\n'),
+  );
 }
 
 export function buildBasicInfoSystemMessage(
@@ -818,7 +830,7 @@ export function buildBasicInfoSystemMessage(
     return undefined;
   }
 
-  const lines = [BASIC_INFO_SECTION_PREFIX, 'Basic information', ''];
+  const lines = ['Basic information', ''];
   if (workspaceRoot) {
     lines.push('Current workspace:', `- ${workspaceRoot}`, '');
   }
@@ -838,7 +850,7 @@ export function buildBasicInfoSystemMessage(
     }
   }
 
-  return lines.join('\n').trimEnd();
+  return wrapLlmContextBlock(LLM_CONTEXT_TAGS.basic_info, lines.join('\n'));
 }
 
 export function patchBasicInfoWorkspaceRootInMessages(
@@ -855,7 +867,7 @@ export function patchBasicInfoWorkspaceRootInMessages(
     if (!isJsonObject(message) || message.role !== 'system' || typeof message.content !== 'string') {
       return message;
     }
-    if (!message.content.includes(BASIC_INFO_SECTION_PREFIX)) {
+    if (!includesLlmContextBlock(message.content, LLM_CONTEXT_TAGS.basic_info)) {
       return message;
     }
     const nextContent = patchBasicInfoWorkspaceRootInSystemText(message.content, normalized);
@@ -874,7 +886,7 @@ export function patchBasicInfoWorkspaceRootInSystemText(
   workspaceRoot: string,
 ): string {
   const normalized = workspaceRoot.trim();
-  if (!normalized || !content.includes(BASIC_INFO_SECTION_PREFIX)) {
+  if (!normalized || !includesLlmContextBlock(content, LLM_CONTEXT_TAGS.basic_info)) {
     return content;
   }
 
@@ -901,11 +913,11 @@ export function patchBasicInfoWorkspaceRootInToolAgentState(
 }
 
 export function hasDreamsSystemMessage(content: string): boolean {
-  return content.includes(DREAMS_SECTION_PREFIX);
+  return includesLlmContextBlock(content, LLM_CONTEXT_TAGS.dreams);
 }
 
 export function hasBasicInfoSystemMessage(content: string): boolean {
-  return content.includes(BASIC_INFO_SECTION_PREFIX);
+  return includesLlmContextBlock(content, LLM_CONTEXT_TAGS.basic_info);
 }
 
 export function findSpiritSystemMessageContent(messages: JsonValue[]): string | undefined {
@@ -915,21 +927,8 @@ export function findSpiritSystemMessageContent(messages: JsonValue[]): string | 
     }
     if (typeof message.content === 'string') {
       const content = message.content;
-      const sectionStart = [
-        RULES_SECTION_PREFIX,
-        SKILLS_CATALOG_SECTION_PREFIX,
-        MCP_CATALOG_SECTION_PREFIX,
-        AGENT_MODE_SECTION_PREFIX,
-        LOOP_MODE_SECTION_PREFIX,
-        EXTENSIONS_SECTION_PREFIX,
-        DREAMS_SECTION_PREFIX,
-        BASIC_INFO_SECTION_PREFIX,
-      ]
-        .map((prefix) => content.indexOf(prefix))
-        .filter((index) => index >= 0)
-        .sort((left, right) => left - right)
-        .at(0);
-      if (sectionStart !== undefined) {
+      const sectionStart = findEarliestContextBlockIndex(content, SPIRIT_CONTEXT_BLOCK_TAGS);
+      if (sectionStart >= 0) {
         return content.slice(sectionStart).trim();
       }
     }
