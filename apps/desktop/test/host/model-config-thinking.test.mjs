@@ -165,6 +165,25 @@ test('buildPrimaryTransportConfig maps legacy Gateway Xiaomi thinkingEnabled fal
   assert.equal(config.reasoningEffort, 'none');
 });
 
+test('buildPrimaryTransportConfig maps legacy Gateway Xiaomi thinkingEnabled false with high effort to none', () => {
+  const config = buildPrimaryTransportConfig({
+    apiKey: 'test-key',
+    model: 'xiaomi/mimo-v2.5',
+    baseUrl: 'https://ai-gateway.vercel.sh/v1',
+    workspaceRoot: '/tmp',
+    profile: {
+      provider: 'vercel-ai-gateway',
+      transportKind: 'open-responses',
+      reasoningEffort: 'high',
+      thinkingEnabled: false,
+      capabilities: ['chat'],
+    },
+  });
+  assert.equal(config.transportKind, 'open-responses');
+  assert.equal(config.vendorExtendedThinking, undefined);
+  assert.equal(config.reasoningEffort, 'none');
+});
+
 test('buildPrimaryTransportConfig wires direct Xiaomi responses reasoningEffort none', () => {
   const config = buildPrimaryTransportConfig({
     apiKey: 'test-key',
