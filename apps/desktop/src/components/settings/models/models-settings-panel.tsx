@@ -35,6 +35,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -1214,7 +1216,8 @@ export function ModelsSettingsPanel({
               </div>
             ) : null}
           </div>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1241,7 +1244,8 @@ export function ModelsSettingsPanel({
               {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t('common.save')}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1260,7 +1264,8 @@ export function ModelsSettingsPanel({
               {t('settings.deleteModelConfirm', { name: deleteTarget ?? '' })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1293,7 +1298,8 @@ export function ModelsSettingsPanel({
               {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t('common.delete')}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1312,7 +1318,8 @@ export function ModelsSettingsPanel({
               {t('settings.deleteProviderGroupConfirm', { provider: deleteGroupTarget ? providerLabel(deleteGroupTarget) : '' })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1345,7 +1352,8 @@ export function ModelsSettingsPanel({
               {modelsBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}
               {t('settings.deleteGroup')}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1869,7 +1877,9 @@ export function ModelsSettingsPanel({
                 </p>
               </>
             ) : null}
-            <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row sm:justify-between">
+          </div>
+          <DialogFooter>
+            <DialogFooterActions>
               <Button
                 type="button"
                 variant="outline"
@@ -1879,7 +1889,6 @@ export function ModelsSettingsPanel({
               >
                 {t('common.cancel')}
               </Button>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row">
                 {selectedProvider === "custom" && customConnectMode === "single" ? (
                   <Button
                     type="button"
@@ -2081,9 +2090,8 @@ export function ModelsSettingsPanel({
                     {t('settings.addProvider')}
                   </Button>
                 ) : null}
-              </div>
-            </div>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
