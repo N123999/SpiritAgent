@@ -245,6 +245,7 @@ export async function startStreamingRound<
         error: renderError(error),
         requestTrace: [],
       };
+      pending.streamConsumerFinished = true;
     });
 }
 
