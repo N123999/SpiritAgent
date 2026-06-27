@@ -30,6 +30,7 @@ import {
 } from "@/lib/conversation-layout-constants";
 import { desktopMicaTintClass, desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
 import type { EditorFileTarget, WorkspaceEditorViewMode } from "@/lib/workspace-editor-navigation";
+import type { ActiveWorkspaceFileReferenceQuery } from "@/lib/composer-segment-model";
 import type { ActiveSkillSlashQuery, SkillSlashSuggestion } from "@/lib/skill-slash";
 import { cn } from "@/lib/utils";
 import type {
@@ -95,6 +96,7 @@ export type ComposerDockSectionProps = {
   onFileReferenceSelectedIndexChange: (index: number) => void;
   onApplyFileReferenceSuggestion: (path: string) => void;
   onDismissFileReferenceSuggestions: () => void;
+  activeFileReferenceQuery: ActiveWorkspaceFileReferenceQuery | undefined;
   slashQuery: ActiveSkillSlashQuery | undefined;
   slashSuggestions: SkillSlashSuggestion[];
   slashSelectedIndex: number;
@@ -357,6 +359,7 @@ export function ConversationView({
             onFileReferenceSelectedIndexChange={composerDock.onFileReferenceSelectedIndexChange}
             onApplyFileReferenceSuggestion={composerDock.onApplyFileReferenceSuggestion}
             onDismissFileReferenceSuggestions={composerDock.onDismissFileReferenceSuggestions}
+            activeFileReferenceQuery={composerDock.activeFileReferenceQuery}
             slashQuery={composerDock.slashQuery}
             slashSuggestions={composerDock.slashSuggestions}
             slashSelectedIndex={composerDock.slashSelectedIndex}

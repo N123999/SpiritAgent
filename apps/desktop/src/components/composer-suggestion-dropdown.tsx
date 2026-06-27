@@ -1,4 +1,11 @@
-import type { ReactNode, RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import {
   DropdownMenu,
@@ -14,11 +21,14 @@ import {
   DESKTOP_OVERLAY_LIST_WIDTH,
   stopOverlayScrollPropagation,
 } from "@/lib/desktop-chrome";
-import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
+import {
+  RADIX_OVERLAY_CLOSE_MS,
+  runAfterRadixOverlayClose,
+} from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
 
 type ComposerSuggestionDropdownProps = {
-  open: boolean;
+  active: boolean;
   anchor: DOMRect | null;
   composerRootRef: RefObject<HTMLElement | null>;
   ariaLabel: string;
@@ -35,7 +45,7 @@ function isTargetWithinComposer(
 }
 
 export function ComposerSuggestionDropdown({
-  open,
+  active,
   anchor,
   composerRootRef,
   ariaLabel,
@@ -43,12 +53,48 @@ export function ComposerSuggestionDropdown({
   children,
   contentClassName,
 }: ComposerSuggestionDropdownProps) {
-  if (!anchor) {
+  const [mounted, setMounted] = useState(false);
+  const [radixOpen, setRadixOpen] = useState(false);
+  const stickyAnchorRef = useRef<DOMRect | null>(null);
+  const frozenChildrenRef = useRef<ReactNode>(null);
+
+  if (active && anchor) {
+    stickyAnchorRef.current = anchor;
+  }
+  if (active && children) {
+    frozenChildrenRef.current = children;
+  }
+
+  useLayoutEffect(() => {
+    if (active) {
+      setMounted(true);
+      setRadixOpen(true);
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setRadixOpen(false);
+  }, [active, mounted]);
+
+  useEffect(() => {
+    if (active || !mounted) {
+      return;
+    }
+    const timeout = window.setTimeout(() => setMounted(false), RADIX_OVERLAY_CLOSE_MS);
+    return () => window.clearTimeout(timeout);
+  }, [active, mounted]);
+
+  const displayAnchor = anchor ?? stickyAnchorRef.current;
+  const displayChildren = mounted ? frozenChildrenRef.current : null;
+
+  if (!mounted || !displayAnchor) {
     return null;
   }
 
   const handleOpenChange = (next: boolean) => {
     if (!next) {
+      setRadixOpen(false);
       runAfterRadixOverlayClose(onDismiss);
     }
   };
@@ -60,17 +106,17 @@ export function ComposerSuggestionDropdown({
   };
 
   return (
-    <DropdownMenu open={open} onOpenChange={handleOpenChange} modal={false}>
+    <DropdownMenu open={radixOpen} onOpenChange={handleOpenChange} modal={false}>
       <DropdownMenuTrigger asChild>
         <span
           aria-hidden
           tabIndex={-1}
           style={{
             position: "fixed",
-            left: anchor.left,
-            top: anchor.top,
-            width: Math.max(anchor.width, 1),
-            height: Math.max(anchor.height, 1),
+            left: displayAnchor.left,
+            top: displayAnchor.top,
+            width: Math.max(displayAnchor.width, 1),
+            height: Math.max(displayAnchor.height, 1),
             pointerEvents: "none",
           }}
         />
@@ -103,7 +149,7 @@ export function ComposerSuggestionDropdown({
               DESKTOP_OVERLAY_LIST_LIST_GAP,
             )}
           >
-            {children}
+            {displayChildren}
           </div>
         </ScrollArea>
       </DropdownMenuContent>

@@ -216,6 +216,16 @@ export function useComposerController({
     [fileReferenceQuery],
   );
 
+  const activeFileReferenceQuery = useMemo(() => {
+    if (!fileReferenceQuery) {
+      return undefined;
+    }
+    if (dismissedFileReferenceKey === fileReferenceQueryKey) {
+      return undefined;
+    }
+    return fileReferenceQuery;
+  }, [dismissedFileReferenceKey, fileReferenceQuery, fileReferenceQueryKey]);
+
   const workspaceFileIndex = useWorkspaceFileIndex({
     workspaceRoot: snapshot?.workspaceRoot ?? "",
     workspaceBinding: snapshot?.workspaceBinding ?? "project",
@@ -974,6 +984,7 @@ export function useComposerController({
     fileReferenceSuggestions,
     fileReferenceSelectedIndex,
     setFileReferenceSelectedIndex,
+    activeFileReferenceQuery,
     filePickerOpen,
     setFilePickerOpen,
     actionPickerOpen,

@@ -566,6 +566,7 @@ export default function App() {
               onFileReferenceSelectedIndexChange: composer.setFileReferenceSelectedIndex,
               onApplyFileReferenceSuggestion: composer.applyFileReferenceSuggestion,
               onDismissFileReferenceSuggestions: composer.dismissFileReferenceSuggestions,
+              activeFileReferenceQuery: composer.activeFileReferenceQuery,
               slashQuery: composer.slashQuery,
               slashSuggestions: composer.slashSuggestions,
               slashSelectedIndex: composer.slashSelectedIndex,

@@ -30,6 +30,7 @@ import {
   CONVERSATION_MAX_W,
 } from "@/lib/conversation-layout-constants";
 import { desktopMicaTintInnerClass } from "@/lib/desktop-mica-surface";
+import type { ActiveWorkspaceFileReferenceQuery } from "@/lib/composer-segment-model";
 import type { ActiveSkillSlashQuery, SkillSlashSuggestion } from "@/lib/skill-slash";
 import { sameWorkspacePath } from "@/lib/workspace-display-label";
 import { shouldShowComposerChangesCard } from "@/lib/composer-changes-card-visibility";
@@ -60,6 +61,7 @@ export type ComposerDockProps = {
   onFileReferenceSelectedIndexChange: (index: number) => void;
   onApplyFileReferenceSuggestion: (path: string) => void;
   onDismissFileReferenceSuggestions: () => void;
+  activeFileReferenceQuery: ActiveWorkspaceFileReferenceQuery | undefined;
   slashQuery: ActiveSkillSlashQuery | undefined;
   slashSuggestions: SkillSlashSuggestion[];
   slashSelectedIndex: number;
@@ -109,6 +111,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     onFileReferenceSelectedIndexChange,
     onApplyFileReferenceSuggestion,
     onDismissFileReferenceSuggestions,
+    activeFileReferenceQuery,
     slashQuery,
     slashSuggestions,
     slashSelectedIndex,
@@ -145,7 +148,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   const fileReferenceAnchor = useComposerSuggestionAnchor(
     composerRichInputRef,
-    fileReferenceSuggestions ? composerCursorCodeUnits : null,
+    activeFileReferenceQuery ? composerCursorCodeUnits : null,
     composerRootRef,
   );
   const slashAnchor = useComposerSuggestionAnchor(
@@ -153,6 +156,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     slashQuery ? composerCursorCodeUnits : null,
     composerRootRef,
   );
+
   const showChangesCard = shouldShowComposerChangesCard(snapshot?.git);
   const changesLineDelta = snapshot?.git.workingTreeLineDelta;
   const hasComposerTodos = Boolean(snapshot?.conversation.todos);
@@ -375,38 +379,38 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                 saveLocalImageAs={runtime.saveLocalImageAs}
               />
             </div>
-            {fileReferenceSuggestions ? (
-              <ComposerSuggestionDropdown
-                open
-                anchor={fileReferenceAnchor}
-                composerRootRef={composerRootRef}
-                ariaLabel={t("workspace.fileReferenceCandidates")}
-                onDismiss={onDismissFileReferenceSuggestions}
-              >
+            <ComposerSuggestionDropdown
+              active={Boolean(activeFileReferenceQuery)}
+              anchor={fileReferenceAnchor}
+              composerRootRef={composerRootRef}
+              ariaLabel={t("workspace.fileReferenceCandidates")}
+              onDismiss={onDismissFileReferenceSuggestions}
+            >
+              {fileReferenceSuggestions ? (
                 <WorkspaceFileReferenceMenu
                   suggestions={fileReferenceSuggestions.suggestions}
                   selectedIndex={fileReferenceSelectedIndex}
                   onSelectIndex={onFileReferenceSelectedIndexChange}
                   onApplySuggestion={onApplyFileReferenceSuggestion}
                 />
-              </ComposerSuggestionDropdown>
-            ) : null}
-            {slashQuery ? (
-              <ComposerSuggestionDropdown
-                open
-                anchor={slashAnchor}
-                composerRootRef={composerRootRef}
-                ariaLabel={t("composer.slashCommand")}
-                onDismiss={onDismissSlashSuggestions}
-              >
+              ) : null}
+            </ComposerSuggestionDropdown>
+            <ComposerSuggestionDropdown
+              active={Boolean(slashQuery)}
+              anchor={slashAnchor}
+              composerRootRef={composerRootRef}
+              ariaLabel={t("composer.slashCommand")}
+              onDismiss={onDismissSlashSuggestions}
+            >
+              {slashQuery ? (
                 <SkillSlashMenu
                   suggestions={slashSuggestions}
                   selectedIndex={slashSelectedIndex}
                   onSelectIndex={onSlashSelectedIndexChange}
                   onApplySuggestion={onApplySlashSuggestionItem}
                 />
-              </ComposerSuggestionDropdown>
-            ) : null}
+              ) : null}
+            </ComposerSuggestionDropdown>
             {!isEmptySession ? (
               <div
                 className={cn(
