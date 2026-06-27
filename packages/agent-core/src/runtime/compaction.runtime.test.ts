@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { COMPACT_SUMMARY_PREFIX } from '../tool-agent.js';
+import {
+  includesCompactSummaryBlock,
+  unwrapCompactSummaryBlock,
+  wrapCompactSummaryBlock,
+} from '../llm-context-block.js';
 import { truncateLlmHistoryForCompaction } from '../llm-tool-agent.js';
 import {
   createLlmMessageContentFromText,
@@ -37,7 +41,7 @@ test('compactHistoryImmediate persists archive without post-processing compact s
     async compactHistoryManual(_config, targetHistory) {
       targetHistory.splice(0, targetHistory.length, {
         role: 'system',
-        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\ncompact summary`),
+        content: createLlmMessageContentFromText(wrapCompactSummaryBlock('compact summary')),
       });
       return {
         droppedMessages: targetHistory.length > 0 ? 2 : 0,
@@ -54,7 +58,7 @@ test('compactHistoryImmediate persists archive without post-processing compact s
         .filter((part) => part.type === 'text')
         .map((part) => part.text)
         .join('');
-      return text.slice(COMPACT_SUMMARY_PREFIX.length).trim();
+      return unwrapCompactSummaryBlock(text);
     },
     isContextOverflowError: () => false,
     llmHistoryAsApiMessages: () => [],
@@ -105,7 +109,7 @@ test('compactHistoryImmediate persists archive without post-processing compact s
     .filter((part) => part.type === 'text')
     .map((part) => part.text)
     .join('');
-  assert.equal(compactText, `${COMPACT_SUMMARY_PREFIX}\ncompact summary`);
+  assert.equal(compactText, wrapCompactSummaryBlock('compact summary'));
 });
 
 test('compactHistoryImmediate emits event when pre-compaction archive persist fails', async () => {
@@ -120,7 +124,7 @@ test('compactHistoryImmediate emits event when pre-compaction archive persist fa
     async compactHistoryManual(_config, targetHistory) {
       targetHistory.splice(0, targetHistory.length, {
         role: 'system',
-        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\nsummary`),
+        content: createLlmMessageContentFromText(wrapCompactSummaryBlock('summary')),
       });
       return { droppedMessages: 0, beforeLength: 1, afterLength: 1 };
     },
@@ -199,7 +203,7 @@ test('compactHistoryImmediate archives pre-truncation history and compacts post-
       compactionToolText = llmMessageTextContent(toolMessage?.content ?? []);
       targetHistory.splice(0, targetHistory.length, {
         role: 'system',
-        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\nsummary`),
+        content: createLlmMessageContentFromText(wrapCompactSummaryBlock('summary')),
       });
       return { droppedMessages: 2, beforeLength: 3, afterLength: 1 };
     },
@@ -274,7 +278,7 @@ test('compactHistoryImmediate persists tool output archive path in truncated exc
       compactionToolText = llmMessageTextContent(toolMessage?.content ?? []);
       targetHistory.splice(0, targetHistory.length, {
         role: 'system',
-        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\nsummary`),
+        content: createLlmMessageContentFromText(wrapCompactSummaryBlock('summary')),
       });
       return { droppedMessages: 1, beforeLength: 2, afterLength: 1 };
     },

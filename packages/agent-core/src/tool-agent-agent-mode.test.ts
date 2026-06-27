@@ -9,7 +9,7 @@ import {
 
 test('buildAgentModeSystemMessage: Agent mode guidance', () => {
   const message = buildAgentModeSystemMessage({ path: '', exists: false, agentMode: 'agent' });
-  assert.ok(message.includes('[SPIRIT_AGENT_MODE]'));
+  assert.ok(message.includes('<agent_mode>'));
   assert.ok(message.includes('You are in Agent mode.'));
   assert.ok(message.includes('efficiently, professionally, and carefully'));
   assert.ok(!message.includes('Start implementing'));
@@ -61,7 +61,7 @@ test('buildAgentModeSystemMessage: Debug mode guidance', () => {
   assert.ok(message.includes('still reproducing'));
 });
 
-test('buildToolAgentMessages embeds SPIRIT_AGENT_MODE in system message', () => {
+test('buildToolAgentMessages embeds agent_mode block in system message', () => {
   const messages = buildToolAgentMessages({
     historyMessages: [],
     model: 'test-model',

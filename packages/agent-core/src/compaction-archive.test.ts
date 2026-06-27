@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { buildPreCompactionHistoryArchive } from './compaction-archive.js';
-import { COMPACT_SUMMARY_PREFIX } from './tool-agent.js';
+import { wrapCompactSummaryBlock } from './llm-context-block.js';
 import {
   buildCompactHistorySystemPrompt,
   buildCompactHistoryPromptMessages,
@@ -14,7 +14,7 @@ test('buildPreCompactionHistoryArchive keeps user and assistant messages with to
     [
       {
         role: 'system',
-        content: createLlmMessageContentFromText(`${COMPACT_SUMMARY_PREFIX}\nold summary`),
+        content: createLlmMessageContentFromText(wrapCompactSummaryBlock('old summary')),
       },
       {
         role: 'user',

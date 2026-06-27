@@ -137,7 +137,7 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | 用户回合 `<active_skill>` meta（显式激活的 Skill 全文） | `agent-core`（`user-turn-timestamp` 拼装） |
 | 内建工具名称、描述、JSON Schema | `agent-core` |
 | 梦境工具名称、描述、JSON Schema 与收集者系统提示 | `agent-core` |
-| 会话 TODO 工具名称、描述、JSON Schema（无独立 `[SPIRIT_TODOS]` system 段） | `agent-core` |
+| 会话 TODO 工具名称、描述、JSON Schema（无独立 todos system 段） | `agent-core` |
 | LSP 工具契约、`get_diagnostics` Schema（按后缀路由至多语言 server）与诊断格式化 | `agent-core` |
 | MCP 协议、MCP tool / resource / prompt 运行时 | `agent-core` |
 | Host 接口定义 | `agent-core` |

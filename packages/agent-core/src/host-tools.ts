@@ -1,4 +1,5 @@
 import { APPLY_PATCH_HOST_TOOL_NAME } from './open-responses/apply-patch-eligibility.js';
+import { LLM_CONTEXT_TAGS, wrapLlmContextBlock } from './llm-context-block.js';
 import {
   DEFAULT_IMAGE_GENERATION_SIZE,
   DEFAULT_VIDEO_GENERATION_DURATION,
@@ -726,19 +727,21 @@ export function buildPlanModeHostToolDefinitions(): JsonValue[] {
 }
 
 export function buildDreamCollectorSystemMessage(): string {
-  return [
-    '[SPIRIT_DREAM_COLLECTOR]',
-    'You are the dream collector for Spirit Agent.',
-    'Dreams are short-lived summaries of recent work movement, not permanent memory.',
-    'The host has already scoped this collection run to one workspace and one Git branch.',
-    'First call dream_list to inspect existing dreams in this scope.',
-    'Then decide whether the source session should create a new dream, update an existing dream, delete a stale dream, or leave dreams unchanged.',
-    'Prefer updating an existing related dream over creating duplicates.',
-    'When the host marks the source session context as incremental, focus on the newly added movement and merge it into existing dreams instead of restating older context.',
-    'Record why the work matters, user intent, important decisions, constraints, and unresolved follow-ups.',
-    'Do not summarize every message mechanically. Preserve signal that helps future host consumers understand the current work direction.',
-    'Do not perform production work. Only read the provided context and maintain dreams through the dream tools.',
-  ].join('\n');
+  return wrapLlmContextBlock(
+    LLM_CONTEXT_TAGS.dream_collector,
+    [
+      'You are the dream collector for Spirit Agent.',
+      'Dreams are short-lived summaries of recent work movement, not permanent memory.',
+      'The host has already scoped this collection run to one workspace and one Git branch.',
+      'First call dream_list to inspect existing dreams in this scope.',
+      'Then decide whether the source session should create a new dream, update an existing dream, delete a stale dream, or leave dreams unchanged.',
+      'Prefer updating an existing related dream over creating duplicates.',
+      'When the host marks the source session context as incremental, focus on the newly added movement and merge it into existing dreams instead of restating older context.',
+      'Record why the work matters, user intent, important decisions, constraints, and unresolved follow-ups.',
+      'Do not summarize every message mechanically. Preserve signal that helps future host consumers understand the current work direction.',
+      'Do not perform production work. Only read the provided context and maintain dreams through the dream tools.',
+    ].join('\n'),
+  );
 }
 
 function buildShellToolDescription(shellDisplayName: string): string {
