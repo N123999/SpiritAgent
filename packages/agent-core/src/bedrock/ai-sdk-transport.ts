@@ -259,7 +259,7 @@ export class AiSdkBedrockTransport
               toolChoice: 'auto' as const,
             }),
         providerOptions: buildBedrockProviderOptions(config),
-        includeRawChunks: false,
+        include: { rawChunks: false },
         maxRetries: 0,
         abortSignal: abortController.signal,
       });
@@ -267,7 +267,7 @@ export class AiSdkBedrockTransport
 
       return {
         eventStream: bedrockEventStreamToRuntimeEvents(
-          result.fullStream,
+          result.stream,
           result,
           nextState,
           requestTrace,
@@ -332,7 +332,7 @@ export class AiSdkBedrockTransport
           maxRetries: 0,
         });
 
-        for await (const part of streamed.fullStream) {
+        for await (const part of streamed.stream) {
           if (part.type !== 'text-delta') {
             continue;
           }

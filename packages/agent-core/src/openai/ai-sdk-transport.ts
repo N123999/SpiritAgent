@@ -8,8 +8,8 @@ import {
   type DeepSeekLanguageModelOptions,
 } from '@ai-sdk/deepseek';
 import {
-  createGoogleGenerativeAI,
-  type GoogleGenerativeAIProviderOptions,
+  createGoogle,
+  type GoogleLanguageModelOptions,
 } from '@ai-sdk/google';
 import { createVertex } from '@ai-sdk/google-vertex';
 import {
@@ -476,7 +476,7 @@ export class AiSdkOpenAiCompatibleTransport
               toolChoice: 'auto' as const,
             }),
         providerOptions: buildAiSdkProviderOptions(config),
-        includeRawChunks: true,
+        include: { rawChunks: true },
         maxRetries: 0,
         abortSignal: abortController.signal,
       });
@@ -488,7 +488,7 @@ export class AiSdkOpenAiCompatibleTransport
 
       return {
         eventStream: aiSdkEventStreamToRuntimeEvents(
-          result.fullStream,
+          result.stream,
           result,
           nextState,
           requestTrace,
@@ -558,7 +558,7 @@ export class AiSdkOpenAiCompatibleTransport
           maxRetries: 0,
         });
 
-        for await (const part of streamed.fullStream) {
+        for await (const part of streamed.stream) {
           if (part.type !== 'text-delta') {
             continue;
           }
@@ -840,7 +840,7 @@ function createAiSdkXaiProvider(config: OpenAiTransportConfig) {
 }
 
 function createAiSdkGoogleProvider(config: OpenAiTransportConfig) {
-  return createGoogleGenerativeAI({
+  return createGoogle({
     apiKey: config.apiKey,
     baseURL: config.baseUrl ?? DEFAULT_GOOGLE_BASE_URL,
     fetch: getLlmFetch(),
@@ -1095,7 +1095,7 @@ function buildAiSdkProviderOptions(
 
     const googleOptions = {
       thinkingConfig,
-    } satisfies GoogleGenerativeAIProviderOptions;
+    } satisfies GoogleLanguageModelOptions;
 
     return {
       google: googleOptions as JsonObject,
@@ -1113,7 +1113,7 @@ function buildAiSdkProviderOptions(
 
     const vertexOptions = {
       thinkingConfig,
-    } satisfies GoogleGenerativeAIProviderOptions;
+    } satisfies GoogleLanguageModelOptions;
 
     return {
       vertex: vertexOptions as JsonObject,

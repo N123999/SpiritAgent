@@ -283,7 +283,7 @@ export class AiSdkAnthropicTransport
               toolChoice: 'auto' as const,
             }),
         providerOptions: buildAnthropicProviderOptions(config),
-        includeRawChunks: false,
+        include: { rawChunks: false },
         maxRetries: 0,
         abortSignal: abortController.signal,
       });
@@ -291,7 +291,7 @@ export class AiSdkAnthropicTransport
 
       return {
         eventStream: anthropicEventStreamToRuntimeEvents(
-          result.fullStream,
+          result.stream,
           result,
           nextState,
           requestTrace,
@@ -357,7 +357,7 @@ export class AiSdkAnthropicTransport
           maxRetries: 0,
         });
 
-        for await (const part of streamed.fullStream) {
+        for await (const part of streamed.stream) {
           if (part.type !== 'text-delta') {
             continue;
           }
