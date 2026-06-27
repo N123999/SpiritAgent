@@ -78,6 +78,10 @@ test('resolveProviderConnectApiBase uses transport-specific preset bases', () =>
     'https://api.xiaomimimo.com/anthropic',
   );
   assert.equal(
+    resolveProviderConnectApiBase('xiaomi', 'open-responses'),
+    'https://api.xiaomimimo.com/v1',
+  );
+  assert.equal(
     resolveProviderConnectApiBase('alibaba', 'openai-compatible'),
     'https://dashscope.aliyuncs.com/compatible-mode/v1',
   );

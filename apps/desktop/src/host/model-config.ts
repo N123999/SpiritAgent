@@ -7,6 +7,8 @@ import {
   type OpenResponsesSdkProvider,
 } from '@spirit-agent/core';
 import {
+  isXiaomiResponsesReasoningEffortContext,
+  normalizeModelReasoningEffort,
   resolveAnthropicTransportReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
   type ModelReasoningEffortContext,
@@ -213,6 +215,15 @@ function resolveAgentOpenAiReasoningEffort(
     transportKind,
   };
   const thinkingEnabled = profile?.thinkingEnabled !== false;
+  if (
+    isXiaomiResponsesReasoningEffortContext(context)
+    && profile?.thinkingEnabled === false
+  ) {
+    const legacyEffort = normalizeModelReasoningEffort(profile?.reasoningEffort);
+    if (legacyEffort === undefined || legacyEffort === 'default' || legacyEffort === 'medium') {
+      return 'none';
+    }
+  }
   if (
     modelSupportsThinkingSwitch(context)
     && shouldPinReasoningEffortToDefault(thinkingEnabled, context)
