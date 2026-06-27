@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -57,7 +58,8 @@ export function BranchCheckoutDialog({
             )}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:justify-end">
+        <DialogFooter>
+          <DialogFooterActions>
           <Button
             type="button"
             variant="outline"
@@ -89,6 +91,7 @@ export function BranchCheckoutDialog({
               {t("app.switchAndSend")}
             </Button>
           )}
+          </DialogFooterActions>
         </DialogFooter>
       </DialogContent>
     </Dialog>

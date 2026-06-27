@@ -13,6 +13,7 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -135,7 +136,7 @@ export function CreateAutomationDialog({
             )}
           />
         </div>
-        <DialogFooter className="mx-0 mb-0 flex-col gap-3 border-t border-border/40 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <DialogFooter layout="split" inset>
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
             <AutomationTriggerMenu
               trigger={trigger}
@@ -188,7 +189,7 @@ export function CreateAutomationDialog({
               </>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-2">
+          <DialogFooterActions>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={disabled}>
               {t("common.cancel")}
             </Button>
@@ -210,7 +211,7 @@ export function CreateAutomationDialog({
             >
               {t("common.create")}
             </Button>
-          </div>
+          </DialogFooterActions>
         </DialogFooter>
       </DialogContent>
     </Dialog>

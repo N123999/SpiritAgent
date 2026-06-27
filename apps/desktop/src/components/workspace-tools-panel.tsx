@@ -27,6 +27,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -1000,13 +1001,15 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
             <DialogTitle>{t("workspace.unsavedChangesCloseConfirm")}</DialogTitle>
             <DialogDescription>{t("app.discardChangesWarning")}</DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:justify-end">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button type="button" variant="outline" size="sm" onClick={() => setPendingCloseTabId(null)}>
               {t("common.cancel")}
             </Button>
             <Button type="button" size="sm" variant="destructive" onClick={handleConfirmCloseTab}>
               {t("common.close")}
             </Button>
+            </DialogFooterActions>
           </DialogFooter>
         </DialogContent>
       </Dialog>
