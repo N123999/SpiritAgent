@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   caretToPlainTextOffset,
   emptySegments,
+  extractComposerChipMetadata,
   insertSegmentAtCaret,
   isComposerPlainEmpty,
   mergeAdjacentTextSegments,
@@ -186,17 +187,17 @@ test("insertSegmentAtCaret splits text and leaves trailing text segment", () => 
   assert.equal(caret.offset, 0);
 });
 
-test("parseMessageContentParts splits @path tokens in plain text", () => {
+test("parseMessageContentParts treats loose @path as plain text", () => {
   const parts = parseMessageContentParts("@apps/cli/src/main.rs 你好");
-  assert.equal(parts.length, 2);
-  assert.equal(parts[0]?.kind, "workspaceFile");
-  assert.equal(parts[0]?.kind === "workspaceFile" && parts[0].path, "apps/cli/src/main.rs");
-  assert.equal(parts[1]?.kind, "text");
-  assert.equal(parts[1]?.kind === "text" && parts[1].value, " 你好");
+  assert.deepEqual(parts, [{ kind: "text", value: "@apps/cli/src/main.rs 你好" }]);
 });
 
 test("messageContentToRichSegments rebuilds workspace file chips from wire text", () => {
-  const segments = messageContentToRichSegments("@apps/cli/src/main.rs 你好", "msg-file");
+  const wire = segmentsToMessageText([
+    { kind: "workspaceFile", path: "apps/cli/src/main.rs" },
+    { kind: "text", value: " 你好" },
+  ]);
+  const segments = messageContentToRichSegments(wire, "msg-file");
   assert.equal(segments.length, 2);
   assert.equal(segments[0]?.kind, "workspaceFile");
   assert.equal(
@@ -207,21 +208,49 @@ test("messageContentToRichSegments rebuilds workspace file chips from wire text"
 });
 
 test("messageContentToRichSegments rebuilds skill chips from wire text", () => {
-  const segments = messageContentToRichSegments("/create-skill 你好", "msg-skill");
+  const wire = segmentsToMessageText([
+    { kind: "skill", alias: "/create-skill" },
+    { kind: "text", value: " 你好" },
+  ]);
+  const segments = messageContentToRichSegments(wire, "msg-skill");
   assert.equal(segments.length, 2);
   assert.equal(segments[0]?.kind, "skill");
   assert.equal(segments[0]?.kind === "skill" && segments[0].alias, "/create-skill");
   assert.equal(segments[1]?.kind === "text" && segments[1].value, " 你好");
 });
 
-test("parseMessageContentParts parses skill and workspace file inline refs", () => {
-  const parts = parseMessageContentParts("/git-commit @README.md done");
+test("parseMessageContentParts parses explicit workspace file and skill wire blocks", () => {
+  const wire = segmentsToMessageText([
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " " },
+    { kind: "workspaceFile", path: "README.md" },
+    { kind: "text", value: " done" },
+  ]);
+  const parts = parseMessageContentParts(wire);
   assert.deepEqual(parts, [
     { kind: "skill", alias: "/git-commit" },
     { kind: "text", value: " " },
     { kind: "workspaceFile", path: "README.md" },
     { kind: "text", value: " done" },
   ]);
+});
+
+test("extractComposerChipMetadata collects workspace file and skill chip segments", () => {
+  const metadata = extractComposerChipMetadata([
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " fix " },
+    { kind: "workspaceFile", path: "src/App.tsx" },
+    { kind: "workspaceFile", path: "src/App.tsx" },
+  ]);
+  assert.deepEqual(metadata, {
+    referencedWorkspaceFilePaths: ["src/App.tsx"],
+    skillChipAliases: ["/git-commit"],
+  });
+});
+
+test("parseMessageContentParts does not treat URL path segments as skill chips", () => {
+  const parts = parseMessageContentParts("https://cursor.com/cn/evals");
+  assert.deepEqual(parts, [{ kind: "text", value: "https://cursor.com/cn/evals" }]);
 });
 
 test("messageContentToRichSegments rebuilds element chips from wire text", () => {
@@ -542,12 +571,12 @@ test("segmentsToPlainText includes workspace file token", () => {
   assert.equal(segmentsToPlainText(segs), "see @apps/desktop/index.html please");
 });
 
-test("segmentsToMessageText includes workspace file token inline", () => {
+test("segmentsToMessageText serializes workspace file chip as wire block", () => {
   const message = segmentsToMessageText([
     { kind: "text", value: "fix " },
     { kind: "workspaceFile", path: "src/App.tsx" },
   ]);
-  assert.equal(message, "fix @src/App.tsx");
+  assert.equal(message, "fix Referenced workspace file `src/App.tsx`");
 });
 
 test("plainTextOffsetToCaret roundtrips with workspace file chip", () => {
@@ -637,25 +666,9 @@ test("syncSegmentsFromExternalValue keeps workspace file chips", () => {
   ]);
 });
 
-test("plainComposerTextToRichSegments rebuilds workspace file chips from @ tokens", async () => {
-  const { plainComposerTextToRichSegments } = await import("../src/lib/composer-segment-model.ts");
-  assert.deepEqual(plainComposerTextToRichSegments("see @src/foo.ts next"), [
-    { kind: "text", value: "see " },
-    { kind: "workspaceFile", path: "src/foo.ts" },
-    { kind: "text", value: " next" },
-  ]);
-  assert.deepEqual(
-    plainComposerTextToRichSegments("@D:/tmp/notes.txt"),
-    [{ kind: "workspaceFile", path: "D:/tmp/notes.txt" }],
-  );
-});
-
-test("syncSegmentsFromExternalValue hydrates @ tokens into chips when no inline chips", () => {
+test("syncSegmentsFromExternalValue keeps typed @ tokens as plain text when no inline chips", () => {
   const synced = syncSegmentsFromExternalValue(emptySegments(), "see @README.md");
-  assert.deepEqual(synced, [
-    { kind: "text", value: "see " },
-    { kind: "workspaceFile", path: "README.md" },
-  ]);
+  assert.deepEqual(synced, [{ kind: "text", value: "see @README.md" }]);
 });
 
 test("isComposerPlainEmpty treats lone newline as empty", () => {
@@ -829,12 +842,12 @@ test("domParsedMissingRequiredAgentChip when shell has ask but dom lost it", () 
 
 // --- Skill chip tests ---
 
-test("segmentsToMessageText serializes skill chip as alias", () => {
+test("segmentsToMessageText serializes skill chip as wire block", () => {
   const message = segmentsToMessageText([
     { kind: "skill", alias: "/git-commit" },
     { kind: "text", value: " fix typo" },
   ]);
-  assert.equal(message, "/git-commit fix typo");
+  assert.equal(message, "Referenced skill `/git-commit` fix typo");
 });
 
 test("segmentsToPlainText returns empty for skill chip", () => {

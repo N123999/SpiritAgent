@@ -611,6 +611,8 @@ export interface ForkSessionRequest {
 export interface SubmitUserTurnRequest {
   text: string;
   localFilePaths?: string[];
+  referencedWorkspaceFilePaths?: string[];
+  skillChipAliases?: string[];
 }
 
 export interface QueuedUserTurnRequest {

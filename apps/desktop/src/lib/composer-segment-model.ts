@@ -1,4 +1,4 @@
-import type { BrowserElementAttachment } from "./browser-element-attachment";
+import type { BrowserElementAttachment } from "./browser-element-attachment.js";
 import { browserElementContextText } from "./browser-element-wire-text.js";
 import type { PrDiffAttachment } from "./pr-diff-attachment.js";
 import { parsePrDiffWireMeta, prDiffContextText, scanPrDiffWireBlocks } from "./pr-diff-wire-text.js";
@@ -20,12 +20,16 @@ import {
   scanTerminalSnippetWireBlocks,
   terminalSnippetContextText,
 } from "./terminal-snippet-wire-text.js";
+import { scanSkillWireBlocks, skillContextText } from "./skill-wire-text.js";
+import { scanWorkspaceFileWireBlocks, workspaceFileContextText } from "./workspace-file-wire-text.js";
 
 export { browserElementContextText };
 export { fileSnippetContextText };
 export { prDiffContextText };
 export { gitCommitContextText };
 export { terminalSnippetContextText };
+export { skillContextText };
+export { workspaceFileContextText };
 
 export type RichSegment =
   | { kind: "text"; value: string }
@@ -130,6 +134,35 @@ export function segmentsToAttachments(segs: RichSegment[]): BrowserElementAttach
 
 export function hasSkillSegment(segs: RichSegment[]): boolean {
   return segs.some((s) => s.kind === "skill");
+}
+
+export function extractComposerChipMetadata(segs: RichSegment[]): {
+  referencedWorkspaceFilePaths: string[];
+  skillChipAliases: string[];
+} {
+  const referencedWorkspaceFilePaths: string[] = [];
+  const skillChipAliases: string[] = [];
+  const seenPaths = new Set<string>();
+  const seenSkills = new Set<string>();
+
+  for (const seg of segs) {
+    if (seg.kind === "workspaceFile") {
+      const normalized = normalizeWorkspaceFilePath(seg.path);
+      const key = normalized.toLowerCase();
+      if (seenPaths.has(key)) {
+        continue;
+      }
+      seenPaths.add(key);
+      referencedWorkspaceFilePaths.push(normalized);
+      continue;
+    }
+    if (seg.kind === "skill" && !seenSkills.has(seg.alias)) {
+      seenSkills.add(seg.alias);
+      skillChipAliases.push(seg.alias);
+    }
+  }
+
+  return { referencedWorkspaceFilePaths, skillChipAliases };
 }
 
 /** Separator between serialized parts; avoids extra blank lines around inline chips. */
@@ -248,9 +281,9 @@ export function segmentsToMessageText(segs: RichSegment[]): string {
       seg.kind === "text"
         ? seg.value
         : seg.kind === "workspaceFile"
-          ? workspaceFilePlainToken(seg.path)
+          ? workspaceFileContextText(seg.path)
           : seg.kind === "skill"
-            ? seg.alias
+            ? skillContextText(seg.alias)
             : seg.kind === "prDiff"
               ? prDiffContextText(seg.attachment)
               : seg.kind === "gitCommit"
@@ -343,40 +376,6 @@ function pinAgentModeChipFromSegments(
   return mergeAdjacentTextSegments([...loopPart, { kind: modeChip.kind }, ...rest]);
 }
 
-function composerPlainTextHasWorkspaceFileRefs(value: string): boolean {
-  return /@([^\s@]+)/u.test(value);
-}
-
-/** Rebuild inline workspace file chips from stored composer plain text (@path tokens). */
-export function plainComposerTextToRichSegments(value: string): RichSegment[] {
-  if (!value) {
-    return emptySegments();
-  }
-
-  const segments: RichSegment[] = [];
-  let last = 0;
-  const re = /@([^\s@]+)/gu;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(value)) !== null) {
-    if (match.index > last) {
-      segments.push({ kind: "text", value: value.slice(last, match.index) });
-    }
-    segments.push({
-      kind: "workspaceFile",
-      path: normalizeWorkspaceFilePath(match[1] ?? ""),
-    });
-    last = match.index + match[0].length;
-  }
-
-  if (last < value.length) {
-    segments.push({ kind: "text", value: value.slice(last) });
-  }
-
-  return mergeAdjacentTextSegments(
-    segments.length > 0 ? segments : [{ kind: "text", value }],
-  );
-}
-
 export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string): RichSegment[] {
   const loopPinned = segs.some((s) => s.kind === "loop");
   const inlineChips = segs.filter(
@@ -395,11 +394,7 @@ export function syncSegmentsFromExternalValue(segs: RichSegment[], value: string
 
   let body: RichSegment[];
   if (inlineChips.length === 0) {
-    body = value
-      ? (composerPlainTextHasWorkspaceFileRefs(value)
-        ? plainComposerTextToRichSegments(value)
-        : [{ kind: "text", value }])
-      : emptySegments();
+    body = value ? [{ kind: "text", value }] : emptySegments();
   } else if (!value) {
     body = emptySegments();
   } else {
@@ -901,46 +896,29 @@ function findWireBlocks(content: string): ParsedWireBlock[] {
     });
   }
 
+  for (const block of scanWorkspaceFileWireBlocks(content)) {
+    blocks.push({
+      index: block.index,
+      length: block.length,
+      part: { kind: "workspaceFile", path: block.path },
+    });
+  }
+
+  for (const block of scanSkillWireBlocks(content)) {
+    blocks.push({
+      index: block.index,
+      length: block.length,
+      part: { kind: "skill", alias: block.alias },
+    });
+  }
+
   blocks.sort((left, right) => left.index - right.index);
   return blocks;
 }
-const INLINE_COMPOSER_REF_IN_TEXT_RE = /(@[^\s@]+|\/[a-zA-Z][a-zA-Z0-9_-]*)/gu;
 
-function expandTextWithInlineComposerRefs(text: string): MessageContentPart[] {
-  if (!text) {
-    return [];
-  }
-
-  const parts: MessageContentPart[] = [];
-  let last = 0;
-  const re = new RegExp(INLINE_COMPOSER_REF_IN_TEXT_RE.source, "gu");
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > last) {
-      parts.push({ kind: "text", value: text.slice(last, match.index) });
-    }
-    const token = match[0] ?? "";
-    if (token.startsWith("@")) {
-      parts.push({
-        kind: "workspaceFile",
-        path: normalizeWorkspaceFilePath(token.slice(1)),
-      });
-    } else {
-      parts.push({ kind: "skill", alias: token });
-    }
-    last = match.index + token.length;
-  }
-
-  if (last < text.length) {
-    parts.push({ kind: "text", value: text.slice(last) });
-  }
-
-  return parts.length > 0 ? parts : [{ kind: "text", value: text }];
-}
-
-function pushExpandedTextParts(parts: MessageContentPart[], text: string): void {
-  for (const part of expandTextWithInlineComposerRefs(text)) {
-    parts.push(part);
+function pushPlainTextPart(parts: MessageContentPart[], text: string): void {
+  if (text) {
+    parts.push({ kind: "text", value: text });
   }
 }
 
@@ -952,22 +930,22 @@ export function parseMessageContentParts(content: string): MessageContentPart[] 
 
   const blocks = findWireBlocks(content);
   if (blocks.length === 0) {
-    return expandTextWithInlineComposerRefs(content);
+    return [{ kind: "text", value: content }];
   }
 
   const parts: MessageContentPart[] = [];
   let last = 0;
   for (const block of blocks) {
     if (block.index > last) {
-      pushExpandedTextParts(parts, content.slice(last, block.index));
+      pushPlainTextPart(parts, content.slice(last, block.index));
     }
     parts.push(block.part);
     last = block.index + block.length;
   }
   if (last < content.length) {
-    pushExpandedTextParts(parts, content.slice(last));
+    pushPlainTextPart(parts, content.slice(last));
   }
-  return parts.length > 0 ? parts : expandTextWithInlineComposerRefs(content);
+  return parts.length > 0 ? parts : [{ kind: "text", value: content }];
 }
 
 /** Rebuild composer segments from stored message content (e.g. message rewind). */

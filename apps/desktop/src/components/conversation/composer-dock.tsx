@@ -334,6 +334,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
               <ComposerSurface
                 value={runtime.composer}
                 onChange={runtime.setComposer}
+                initialSegments={runtime.composerInitialSegments}
                 onSubmit={onSubmitComposerMessage}
                 browserElementAttachments={composerBrowserElementAttachments}
                 onElementAttachmentsChange={onComposerBrowserElementAttachmentsChange}
