@@ -23,12 +23,21 @@ import {
   llmMessageTextContent,
 } from '../../../../ports.js';
 import {
+  COMPACT_PROGRESS_TEXT,
+  includesCompactSummaryBlock,
+  unwrapCompactSummaryBlock,
+  wrapCompactSummaryBlock,
+} from '../../../../llm-context-block.js';
+import {
   AgentRuntime,
   pendingWorkspaceFilesFromInput,
   type RuntimeEvent,
   type RuntimeTurnResult,
 } from '../../../../runtime.js';
 import { userMessageContentMatchesInput } from '../../../../runtime/user-turn-timestamp.js';
+
+const MOCK_COMPACTED_HISTORY_SUMMARY = 'compacted history';
+const MOCK_COMPACT_SUMMARY_BLOCK = wrapCompactSummaryBlock(MOCK_COMPACTED_HISTORY_SUMMARY);
 
 export interface ScriptedState {
   messages: JsonValue[];
@@ -50,9 +59,12 @@ export function historyAsPlainApiMessages(history: LlmMessage[]): JsonValue[] {
 
 export function compactSummaryFromHistory(history: LlmMessage[]): string | undefined {
   const summary = history.find((message) =>
-    llmMessageTextContent(message.content).startsWith('[SPIRIT_COMPACT_SUMMARY]'),
+    includesCompactSummaryBlock(llmMessageTextContent(message.content)),
   );
-  return summary ? llmMessageTextContent(summary.content) : undefined;
+  if (!summary) {
+    return undefined;
+  }
+  return unwrapCompactSummaryBlock(llmMessageTextContent(summary.content));
 }
 
 export class ApprovalExecutor implements ToolExecutor<ScriptedToolRequest> {
@@ -367,7 +379,7 @@ export class CompactTransport implements LlmTransport<undefined, ScriptedState> 
       (message) =>
         isJsonObject(message) &&
         message.role === 'system' &&
-        message.content === '[SPIRIT_COMPACT_SUMMARY] compacted history',
+        message.content === MOCK_COMPACT_SUMMARY_BLOCK,
     );
 
     if (!hasToolResult) {
@@ -457,7 +469,7 @@ export class CompactTransport implements LlmTransport<undefined, ScriptedState> 
         history.length,
         {
           role: 'system',
-          content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+          content: createLlmMessageContentFromText(MOCK_COMPACT_SUMMARY_BLOCK),
         },
         ...(lastUser ? [lastUser] : []),
       );
@@ -503,7 +515,7 @@ export class PollingCompactTransport extends CompactTransport {
           history.length,
           {
             role: 'system',
-            content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+            content: createLlmMessageContentFromText(MOCK_COMPACT_SUMMARY_BLOCK),
           },
           ...(lastUser ? [lastUser] : []),
         );
@@ -536,14 +548,14 @@ export class ProgressManualCompactionTransport extends CompactTransport {
 
     return new Promise((resolve) => {
       this.resolveCompaction = () => {
-        this.progressCallback?.('[SPIRIT_COMPACT_PROGRESS] compacting history');
+        this.progressCallback?.(COMPACT_PROGRESS_TEXT);
         const lastUser = [...history].reverse().find((message) => message.role === 'user');
         history.splice(
           0,
           history.length,
           {
             role: 'system',
-            content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+            content: createLlmMessageContentFromText(MOCK_COMPACT_SUMMARY_BLOCK),
           },
           ...(lastUser ? [lastUser] : []),
         );
@@ -2195,7 +2207,7 @@ export class StreamingCompactionTransport implements LlmTransport<undefined, Scr
           history.length,
           {
             role: 'system',
-            content: createLlmMessageContentFromText('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+            content: createLlmMessageContentFromText(MOCK_COMPACT_SUMMARY_BLOCK),
           },
           ...(lastUser ? [lastUser] : []),
         );

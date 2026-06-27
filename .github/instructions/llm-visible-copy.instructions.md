@@ -10,18 +10,19 @@ Spirit Agent 中，**工具定义（name / description / schema）与 system mes
 
 **原则**：system 只写**工具定义无法表达**的宿主策略；能力用法写在 **tool description** 或 **API `tools` 注入**里。英文、短句、可删则删。较大改动后补跑 eval。
 
-`[SPIRIT_*]` 方括号前缀仅为实现期段标记，**不是**模型契约；新段落优先 plain 文案或用户/assistant 消息 meta（如 `<active_skill>`、`<user_message_at>`），避免再增 `[SPIRIT_…]` 段首。
+LLM 上下文段使用小写 XML 标签（如 `<rules>`、`<agent_mode>`、`<compact_summary>`），由 `llm-context-block.ts` 的 `wrapLlmContextBlock` 生成；**不是**模型契约外的第二套能力声明。新段落优先 plain 文案或用户/assistant 消息 meta（如 `<active_skill>`、`<user_message_at>`）。
 
 ## 当前注入位置（简表）
 
 | 内容 | 注入位置 | 说明 |
 | --- | --- | --- |
-| Host 主策略 + Rules / Skills catalog / MCP catalog / Agent mode / Loop / Extensions / Dreams / Basic info | 单条 `role: system`（`buildToolAgentMessages`） | 段内可能仍带 `[SPIRIT_RULES]` 等前缀，属遗留标记 |
+| Host 主策略 + Rules / Skills catalog / MCP catalog / Agent mode / Loop / Extensions / Dreams / Basic info | 单条 `role: system`（`buildToolAgentMessages`） | 各段分别包在 `<rules>`、`<skills_catalog>`、`<mcp_catalog>`、`<agent_mode>`、`<loop_mode>`、`<extensions>`、`<dreams>`、`<basic_info>` 中 |
 | 用户显式激活的 Skill 全文 | 该条用户消息最前的 `<active_skill>…</active_skill>` | 与 `<user_message_at>` 同属 user meta，非 system |
-| Plan 模式指引 | `[SPIRIT_AGENT_MODE]` 段（Plan 模式文案） | **无** `[SPIRIT_PLAN]` 系统段；plan 文件由 `create_plan` 等工具落盘 |
+| Plan 模式指引 | `<agent_mode>` 段（Plan 模式文案） | **无** 单独 plan 系统段；plan 文件由 `create_plan` 等工具落盘 |
 | apply_patch transport | system 内一行 plain 英文 | `buildApplyPatchFileToolsPromptSection` |
-| 历史压缩摘要 | history 内 `role: system` | `[SPIRIT_COMPACT_SUMMARY]`（压缩管线专用） |
-| Dream Collector 子代理 | 独立 collector runtime 的 system | `[SPIRIT_DREAM_COLLECTOR]` |
+| 历史压缩摘要 | history 内 `role: system` | `<compact_summary>`（压缩管线专用） |
+| 压缩进度 UI 文案 | compaction 事件 `text` | `<compact_progress>` |
+| Dream Collector 子代理 | 独立 collector runtime 的 system | `<dream_collector>` |
 
 ## 何时写 system / 何时不写
 
@@ -32,7 +33,7 @@ Spirit Agent 中，**工具定义（name / description / schema）与 system mes
 | Alibaba Responses `{ type: web_search }` | HTTP `tools` 注入 | 否 |
 | Alibaba Chat `extra_body` flags | fetch 层 / extra_body | 否（无 function 名可声明） |
 | `apply_patch` 取代 create/edit/delete | SDK built-in + 必要时 **一行** transport 说明 | 仅 V4A/不可用工具等 definition 未覆盖处 |
-| Ask / Plan / Agent 模式 | `[SPIRIT_AGENT_MODE]` 段（Plan 无单独 `[SPIRIT_PLAN]` 段） | 是，但 **不枚举工具** |
+| Ask / Plan / Agent 模式 | `<agent_mode>` 段（无单独 plan 系统段） | 是，但 **不枚举工具** |
 | 用户显式激活 Skill | 该条 user 消息 `<active_skill>` meta | 否（不进 system） |
 
 ## 坏 / 好示例（≥5）
@@ -91,7 +92,7 @@ On Open Responses, use the declared built-in tools (web_search, code_interpreter
 
 ### 7. Skills catalog：元数据段写成使用手册
 
-**坏** — `[SPIRIT_SKILLS_CATALOG]` 内多段激活教程。
+**坏** — `<skills_catalog>` 内多段激活教程。
 
 **好** — catalog 只列 id/name/path/description。
 

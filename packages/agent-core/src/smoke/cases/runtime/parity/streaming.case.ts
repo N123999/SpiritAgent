@@ -879,7 +879,7 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
     !drainedStreamingCompactionEvents.some(
       (event) =>
         event.kind === 'update-pending-assistant-compaction' &&
-        event.text.includes('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+        event.text.includes('compacted history'),
     )
   ) {
     throw new Error('streaming compact smoke 缺少 compaction update 事件。');
