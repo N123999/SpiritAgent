@@ -12,16 +12,16 @@ test('buildLoopModeSystemMessage returns undefined when Loop is off', () => {
   assert.equal(buildLoopModeSystemMessage(undefined), undefined);
 });
 
-test('buildLoopModeSystemMessage embeds SPIRIT_LOOP_MODE guidance when Loop is on', () => {
+test('buildLoopModeSystemMessage embeds loop_mode guidance when Loop is on', () => {
   const message = buildLoopModeSystemMessage(true);
-  assert.ok(message?.includes('[SPIRIT_LOOP_MODE]'));
+  assert.ok(message?.includes('<loop_mode>'));
   assert.ok(message?.includes('Loop mode is enabled.'));
   assert.ok(message?.includes('Do not end the conversation until you are confident'));
   assert.ok(message?.includes('Ordinary assistant replies do not stop the loop'));
   assert.ok(message?.includes('Call `finish_task` only when no further work is needed.'));
 });
 
-test('buildToolAgentMessages omits SPIRIT_LOOP_MODE when Loop is off', () => {
+test('buildToolAgentMessages omits loop_mode when Loop is off', () => {
   const messages = buildToolAgentMessages({
     historyMessages: [],
     model: 'test-model',
@@ -31,7 +31,7 @@ test('buildToolAgentMessages omits SPIRIT_LOOP_MODE when Loop is off', () => {
   assert.ok(!hasLoopModeSystemMessage(content));
 });
 
-test('buildToolAgentMessages embeds SPIRIT_LOOP_MODE when Loop is on', () => {
+test('buildToolAgentMessages embeds loop_mode when Loop is on', () => {
   const messages = buildToolAgentMessages({
     historyMessages: [],
     model: 'test-model',

@@ -28,7 +28,7 @@ test('patchBasicInfoWorkspaceRootInMessages rewrites Current workspace line', ()
     {
       role: 'system',
       content: [
-        '[SPIRIT_BASIC_INFO]',
+        '<basic_info>',
         'Basic information',
         '',
         'Current workspace:',
@@ -36,6 +36,7 @@ test('patchBasicInfoWorkspaceRootInMessages rewrites Current workspace line', ()
         '',
         'Current terminal:',
         '- powershell',
+        '</basic_info>',
       ].join('\n'),
     },
   ];
@@ -53,11 +54,12 @@ test('patchBasicInfoWorkspaceRootInMessages rewrites Current workspace line', ()
 
 test('patchBasicInfoWorkspaceRootInSystemText handles CRLF workspace lines', () => {
   const content = [
-    '[SPIRIT_BASIC_INFO]',
+    '<basic_info>',
     'Basic information',
     '',
     'Current workspace:',
     '- D:\\SpiritAgent',
+    '</basic_info>',
   ].join('\r\n');
   const patched = patchBasicInfoWorkspaceRootInSystemText(
     content,
