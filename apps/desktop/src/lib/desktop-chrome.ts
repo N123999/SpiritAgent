@@ -197,34 +197,6 @@ export const DESKTOP_COMPOSER_CHIP_SURFACE = cn(
   DESKTOP_COMPOSER_SURFACE_BACKDROP,
 );
 
-/** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）外壳 */
-export const DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE = cn(
-  "overflow-hidden rounded-2xl border border-border/50 shadow-sm dark:border-white/10",
-  DESKTOP_COMPOSER_SURFACE_BACKDROP,
-);
-
-/**
- * Composer @ / 斜杠建议菜单项 hover。
- * 壳层比侧栏 Mica 更实（见 DESKTOP_COMPOSER_SURFACE_BACKDROP），不能用侧栏 white/foreground 提亮；
- * 用 black 叠加深色半透明。若改回实色底，还原为 hover:bg-foreground/[0.05]。
- */
-export const DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_HOVER = cn(
-  "hover:!bg-black/[0.04] focus-visible:!bg-black/[0.04] dark:hover:!bg-black/[0.14] dark:focus-visible:!bg-black/[0.14]",
-);
-
-/**
- * Composer @ / 斜杠建议菜单项选中（键盘/鼠标高亮）。
- * 同 HOVER：偏实壳层用 black 叠加深色，勿沿用侧栏 white/[0.08]。改实色时还原 bg-foreground/[0.06]。
- */
-export const DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_SELECTED = cn(
-  "!bg-black/[0.06] hover:!bg-black/[0.08] focus-visible:!bg-black/[0.08] text-foreground",
-  "dark:!bg-black/[0.20] dark:hover:!bg-black/[0.24] dark:focus-visible:!bg-black/[0.24]",
-);
-
-/** Composer 内联建议菜单（@ 文件引用、/ 斜杠命令）滚动视口高度 */
-export const DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT =
-  "no-scrollbar max-h-[min(16rem,34vh)] overscroll-contain overflow-x-hidden overflow-y-auto outline-none";
-
 /** 阻止滚轮穿透到背后会话/列表 */
 export function stopOverlayScrollPropagation(event: {
   stopPropagation(): void;
