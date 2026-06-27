@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ComposerSuggestionMenuItem } from '@/components/composer-suggestion-menu-item'
@@ -28,18 +27,6 @@ export function SkillSlashMenu({
   onApplySuggestion,
 }: SkillSlashMenuProps) {
   const { t } = useTranslation()
-  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (selectedIndex < 0) {
-      return
-    }
-
-    const selectedItem = scrollViewportRef.current?.querySelector<HTMLElement>(
-      `[data-skill-slash-index="${selectedIndex}"]`,
-    )
-    selectedItem?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex, suggestions])
 
   if (suggestions.length === 0) {
     return (
@@ -48,11 +35,7 @@ export function SkillSlashMenu({
   }
 
   return (
-    <div
-      ref={scrollViewportRef}
-      className="flex w-full min-w-0 flex-col gap-0.5"
-      onMouseLeave={() => onSelectIndex(-1)}
-    >
+    <>
       {suggestions.map((suggestion, index) => {
         const description = suggestion.descriptionKey
           ? t(suggestion.descriptionKey)
@@ -83,6 +66,6 @@ export function SkillSlashMenu({
           </ComposerSuggestionMenuItem>
         )
       })}
-    </div>
+    </>
   )
 }

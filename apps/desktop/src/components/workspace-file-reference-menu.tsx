@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ComposerSuggestionMenuItem } from '@/components/composer-suggestion-menu-item'
@@ -18,18 +17,6 @@ export function WorkspaceFileReferenceMenu({
   onApplySuggestion,
 }: WorkspaceFileReferenceMenuProps) {
   const { t } = useTranslation()
-  const scrollViewportRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (selectedIndex < 0) {
-      return
-    }
-
-    const selectedItem = scrollViewportRef.current?.querySelector<HTMLElement>(
-      `[data-workspace-file-reference-index="${selectedIndex}"]`,
-    )
-    selectedItem?.scrollIntoView({ block: 'nearest' })
-  }, [selectedIndex, suggestions])
 
   if (suggestions.length === 0) {
     return (
@@ -38,11 +25,7 @@ export function WorkspaceFileReferenceMenu({
   }
 
   return (
-    <div
-      ref={scrollViewportRef}
-      className="flex w-full min-w-0 flex-col gap-0.5"
-      onMouseLeave={() => onSelectIndex(-1)}
-    >
+    <>
       {suggestions.map((path, index) => (
         <ComposerSuggestionMenuItem
           key={path}
@@ -57,6 +40,6 @@ export function WorkspaceFileReferenceMenu({
           <WorkspaceFilePickerRow path={path} tone="menu" layout="stacked" />
         </ComposerSuggestionMenuItem>
       ))}
-    </div>
+    </>
   )
 }

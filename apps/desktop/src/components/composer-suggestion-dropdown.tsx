@@ -15,7 +15,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DESKTOP_OVERLAY_LIST_CONTENT,
-  DESKTOP_OVERLAY_LIST_LIST_GAP,
   DESKTOP_OVERLAY_LIST_LIST_PADDING,
   DESKTOP_OVERLAY_LIST_SCROLL_AREA,
   DESKTOP_OVERLAY_LIST_WIDTH,
@@ -142,13 +141,7 @@ export function ComposerSuggestionDropdown({
           onWheel={stopOverlayScrollPropagation}
           onTouchMove={stopOverlayScrollPropagation}
         >
-          <div
-            className={cn(
-              "flex flex-col",
-              DESKTOP_OVERLAY_LIST_LIST_PADDING,
-              DESKTOP_OVERLAY_LIST_LIST_GAP,
-            )}
-          >
+          <div className={DESKTOP_OVERLAY_LIST_LIST_PADDING}>
             {displayChildren}
           </div>
         </ScrollArea>

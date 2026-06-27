@@ -1,36 +1,43 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
-import { DESKTOP_OVERLAY_LIST_ITEM, instantHoverMotionClass } from "@/lib/desktop-chrome";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DESKTOP_OVERLAY_LIST_ITEM } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
 
 type ComposerSuggestionMenuItemProps = {
   selected?: boolean;
   children: ReactNode;
+  onClick?: () => void;
 } & Pick<
-  ButtonHTMLAttributes<HTMLButtonElement>,
-  "onMouseDown" | "onMouseEnter" | "onFocus" | "onClick" | "title" | "data-skill-slash-index" | "data-workspace-file-reference-index"
->;
+  ComponentProps<typeof DropdownMenuItem>,
+  "onMouseDown" | "onMouseEnter" | "onFocus" | "title"
+> & {
+  "data-skill-slash-index"?: number;
+  "data-workspace-file-reference-index"?: number;
+};
 
 export function ComposerSuggestionMenuItem({
   selected = false,
   children,
   className,
+  onClick,
   ...props
 }: ComposerSuggestionMenuItemProps & { className?: string }) {
   return (
-    <button
-      type="button"
+    <DropdownMenuItem
       className={cn(
-        "flex w-full min-w-0 cursor-pointer select-none items-start rounded-sm text-left outline-none",
+        "items-start",
         DESKTOP_OVERLAY_LIST_ITEM,
-        instantHoverMotionClass,
-        "hover:bg-accent focus-visible:bg-accent",
-        selected && "bg-accent/40",
+        selected && "bg-accent text-accent-foreground",
         className,
       )}
+      onSelect={(event) => {
+        event.preventDefault();
+        onClick?.();
+      }}
       {...props}
     >
       {children}
-    </button>
+    </DropdownMenuItem>
   );
 }
