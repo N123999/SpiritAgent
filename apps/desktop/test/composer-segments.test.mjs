@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   caretToPlainTextOffset,
   emptySegments,
+  extractComposerChipMetadata,
   insertSegmentAtCaret,
   isComposerPlainEmpty,
   mergeAdjacentTextSegments,
@@ -232,6 +233,19 @@ test("parseMessageContentParts parses explicit workspace file and skill wire blo
     { kind: "workspaceFile", path: "README.md" },
     { kind: "text", value: " done" },
   ]);
+});
+
+test("extractComposerChipMetadata collects workspace file and skill chip segments", () => {
+  const metadata = extractComposerChipMetadata([
+    { kind: "skill", alias: "/git-commit" },
+    { kind: "text", value: " fix " },
+    { kind: "workspaceFile", path: "src/App.tsx" },
+    { kind: "workspaceFile", path: "src/App.tsx" },
+  ]);
+  assert.deepEqual(metadata, {
+    referencedWorkspaceFilePaths: ["src/App.tsx"],
+    skillChipAliases: ["/git-commit"],
+  });
 });
 
 test("parseMessageContentParts does not treat URL path segments as skill chips", () => {
