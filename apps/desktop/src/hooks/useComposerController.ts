@@ -190,6 +190,19 @@ export function useComposerController({
     [composerCursorChars, runtime.composer],
   );
 
+  useEffect(() => {
+    if (!fileReferenceQuery && dismissedFileReferenceKey !== null) {
+      setDismissedFileReferenceKey(null);
+    }
+  }, [dismissedFileReferenceKey, fileReferenceQuery]);
+
+  useEffect(() => {
+    const query = currentSkillSlashQueryAtCursor(runtime.composer, composerCursorChars);
+    if (!query && dismissedSlashQueryKey !== null) {
+      setDismissedSlashQueryKey(null);
+    }
+  }, [composerCursorChars, dismissedSlashQueryKey, runtime.composer]);
+
   const fileReferenceQueryKey = useMemo(
     () =>
       fileReferenceQuery
