@@ -127,3 +127,75 @@ test('buildPrimaryTransportConfig wires Gateway Claude adaptive thinking on with
   assert.equal(config.vendorExtendedThinking, undefined);
   assert.equal(config.reasoningEffort, 'high');
 });
+
+test('buildPrimaryTransportConfig wires Gateway Xiaomi responses reasoningEffort none', () => {
+  const config = buildPrimaryTransportConfig({
+    apiKey: 'test-key',
+    model: 'xiaomi/mimo-v2.5',
+    baseUrl: 'https://ai-gateway.vercel.sh/v1',
+    workspaceRoot: '/tmp',
+    profile: {
+      provider: 'vercel-ai-gateway',
+      transportKind: 'open-responses',
+      reasoningEffort: 'none',
+      capabilities: ['chat'],
+    },
+  });
+  assert.equal(config.transportKind, 'open-responses');
+  assert.equal(config.vendorExtendedThinking, undefined);
+  assert.equal(config.reasoningEffort, 'none');
+});
+
+test('buildPrimaryTransportConfig maps legacy Gateway Xiaomi thinkingEnabled false to reasoningEffort none', () => {
+  const config = buildPrimaryTransportConfig({
+    apiKey: 'test-key',
+    model: 'xiaomi/mimo-v2.5',
+    baseUrl: 'https://ai-gateway.vercel.sh/v1',
+    workspaceRoot: '/tmp',
+    profile: {
+      provider: 'vercel-ai-gateway',
+      transportKind: 'open-responses',
+      reasoningEffort: 'default',
+      thinkingEnabled: false,
+      capabilities: ['chat'],
+    },
+  });
+  assert.equal(config.transportKind, 'open-responses');
+  assert.equal(config.vendorExtendedThinking, undefined);
+  assert.equal(config.reasoningEffort, 'none');
+});
+
+test('buildPrimaryTransportConfig wires direct Xiaomi responses reasoningEffort none', () => {
+  const config = buildPrimaryTransportConfig({
+    apiKey: 'test-key',
+    model: 'mimo-v2.5-pro',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    workspaceRoot: '/tmp',
+    profile: {
+      provider: 'xiaomi',
+      transportKind: 'open-responses',
+      reasoningEffort: 'none',
+      capabilities: ['chat'],
+    },
+  });
+  assert.equal(config.transportKind, 'open-responses');
+  assert.equal(config.vendorExtendedThinking, undefined);
+  assert.equal(config.reasoningEffort, 'none');
+});
+
+test('buildPrimaryTransportConfig keeps direct Xiaomi chat thinking switch', () => {
+  const config = buildPrimaryTransportConfig({
+    apiKey: 'test-key',
+    model: 'mimo-v2.5',
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    workspaceRoot: '/tmp',
+    profile: {
+      provider: 'xiaomi',
+      transportKind: 'openai-compatible',
+      thinkingEnabled: false,
+      capabilities: ['chat'],
+    },
+  });
+  assert.equal(config.vendorExtendedThinking, false);
+  assert.equal(config.reasoningEffort, undefined);
+});
