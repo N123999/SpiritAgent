@@ -63,7 +63,11 @@ import type {
   ToolExecutionOutput,
 } from '../ports.js';
 import {
-  COMPACT_SUMMARY_PREFIX,
+  includesCompactSummaryBlock,
+  unwrapCompactSummaryBlock,
+  wrapCompactSummaryBlock,
+} from '../llm-context-block.js';
+import {
   buildCompactHistoryPromptMessages,
   buildToolAgentHostPrompt,
   cloneJsonValue,
@@ -599,7 +603,7 @@ export class AiSdkOpenAiCompatibleTransport
 
     history.splice(0, history.length, {
       role: 'system',
-      content: [{ type: 'text', text: `${COMPACT_SUMMARY_PREFIX}\n${normalizedSummary}` }],
+      content: [{ type: 'text', text: wrapCompactSummaryBlock(normalizedSummary) }],
     });
 
     return {
@@ -610,17 +614,15 @@ export class AiSdkOpenAiCompatibleTransport
   }
 
   compactSummaryText(history: LlmMessage[]): string | undefined {
-    return history
-      .find(
-        (message) =>
-          message.role === 'system' && llmMessageTextContent(message.content).startsWith(COMPACT_SUMMARY_PREFIX),
-      )
-      ?.content
-      .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-      .map((part) => part.text)
-      .join('')
-      .slice(COMPACT_SUMMARY_PREFIX.length)
-      .trim() || undefined;
+    const message = history.find(
+      (entry) =>
+        entry.role === 'system' &&
+        includesCompactSummaryBlock(llmMessageTextContent(entry.content)),
+    );
+    if (!message) {
+      return undefined;
+    }
+    return unwrapCompactSummaryBlock(llmMessageTextContent(message.content));
   }
 
   isContextOverflowError(error: string): boolean {

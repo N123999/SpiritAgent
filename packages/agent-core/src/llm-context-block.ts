@@ -58,3 +58,20 @@ export function findEarliestContextBlockIndex(content: string, tags: readonly st
   }
   return Math.min(...indices);
 }
+
+export function wrapCompactSummaryBlock(summary: string): string {
+  return wrapLlmContextBlock(LLM_CONTEXT_TAGS.compact_summary, summary);
+}
+
+export function unwrapCompactSummaryBlock(text: string): string | undefined {
+  return unwrapLlmContextBlock(LLM_CONTEXT_TAGS.compact_summary, text);
+}
+
+export function includesCompactSummaryBlock(text: string): boolean {
+  return includesLlmContextBlock(text, LLM_CONTEXT_TAGS.compact_summary);
+}
+
+export const COMPACT_PROGRESS_TEXT = wrapLlmContextBlock(
+  LLM_CONTEXT_TAGS.compact_progress,
+  'compacting history',
+);

@@ -1,3 +1,4 @@
+import { COMPACT_PROGRESS_TEXT } from '../../../../llm-context-block.js';
 import {
   AgentRuntime,
   CompactExecutor,
@@ -185,7 +186,7 @@ export async function runManualToolsCase(): Promise<RuntimeParityCaseResult> {
     !drainedManualCompactionEvents.some(
       (event) =>
         event.kind === 'update-pending-assistant-compaction' &&
-        event.text.includes('[SPIRIT_COMPACT_PROGRESS] compacting history'),
+        event.text.includes(COMPACT_PROGRESS_TEXT),
     )
   ) {
     throw new Error('manual compaction smoke 缺少 progress update 事件。');

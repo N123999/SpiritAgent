@@ -129,7 +129,7 @@ export async function runCompactionCase(): Promise<RuntimeParityCaseResult> {
     !pollingCompactEvents.some(
       (event) =>
         event.kind === 'update-pending-assistant-compaction' &&
-        event.text.includes('[SPIRIT_COMPACT_SUMMARY] compacted history'),
+        event.text.includes('compacted history'),
     )
   ) {
     throw new Error('polling compact smoke 缺少 compaction update 事件。');

@@ -23,7 +23,11 @@ import {
   stringifyJsonSchemaCompletionOutput,
 } from '../openai/json-schema.js';
 import {
-  COMPACT_SUMMARY_PREFIX,
+  includesCompactSummaryBlock,
+  unwrapCompactSummaryBlock,
+  wrapCompactSummaryBlock,
+} from '../llm-context-block.js';
+import {
   buildCompactHistoryPromptMessages,
   buildToolAgentHostPrompt,
   cloneJsonValue,
@@ -461,7 +465,7 @@ export class AiSdkOpenResponsesTransport
 
     history.splice(0, history.length, {
       role: 'system',
-      content: [{ type: 'text', text: `${COMPACT_SUMMARY_PREFIX}\n${normalizedSummary}` }],
+      content: [{ type: 'text', text: wrapCompactSummaryBlock(normalizedSummary) }],
     });
 
     return {
@@ -472,19 +476,21 @@ export class AiSdkOpenResponsesTransport
   }
 
   compactSummaryText(history: LlmMessage[]): string | undefined {
-    return history
-      .find(
-        (message) =>
-          message.role === 'system' &&
-          message.content.some(
-            (part) => part.type === 'text' && part.text.startsWith(COMPACT_SUMMARY_PREFIX),
-          ),
-      )
-      ?.content.filter((part): part is { type: 'text'; text: string } => part.type === 'text')
+    const message = history.find(
+      (entry) =>
+        entry.role === 'system' &&
+        entry.content.some(
+          (part) => part.type === 'text' && includesCompactSummaryBlock(part.text),
+        ),
+    );
+    if (!message) {
+      return undefined;
+    }
+    const text = message.content
+      .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
       .map((part) => part.text)
-      .join('')
-      .slice(COMPACT_SUMMARY_PREFIX.length)
-      .trim() || undefined;
+      .join('');
+    return unwrapCompactSummaryBlock(text);
   }
 
   isContextOverflowError(error: string): boolean {
