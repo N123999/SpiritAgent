@@ -93,7 +93,7 @@ export function buildGatewayCodeCompletionProviderOptions(
         vendorExtendedThinking: false,
       });
     case 'xiaomi':
-      return thinkingTypeDisabledOptions('xiaomi');
+      return openAiNoneReasoningOptions();
     default:
       return openAiNoneReasoningOptions();
   }
