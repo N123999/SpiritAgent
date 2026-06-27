@@ -1,5 +1,7 @@
 import { jsonSchema, tool } from 'ai';
 
+import { buildAiSdkUserImageFilePartFromUrl } from '../ai-sdk-image-url-part.js';
+
 import type { JsonObject, JsonValue, ToolCallRequest } from '../ports.js';
 import { cloneJsonValue, isJsonObject } from '../tool-agent.js';
 import {
@@ -179,7 +181,7 @@ function openAiUserContentToAiSdkContent(
       isJsonObject(part.image_url) &&
       typeof part.image_url.url === 'string'
     ) {
-      parts.push({ type: 'image', image: part.image_url.url });
+      parts.push(buildAiSdkUserImageFilePartFromUrl(part.image_url.url));
     }
   }
 

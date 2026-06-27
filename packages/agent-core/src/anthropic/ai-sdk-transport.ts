@@ -19,6 +19,7 @@ import {
   type OpenAiJsonSchemaCompletionRequest,
   type OpenAiJsonSchemaCompletionResult,
 } from '../openai/json-schema.js';
+import { buildAiSdkUserImageFilePartFromUrl } from '../ai-sdk-image-url-part.js';
 import { readAiSdkUsage } from '../ai-sdk-usage.js';
 import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
 import {
@@ -653,7 +654,7 @@ function userContentToAiSdkContent(
           if (isMinimaxAnthropicConfig(config)) {
             parts.push(mapMinimaxAnthropicImageContentPart(part.image_url.url));
           } else {
-            parts.push({ type: 'image', image: part.image_url.url });
+            parts.push(buildAiSdkUserImageFilePartFromUrl(part.image_url.url));
           }
         }
         break;
