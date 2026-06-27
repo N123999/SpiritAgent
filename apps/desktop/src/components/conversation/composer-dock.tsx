@@ -85,6 +85,7 @@ export type ComposerDockProps = {
   onComposerPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   onComposerDragOver: (event: ReactDragEvent<HTMLElement>) => void;
   onComposerDrop: (event: ReactDragEvent<HTMLElement>) => void;
+  onComposerSegmentsCommit: () => void;
   models: DesktopSnapshot["config"]["models"];
   useMicaBackdrop: boolean;
   onOpenGitTab: () => void;
@@ -133,6 +134,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     onComposerPaste,
     onComposerDragOver,
     onComposerDrop,
+    onComposerSegmentsCommit,
     models,
     useMicaBackdrop,
     onOpenGitTab,
@@ -369,6 +371,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                 onPaste={onComposerPaste}
                 onDragOver={onComposerDragOver}
                 onDrop={onComposerDrop}
+                onSegmentsCommit={onComposerSegmentsCommit}
                 saveLocalImageAs={runtime.saveLocalImageAs}
               />
             </div>

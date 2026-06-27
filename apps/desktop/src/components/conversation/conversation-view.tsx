@@ -119,6 +119,7 @@ export type ComposerDockSectionProps = {
   onComposerPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   onComposerDragOver: (event: ReactDragEvent<HTMLElement>) => void;
   onComposerDrop: (event: ReactDragEvent<HTMLElement>) => void;
+  onComposerSegmentsCommit: () => void;
   models: DesktopSnapshot["config"]["models"];
   onOpenGitTab: () => void;
 };
@@ -381,6 +382,7 @@ export function ConversationView({
             onComposerPaste={composerDock.onComposerPaste}
             onComposerDragOver={composerDock.onComposerDragOver}
             onComposerDrop={composerDock.onComposerDrop}
+            onComposerSegmentsCommit={composerDock.onComposerSegmentsCommit}
             models={composerDock.models}
             useMicaBackdrop={useMicaBackdrop}
             onOpenGitTab={composerDock.onOpenGitTab}

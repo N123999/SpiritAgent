@@ -104,6 +104,7 @@ export function useComposerController({
   const [fileReferenceSelectedIndex, setFileReferenceSelectedIndex] = useState(-1);
   const [dismissedFileReferenceKey, setDismissedFileReferenceKey] = useState<string | null>(null);
   const [dismissedSlashQueryKey, setDismissedSlashQueryKey] = useState<string | null>(null);
+  const [composerSegmentsRevision, setComposerSegmentsRevision] = useState(0);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const [branchCheckoutDialogOpen, setBranchCheckoutDialogOpen] = useState(false);
@@ -192,7 +193,7 @@ export function useComposerController({
       runtime.composer,
       composerCursorChars,
     );
-  }, [composerCursorChars, runtime.composer]);
+  }, [composerCursorChars, composerSegmentsRevision, runtime.composer]);
 
   useEffect(() => {
     if (!fileReferenceQuery && dismissedFileReferenceKey !== null) {
@@ -959,6 +960,10 @@ export function useComposerController({
     setSlashSelectedIndex(-1);
   }, [slashQuery]);
 
+  const handleComposerSegmentsCommit = useCallback(() => {
+    setComposerSegmentsRevision((revision) => revision + 1);
+  }, []);
+
   return {
     composerBrowserElementAttachments,
     setComposerBrowserElementAttachments,
@@ -1014,5 +1019,6 @@ export function useComposerController({
     focusComposer,
     dismissFileReferenceSuggestions,
     dismissSlashSuggestions,
+    handleComposerSegmentsCommit,
   };
 }

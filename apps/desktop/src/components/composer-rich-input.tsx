@@ -98,6 +98,8 @@ type Props = {
   askChipLabel?: string;
   onTextChange(text: string): void;
   onElementAttachmentsChange(attachments: BrowserElementAttachment[]): void;
+  /** Rich segments committed locally; plain text / cursor may be unchanged. */
+  onSegmentsCommit?(): void;
   onLoopEnabledChange?(enabled: boolean): void;
   onAgentModeChange?(mode: DesktopAgentMode): void;
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
@@ -175,6 +177,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       askChipLabel = "Ask",
       onTextChange,
       onElementAttachmentsChange,
+      onSegmentsCommit,
       onLoopEnabledChange,
       onAgentModeChange,
       onKeyDown,
@@ -209,6 +212,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const onElementAttachmentsChangeRef = useRef(onElementAttachmentsChange);
     const onLoopEnabledChangeRef = useRef(onLoopEnabledChange);
     const onAgentModeChangeRef = useRef(onAgentModeChange);
+    const onSegmentsCommitRef = useRef(onSegmentsCommit);
     const onSelectionChangeRef = useRef(onSelectionChange);
     const loopEnabledRef = useRef(loopEnabled);
     const agentModeRef = useRef(agentMode);
@@ -246,6 +250,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     useEffect(() => {
       onAgentModeChangeRef.current = onAgentModeChange;
     }, [onAgentModeChange]);
+
+    useEffect(() => {
+      onSegmentsCommitRef.current = onSegmentsCommit;
+    }, [onSegmentsCommit]);
 
     const syncLoopEnabledFromSegments = useCallback((next: RichSegment[]) => {
       const hasLoop = hasLoopSegment(next);
@@ -364,6 +372,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         segmentsRef.current = merged;
         pendingCaretRef.current = resolvedCaret;
         setSegments(merged);
+        onSegmentsCommitRef.current?.();
         if (options?.syncLoop !== false && !loopEnabledRef.current) {
           syncLoopEnabledFromSegments(merged);
         }

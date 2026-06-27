@@ -84,6 +84,7 @@ export type ComposerSurfaceProps = {
   onDrop?(event: ReactDragEvent<HTMLElement>): void;
   browserElementAttachments?: readonly BrowserElementAttachment[];
   onElementAttachmentsChange?(attachments: BrowserElementAttachment[]): void;
+  onSegmentsCommit?(): void;
   initialSegments?: readonly RichSegment[] | null;
   conversationBusy?: boolean;
   agentModeChipDismissed?: boolean;
@@ -126,6 +127,7 @@ export function ComposerSurface({
   onDrop,
   browserElementAttachments,
   onElementAttachmentsChange,
+  onSegmentsCommit,
   initialSegments,
   conversationBusy = false,
   agentModeChipDismissed = false,
@@ -204,6 +206,7 @@ export function ComposerSurface({
         askChipLabel={t('composer.askChipLabel')}
         onTextChange={onChange}
         onElementAttachmentsChange={(atts) => onElementAttachmentsChange?.(atts)}
+        onSegmentsCommit={onSegmentsCommit}
         onLoopEnabledChange={onLoopEnabledChange}
         onAgentModeChange={onAgentModeChange}
         conversationBusy={conversationBusy}

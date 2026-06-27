@@ -590,6 +590,7 @@ export default function App() {
               onComposerPaste: composer.handleComposerPaste,
               onComposerDragOver: composer.handleComposerDragOver,
               onComposerDrop: composer.handleComposerDrop,
+              onComposerSegmentsCommit: composer.handleComposerSegmentsCommit,
               models: conversation.models,
               onOpenGitTab: workspaceTools.openGitTab,
             }}
