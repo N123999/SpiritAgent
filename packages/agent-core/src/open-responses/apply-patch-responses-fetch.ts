@@ -8,7 +8,7 @@ import {
   stashLastExtractedApplyPatchCalls,
   stripApplyPatchCallsFromResponsesBody,
 } from './apply-patch-bridge.js';
-import { shouldUseApplyPatchFileTools } from './apply-patch-eligibility.js';
+import { shouldUseApplyPatchFileTools, shouldUseOpenAiSdkApplyPatchTool } from './apply-patch-eligibility.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
 
 type FetchFn = typeof fetch;
@@ -21,9 +21,14 @@ export function createApplyPatchAwareFetch(
     return baseFetch;
   }
 
+  const preserveSdkApplyPatchResponse = shouldUseOpenAiSdkApplyPatchTool(config);
+
   return async (input, init) => {
     const patchedInit = patchRequestInitBody(init, config);
     const response = await baseFetch(input, patchedInit);
+    if (preserveSdkApplyPatchResponse) {
+      return response;
+    }
     return patchResponsesJsonResponse(response);
   };
 }
