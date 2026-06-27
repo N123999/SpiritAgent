@@ -4,12 +4,12 @@ import type { AddressInfo } from 'node:net';
 
 import { AiSdkOpenResponsesTransport } from '../../open-responses/ai-sdk-transport.js';
 import { startOpenAiToolAgentState } from '../../openai/tool-agent-helpers.js';
-import { buildOpenResponsesApplyPatchCallBody } from './open-responses-mock.js';
+import { buildGatewayV3ApplyPatchToolCallResponse } from './open-responses-mock.js';
 import { printSmokeSection } from '../shared/index.js';
 
 async function main(): Promise<void> {
   const server = createServer(async (request, response) => {
-    if (request.method !== 'POST' || !request.url?.includes('/responses')) {
+    if (request.method !== 'POST' || !request.url?.includes('/language-model')) {
       response.statusCode = 404;
       response.end('not found');
       return;
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     }
 
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify(buildOpenResponsesApplyPatchCallBody('openai/gpt-5.1')));
+    response.end(JSON.stringify(buildGatewayV3ApplyPatchToolCallResponse()));
   });
 
   server.listen(0, '127.0.0.1');

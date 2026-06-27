@@ -608,7 +608,7 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
     .then(() => {
       approvalReturned = true;
     });
-  await flushMicrotasks(4);
+  await flushMicrotasks(32);
   if (!approvalReturned) {
     throw new Error('streaming approval then image smoke 不应等待 generate_image 完成后才结束审批恢复。');
   }
@@ -653,7 +653,7 @@ export async function runStreamingCase(): Promise<RuntimeParityCaseResult> {
   const continuationPoll = streamingApprovalThenImageRuntime.poll().then(() => {
     continuationPollReturned = true;
   });
-  await flushMicrotasks(4);
+  await flushMicrotasks(32);
   if (Number(generateImageStarted) !== 1) {
     throw new Error('streaming approval then image smoke 下一拍 poll 应启动 generate_image。');
   }

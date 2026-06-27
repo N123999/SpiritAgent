@@ -80,6 +80,28 @@ export function buildOpenResponsesWebSearchCallBody(model: string): JsonObject {
   };
 }
 
+export function buildGatewayV3ApplyPatchToolCallResponse(): JsonObject {
+  return {
+    content: [
+      {
+        type: 'tool-call',
+        toolCallId: 'call_apply_patch_1',
+        toolName: 'apply_patch',
+        input: {
+          callId: 'call_apply_patch_1',
+          operation: {
+            type: 'create_file',
+            path: 'demo.txt',
+            diff: '+hello apply patch\n',
+          },
+        },
+      },
+    ],
+    finishReason: 'tool-calls',
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+  };
+}
+
 export function buildOpenResponsesFinalTextBody(model: string, text: string): JsonObject {
   return {
     id: 'resp-final',
