@@ -16,7 +16,6 @@ import {
   buildExtensionsSystemMessage,
   buildAgentModeSystemMessage,
   buildLoopModeSystemMessage,
-  buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
   buildMcpCatalogSystemMessage,
@@ -2679,7 +2678,6 @@ peer.on('runtime.exportState', async () => {
   const rulesSystemPrompt = buildRulesSystemMessage(enabledRules);
   const skillsCatalogSystemPrompt = buildSkillsCatalogSystemMessage(enabledSkillCatalog);
   const mcpCatalogSystemPrompt = buildMcpCatalogSystemMessage(toolExecutor.mcpToolCatalogSnapshot());
-  const planSystemPrompt = buildPlanSystemMessage(planMetadata);
   const agentModeSystemPrompt = buildAgentModeSystemMessage(planMetadata);
   const loopModeSystemPrompt = buildLoopModeSystemMessage(requireRuntime().loopEnabled());
   const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
@@ -2703,7 +2701,6 @@ peer.on('runtime.exportState', async () => {
         ? {}
         : { skillsCatalog: skillsCatalogSystemPrompt }),
       ...(mcpCatalogSystemPrompt === undefined ? {} : { mcpCatalog: mcpCatalogSystemPrompt }),
-      ...(planSystemPrompt === undefined ? {} : { plan: planSystemPrompt }),
       agentMode: agentModeSystemPrompt,
       ...(loopModeSystemPrompt === undefined ? {} : { loopMode: loopModeSystemPrompt }),
       ...(extensionsSystemPrompt === undefined ? {} : { extensions: extensionsSystemPrompt }),

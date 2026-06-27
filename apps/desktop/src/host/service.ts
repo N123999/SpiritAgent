@@ -13,7 +13,6 @@ import {
   buildDreamsSystemMessage,
   buildExtensionsSystemMessage,
   buildAgentModeSystemMessage,
-  buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
   buildMcpCatalogSystemMessage,
@@ -1366,7 +1365,6 @@ class DesktopHostService {
       const mcpCatalogSystemPrompt = buildMcpCatalogSystemMessage(
         this.requireToolExecutor().mcpToolCatalogSnapshot(),
       );
-      const planSystemPrompt = buildPlanSystemMessage(state.metadata.planMetadata);
       const agentModeSystemPrompt = buildAgentModeSystemMessage(state.metadata.planMetadata);
       const extensionsSystemPrompt = buildExtensionsSystemMessage(extensionSystemPrompts);
       const dreamsSystemPrompt = buildDreamsSystemMessage(
@@ -1401,7 +1399,6 @@ class DesktopHostService {
             ? {}
             : { skillsCatalog: skillsCatalogSystemPrompt }),
           ...(mcpCatalogSystemPrompt === undefined ? {} : { mcpCatalog: mcpCatalogSystemPrompt }),
-          ...(planSystemPrompt === undefined ? {} : { plan: planSystemPrompt }),
           agentMode: agentModeSystemPrompt,
           ...(extensionsSystemPrompt === undefined ? {} : { extensions: extensionsSystemPrompt }),
           ...(dreamsSystemPrompt === undefined ? {} : { dreams: dreamsSystemPrompt }),

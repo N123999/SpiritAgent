@@ -47,7 +47,6 @@ export {
   buildDreamsSystemMessage,
   buildLoopModeSystemMessage,
   buildExtensionsSystemMessage,
-  buildPlanSystemMessage,
   buildRulesSystemMessage,
   buildSkillsCatalogSystemMessage,
   buildMcpCatalogSystemMessage,

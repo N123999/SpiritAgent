@@ -20,7 +20,6 @@ const TOOL_TRUNCATION_HEAD_RATIO_DEN = 3;
 const RULES_SECTION_PREFIX = '[SPIRIT_RULES]';
 const SKILLS_CATALOG_SECTION_PREFIX = '[SPIRIT_SKILLS_CATALOG]';
 const MCP_CATALOG_SECTION_PREFIX = '[SPIRIT_MCP_CATALOG]';
-const PLAN_SECTION_PREFIX = '[SPIRIT_PLAN]';
 const AGENT_MODE_SECTION_PREFIX = '[SPIRIT_AGENT_MODE]';
 const LOOP_MODE_SECTION_PREFIX = '[SPIRIT_LOOP_MODE]';
 const EXTENSIONS_SECTION_PREFIX = '[SPIRIT_EXTENSIONS]';
@@ -285,7 +284,6 @@ export function buildToolAgentMessages(input: {
   const rulesSystemMessage = buildRulesSystemMessage(input.enabledRules ?? []);
   const skillsCatalogSystemMessage = buildSkillsCatalogSystemMessage(input.enabledSkillCatalog ?? []);
   const mcpCatalogSystemMessage = buildMcpCatalogSystemMessage(input.mcpToolCatalog);
-  const planSystemMessage = buildPlanSystemMessage(input.planMetadata);
   const agentModeSystemMessage = buildAgentModeSystemMessage(input.planMetadata);
   const loopModeSystemMessage = buildLoopModeSystemMessage(input.loopEnabled);
   const extensionsSystemMessage = buildExtensionsSystemMessage(input.extensionSystemPrompts ?? []);
@@ -302,7 +300,6 @@ export function buildToolAgentMessages(input: {
         mcpCatalogSystemMessage,
         agentModeSystemMessage,
         loopModeSystemMessage,
-        planSystemMessage,
         extensionsSystemMessage,
         dreamsSystemMessage,
         basicInfoSystemMessage,
@@ -637,12 +634,6 @@ export function buildMcpCatalogSystemMessage(
   return lines.join('\n').trimEnd();
 }
 
-export function buildPlanSystemMessage(
-  _planMetadata?: ToolAgentPlanMetadata,
-): string | undefined {
-  return undefined;
-}
-
 export function buildAgentModeSystemMessage(
   planMetadata?: ToolAgentPlanMetadata,
 ): string {
@@ -928,7 +919,6 @@ export function findSpiritSystemMessageContent(messages: JsonValue[]): string | 
         RULES_SECTION_PREFIX,
         SKILLS_CATALOG_SECTION_PREFIX,
         MCP_CATALOG_SECTION_PREFIX,
-        PLAN_SECTION_PREFIX,
         AGENT_MODE_SECTION_PREFIX,
         LOOP_MODE_SECTION_PREFIX,
         EXTENSIONS_SECTION_PREFIX,

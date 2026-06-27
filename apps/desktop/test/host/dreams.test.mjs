@@ -5,7 +5,6 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import {
-  buildPlanSystemMessage,
   startOpenAiToolAgentState,
 } from '@spirit-agent/core';
 import { createHostDreamStore } from '@spirit-agent/host-internal';
@@ -102,9 +101,6 @@ test('dream collector plan metadata is always normalized to agent mode', () => {
 
   assert.equal(collectorPlanMetadata.agentMode, 'agent');
   assert.equal(collectorPlanMetadata.planMode, false);
-
-  const planSystemMessage = buildPlanSystemMessage(collectorPlanMetadata);
-  assert.equal(planSystemMessage, undefined);
 });
 
 test('desktop runtime exposes Dreams as read-only tools', async () => {
