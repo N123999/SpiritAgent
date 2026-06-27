@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { forwardRef, type ComponentProps } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,17 +13,16 @@ type DesktopFormFieldShellProps = {
   shellClassName?: string;
 };
 
-export function DesktopFormInput({
-  className,
-  shellClassName,
-  ...props
-}: ComponentProps<typeof Input> & DesktopFormFieldShellProps) {
+export const DesktopFormInput = forwardRef<
+  HTMLInputElement,
+  ComponentProps<typeof Input> & DesktopFormFieldShellProps
+>(function DesktopFormInput({ className, shellClassName, ...props }, ref) {
   return (
     <div className={cn(DESKTOP_FORM_INPUT_SHELL, shellClassName)}>
-      <Input className={cn(DESKTOP_FORM_INPUT_INNER, className)} {...props} />
+      <Input ref={ref} className={cn(DESKTOP_FORM_INPUT_INNER, className)} {...props} />
     </div>
   );
-}
+});
 
 export function DesktopFormTextarea({
   className,

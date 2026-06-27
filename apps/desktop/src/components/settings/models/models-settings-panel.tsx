@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { LoaderCircle, RefreshCw } from "lucide-react";
 
@@ -122,6 +122,8 @@ export function ModelsSettingsPanel({
   const { t } = useTranslation();
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [providerQuery, setProviderQuery] = useState("");
+  const providerSearchInputRef = useRef<HTMLInputElement>(null);
+  const providerListRef = useRef<HTMLDivElement>(null);
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<DesktopModelProvider | null>(null);
   const [connectApiKey, setConnectApiKey] = useState("");
@@ -293,6 +295,57 @@ export function ModelsSettingsPanel({
   const filteredProviders = localizedProviderRows.filter((row) =>
     row.label.toLowerCase().includes(providerQuery.trim().toLowerCase()),
   );
+
+  const collectProviderListButtons = (container: HTMLElement | null): HTMLElement[] => {
+    if (!container) {
+      return [];
+    }
+    return Array.from(container.querySelectorAll<HTMLElement>("button:not([disabled])"));
+  };
+
+  const focusProviderListButton = (item: HTMLElement | undefined): void => {
+    if (!item) {
+      return;
+    }
+    item.focus();
+    item.scrollIntoView({ block: "nearest" });
+  };
+
+  const handleProviderSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusProviderListButton(collectProviderListButtons(providerListRef.current)[0]);
+    }
+  };
+
+  const handleProviderListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const item =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>("button:not([disabled])")
+        : null;
+    if (!item) {
+      return;
+    }
+    const items = collectProviderListButtons(providerListRef.current);
+    const index = items.indexOf(item);
+    if (index < 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      focusProviderListButton(items[index + 1]);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (index <= 0) {
+        providerSearchInputRef.current?.focus();
+      } else {
+        focusProviderListButton(items[index - 1]);
+      }
+    }
+  };
+
   const selectedProviderLabel =
     selectedProvider === null
       ? t('settings.connectProvider')
@@ -1312,13 +1365,15 @@ export function ModelsSettingsPanel({
           </DialogHeader>
           <div className="grid gap-3 py-1">
             <DesktopFormInput
+              ref={providerSearchInputRef}
               value={providerQuery}
               onChange={(e) => setProviderQuery(e.target.value)}
+              onKeyDown={handleProviderSearchKeyDown}
               placeholder={t('common.search')}
               autoComplete="off"
             />
             <ScrollArea className="h-56 rounded-md border border-dialog-panel-border">
-              <div className="p-1">
+              <div ref={providerListRef} className="p-1" onKeyDown={handleProviderListKeyDown}>
                 {filteredProviders.length === 0 ? (
                   <p className="px-2 py-6 text-center text-sm text-muted-foreground">{t('app.noMatches')}</p>
                 ) : (
@@ -1326,7 +1381,7 @@ export function ModelsSettingsPanel({
                     <button
                       key={row.id}
                       type="button"
-                      className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-muted/60"
+                      className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left text-sm hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none"
                       onClick={() => startConnect(row.id)}
                     >
                       <ProviderIcon providerId={row.id} />
