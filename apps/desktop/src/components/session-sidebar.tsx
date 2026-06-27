@@ -54,6 +54,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -1803,7 +1805,8 @@ function SessionSidebarInner({
               {t("sidebar.deleteSessionConfirm", { name: deleteTarget?.displayName ?? "" })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1836,7 +1839,8 @@ function SessionSidebarInner({
               {deleteSessionBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
               {t("common.delete")}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1868,7 +1872,8 @@ function SessionSidebarInner({
                   })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1918,7 +1923,8 @@ function SessionSidebarInner({
               {sectionDeleteBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
               {t("common.delete")}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1942,7 +1948,8 @@ function SessionSidebarInner({
               })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1975,7 +1982,8 @@ function SessionSidebarInner({
               {deleteWorkspaceBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
               {t("common.delete")}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </aside>

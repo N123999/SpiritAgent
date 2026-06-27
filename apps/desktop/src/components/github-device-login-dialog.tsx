@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -74,19 +76,21 @@ export function GitHubDeviceLoginDialog({
           <p className="text-center text-sm text-destructive">{error}</p>
         ) : null}
 
-        <div className="flex justify-end pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={loading && !challenge}
-            onClick={() => {
-              onOpenChange(false);
-            }}
-          >
-            {t("common.cancel")}
-          </Button>
-        </div>
+        <DialogFooter>
+          <DialogFooterActions>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loading && !challenge}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              {t("common.cancel")}
+            </Button>
+          </DialogFooterActions>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

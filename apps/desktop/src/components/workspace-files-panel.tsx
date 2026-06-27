@@ -19,6 +19,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -1017,7 +1019,8 @@ export function WorkspaceFilesPanel({
               {t("workspace.deleteEntryConfirm", { name: deleteTarget?.name ?? "" })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1040,7 +1043,8 @@ export function WorkspaceFilesPanel({
             >
               {moveToTrashLabel}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1069,7 +1073,8 @@ export function WorkspaceFilesPanel({
               {moveError}
             </p>
           ) : null}
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1091,7 +1096,8 @@ export function WorkspaceFilesPanel({
             >
               {t("workspace.move")}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1112,7 +1118,8 @@ export function WorkspaceFilesPanel({
               {t("workspace.forceDeleteConfirm", { reason: forceDeleteReason })}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button
               type="button"
               variant="outline"
@@ -1135,7 +1142,8 @@ export function WorkspaceFilesPanel({
             >
               {t("workspace.forceDelete")}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

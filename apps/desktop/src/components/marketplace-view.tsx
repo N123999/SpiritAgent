@@ -11,6 +11,8 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -792,7 +794,8 @@ export function MarketplaceView({
             {t('marketplace.switchAdvice')}
           </div>
 
-          <div className="flex flex-col-reverse justify-end gap-2 pt-2 sm:flex-row">
+          <DialogFooter>
+            <DialogFooterActions>
             <Button type="button" variant="outline" onClick={() => setPendingInstall(null)} disabled={marketplaceBusy}>
               {t('common.cancel')}
             </Button>
@@ -813,7 +816,8 @@ export function MarketplaceView({
               {marketplaceBusy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
               {t('marketplace.continueSwitch')}
             </Button>
-          </div>
+            </DialogFooterActions>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
