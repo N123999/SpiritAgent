@@ -103,19 +103,29 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+type DialogFooterLayout = "actions" | "split"
+
 function DialogFooter({
   className,
+  layout = "actions",
+  inset = false,
   showCloseButton = false,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
+  layout?: DialogFooterLayout
+  inset?: boolean
   showCloseButton?: boolean
 }) {
   return (
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "flex rounded-b-xl border-t border-border/40 bg-muted/50",
+        inset ? "mx-0 mb-0 gap-3 px-6 py-4" : "-mx-4 -mb-4 gap-2 p-4",
+        layout === "split"
+          ? "flex-col sm:flex-row sm:items-center sm:justify-between"
+          : "flex-col-reverse sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -127,6 +137,22 @@ function DialogFooter({
         </DialogPrimitive.Close>
       )}
     </div>
+  )
+}
+
+function DialogFooterActions({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-footer-actions"
+      className={cn(
+        "flex shrink-0 flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end",
+        className
+      )}
+      {...props}
+    />
   )
 }
 
@@ -168,6 +194,7 @@ export {
   DialogContent,
   DialogDescription,
   DialogFooter,
+  DialogFooterActions,
   DialogHeader,
   DialogOverlay,
   DialogPortal,
