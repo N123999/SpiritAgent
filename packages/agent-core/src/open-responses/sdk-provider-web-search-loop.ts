@@ -1,4 +1,4 @@
-import { stepCountIs } from 'ai';
+import { isStepCount } from 'ai';
 
 import type { AiSdkUsageSource } from '../ai-sdk-usage.js';
 import type { JsonValue, ToolCallRequest } from '../ports.js';
@@ -34,9 +34,9 @@ function isSdkProviderWebSearchMode(mode: ProviderWebSearchMode | undefined): bo
 
 export function buildSdkProviderWebSearchStopWhen(
   config: OpenResponsesTransportConfig,
-): ReturnType<typeof stepCountIs> | undefined {
+): ReturnType<typeof isStepCount> | undefined {
   return shouldUseSdkProviderWebSearchMultiStep(config)
-    ? stepCountIs(SDK_PROVIDER_WEB_SEARCH_STEP_LIMIT)
+    ? isStepCount(SDK_PROVIDER_WEB_SEARCH_STEP_LIMIT)
     : undefined;
 }
 

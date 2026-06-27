@@ -19,6 +19,7 @@ import {
   type OpenAiJsonSchemaCompletionRequest,
   type OpenAiJsonSchemaCompletionResult,
 } from '../openai/json-schema.js';
+import { buildAiSdkUserImageFilePartFromUrl } from '../ai-sdk-image-url-part.js';
 import { readAiSdkUsage } from '../ai-sdk-usage.js';
 import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
 import {
@@ -259,7 +260,7 @@ export class AiSdkBedrockTransport
               toolChoice: 'auto' as const,
             }),
         providerOptions: buildBedrockProviderOptions(config),
-        includeRawChunks: false,
+        include: { rawChunks: false },
         maxRetries: 0,
         abortSignal: abortController.signal,
       });
@@ -267,7 +268,7 @@ export class AiSdkBedrockTransport
 
       return {
         eventStream: bedrockEventStreamToRuntimeEvents(
-          result.fullStream,
+          result.stream,
           result,
           nextState,
           requestTrace,
@@ -332,7 +333,7 @@ export class AiSdkBedrockTransport
           maxRetries: 0,
         });
 
-        for await (const part of streamed.fullStream) {
+        for await (const part of streamed.stream) {
           if (part.type !== 'text-delta') {
             continue;
           }
@@ -565,7 +566,7 @@ function userContentToAiSdkContent(
         break;
       case 'image_url':
         if (isJsonObject(part.image_url) && typeof part.image_url.url === 'string') {
-          parts.push({ type: 'image', image: part.image_url.url });
+          parts.push(buildAiSdkUserImageFilePartFromUrl(part.image_url.url));
         }
         break;
       default:

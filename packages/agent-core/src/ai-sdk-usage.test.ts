@@ -23,6 +23,26 @@ test('readAiSdkUsage normalizes AI SDK camelCase usage', async () => {
   });
 });
 
+test('readAiSdkUsage normalizes AI SDK 7 nested token details', async () => {
+  const usage = await readAiSdkUsage({
+    usage: {
+      inputTokens: 100,
+      outputTokens: 20,
+      totalTokens: 120,
+      inputTokenDetails: { cacheReadTokens: 64 },
+      outputTokenDetails: { reasoningTokens: 8 },
+    },
+  });
+
+  assert.deepEqual(usage, {
+    inputTokens: 100,
+    outputTokens: 20,
+    totalTokens: 120,
+    reasoningTokens: 8,
+    cachedInputTokens: 64,
+  });
+});
+
 test('readAiSdkUsage normalizes provider snake_case usage', async () => {
   const usage = await readAiSdkUsage({
     usage: Promise.resolve({
@@ -39,10 +59,10 @@ test('readAiSdkUsage normalizes provider snake_case usage', async () => {
   });
 });
 
-test('readAiSdkUsage prefers totalUsage over usage', async () => {
+test('readAiSdkUsage prefers usage over deprecated totalUsage', async () => {
   const usage = await readAiSdkUsage({
-    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
-    totalUsage: { inputTokens: 42, outputTokens: 7, totalTokens: 49 },
+    usage: { inputTokens: 42, outputTokens: 7, totalTokens: 49 },
+    totalUsage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
   });
 
   assert.deepEqual(usage, {

@@ -334,7 +334,7 @@ export class AiSdkOpenResponsesTransport
       const providerOptions = buildResponsesProviderOptions(config, previousResponseId);
       const sdkMessages = openAiMessagesToResponsesAiSdkMessages(requestMessages, config);
       const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
-      const result: { fullStream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = streamText({
+      const result: { stream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = streamText({
         model: createResponsesLanguageModel(config) as any,
         messages: sdkMessages as any,
         allowSystemInMessages: true,
@@ -346,7 +346,7 @@ export class AiSdkOpenResponsesTransport
           : {}),
         ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
         providerOptions,
-        includeRawChunks: true,
+        include: { rawChunks: true },
         maxRetries: 0,
         abortSignal: abortController.signal,
       });
@@ -356,7 +356,7 @@ export class AiSdkOpenResponsesTransport
       return {
         eventStream: responsesEventStreamToRuntimeEvents(
           config,
-          result.fullStream as any,
+          result.stream as any,
           result,
           nextState,
           requestTrace,
@@ -422,7 +422,7 @@ export class AiSdkOpenResponsesTransport
           maxRetries: 0,
         });
 
-        for await (const part of streamed.fullStream) {
+        for await (const part of streamed.stream) {
           if (part.type !== 'text-delta') {
             continue;
           }

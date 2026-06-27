@@ -1,4 +1,4 @@
-import type { GoogleGenerativeAIProviderOptions } from '@ai-sdk/google';
+import type { GoogleLanguageModelOptions } from '@ai-sdk/google';
 
 import type { JsonObject } from '../ports.js';
 import type { OpenAiLlmVendor, OpenAiTransportConfig } from './openai-compat.js';
@@ -58,7 +58,7 @@ function googleGemini25ThinkingBudgetForEffort(
 export function buildGoogleThinkingConfigForEffort(
   model: string,
   effort: string | undefined,
-): GoogleGenerativeAIProviderOptions['thinkingConfig'] | undefined {
+): GoogleLanguageModelOptions['thinkingConfig'] | undefined {
   if (effort === undefined) {
     return undefined;
   }
@@ -140,7 +140,7 @@ export function buildGatewayGoogleProviderOptions(
 
   const googleOptions = {
     thinkingConfig,
-  } satisfies GoogleGenerativeAIProviderOptions;
+  } satisfies GoogleLanguageModelOptions;
 
   return {
     google: googleOptions as JsonObject,

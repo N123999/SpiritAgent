@@ -230,6 +230,7 @@ export async function startStreamingRound<
     )
     .then((completion) => {
       pending.completion = completion;
+      pending.streamConsumerFinished = true;
       if (completion.kind === 'success' && completion.result.step.kind === 'final-response-ready') {
         const assistantText = runtime.options.extractAssistantText(completion.result.state)?.trim();
         if (assistantText) {
@@ -244,6 +245,7 @@ export async function startStreamingRound<
         error: renderError(error),
         requestTrace: [],
       };
+      pending.streamConsumerFinished = true;
     });
 }
 

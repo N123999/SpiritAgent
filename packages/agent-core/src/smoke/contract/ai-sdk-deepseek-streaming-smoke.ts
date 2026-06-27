@@ -312,9 +312,9 @@ async function runDeepSeekVisionCapabilitySmoke(): Promise<void> {
     AI_SDK_LOG_WARNINGS: false | DeepSeekSmokeWarningLogger | undefined;
   };
   const previousWarningLogger = warningHost.AI_SDK_LOG_WARNINGS;
-  warningHost.AI_SDK_LOG_WARNINGS = (options: DeepSeekSmokeWarningOptions) => {
+  warningHost.AI_SDK_LOG_WARNINGS = ((options: DeepSeekSmokeWarningOptions) => {
     warnings.push(options as unknown as JsonValue);
-  };
+  }) as typeof warningHost.AI_SDK_LOG_WARNINGS;
 
   try {
     server.listen(0, '127.0.0.1');
