@@ -60,7 +60,8 @@ applyTo: "**/*"
 它负责：
 
 - 主系统提示词
-- Rules / Skills / Plan / Active Skills 这些系统段落的语义与拼装
+- Rules / Skills catalog、Agent mode、Extensions、Dreams、Basic info 等系统段落的语义与拼装
+- 用户显式激活的 Skill 全文经用户消息 `<active_skill>` meta 注入（非 system 段）
 - 内建工具的模型可见定义：名称、描述、JSON Schema
 - MCP 协议、MCP 工具 / resource / prompt 语义与运行时接入
 - 梦境工具的模型可见契约与收集者系统提示语义
@@ -132,10 +133,11 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 | 资产 | 归属 |
 | --- | --- |
 | 主系统提示词 | `agent-core` |
-| Rules / Skills / Plan 的系统段落语义 | `agent-core` |
+| Rules / Skills catalog 等系统段落语义 | `agent-core` |
+| 用户回合 `<active_skill>` meta（显式激活的 Skill 全文） | `agent-core`（`user-turn-timestamp` 拼装） |
 | 内建工具名称、描述、JSON Schema | `agent-core` |
 | 梦境工具名称、描述、JSON Schema 与收集者系统提示 | `agent-core` |
-| 会话 TODO 工具名称、描述、JSON Schema 与 `[SPIRIT_TODOS]` 系统段 | `agent-core` |
+| 会话 TODO 工具名称、描述、JSON Schema（无独立 `[SPIRIT_TODOS]` system 段） | `agent-core` |
 | LSP 工具契约、`get_diagnostics` Schema（按后缀路由至多语言 server）与诊断格式化 | `agent-core` |
 | MCP 协议、MCP tool / resource / prompt 运行时 | `agent-core` |
 | Host 接口定义 | `agent-core` |

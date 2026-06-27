@@ -105,7 +105,8 @@ if (record.type === 'image') {
 
 ### 本仓库常见项
 
-- ✅ push：git 分支、dirty 状态、项目类型、测试命令（如 `[SPIRIT_BASIC_INFO]`）
+- ✅ push：git 分支、dirty 状态、项目类型、测试命令（经 `buildBasicInfoSystemMessage` 写入 system，段内现仍带 `[SPIRIT_BASIC_INFO]` 标记）
+- ✅ push（仅当用户本回合显式引用 Skill）：Skill 全文写入该条 user 消息的 `<active_skill>` meta，不进 system
 - ❌ push：完整目录树；用 `glob` / `grep` 按需 pull
 - 打开的文件：只 push **引用**（路径 + 光标/选区），不 push 全文；相关再 `read_file`
 
