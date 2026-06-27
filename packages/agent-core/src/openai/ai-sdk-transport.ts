@@ -35,6 +35,7 @@ import {
   type TextStreamPart,
 } from 'ai';
 
+import { buildAiSdkUserImageFilePartFromUrl } from '../ai-sdk-image-url-part.js';
 import {
   resolveStreamingToolPreviewEmit,
   shouldEmitStreamingToolNamePreview,
@@ -1243,7 +1244,7 @@ function openAiUserContentToAiSdkContent(
         break;
       case 'image_url':
         if (isJsonObject(part.image_url) && typeof part.image_url.url === 'string') {
-          parts.push({ type: 'image', image: part.image_url.url });
+          parts.push(buildAiSdkUserImageFilePartFromUrl(part.image_url.url));
         }
         break;
       case 'video_url':

@@ -19,6 +19,7 @@ import {
   type OpenAiJsonSchemaCompletionRequest,
   type OpenAiJsonSchemaCompletionResult,
 } from '../openai/json-schema.js';
+import { buildAiSdkUserImageFilePartFromUrl } from '../ai-sdk-image-url-part.js';
 import { readAiSdkUsage } from '../ai-sdk-usage.js';
 import { finishTaskStreamingPreviewReady } from '../finish-task-preview.js';
 import {
@@ -565,7 +566,7 @@ function userContentToAiSdkContent(
         break;
       case 'image_url':
         if (isJsonObject(part.image_url) && typeof part.image_url.url === 'string') {
-          parts.push({ type: 'image', image: part.image_url.url });
+          parts.push(buildAiSdkUserImageFilePartFromUrl(part.image_url.url));
         }
         break;
       default:
