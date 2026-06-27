@@ -19,6 +19,7 @@ import {
   isLogSessionSlashInput,
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
+import type { RichSegment } from "@/lib/composer-segment-model";
 import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
 import { clearGitHubAutomationRepositoriesCache } from "@/lib/github-automation-repositories-cache";
 import { isRunSubagentToolCallPending } from "@/lib/subagent-viewer-pending";
@@ -117,6 +118,7 @@ const COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS = 400;
 
 type SessionUiState = {
   composer: string;
+  composerSegments: RichSegment[];
   questionDrafts: Record<string, QuestionDraft>;
   localFilePaths: string[];
   agentModeChipDismissed: boolean;
@@ -134,11 +136,12 @@ function attachmentsFromPaths(paths: readonly string[]): ComposerLocalFileAttach
 
 function persistSessionUiDraft(
   sessionKey: string,
-  state: Pick<SessionUiState, "composer" | "localFilePaths">,
+  state: Pick<SessionUiState, "composer" | "localFilePaths" | "composerSegments">,
 ): void {
   writeComposerDraft(sessionKey, {
     text: state.composer,
     localFilePaths: state.localFilePaths,
+    segments: state.composerSegments,
   });
 }
 
@@ -316,6 +319,8 @@ export function useDesktopRuntime() {
   const [runtimeError, setRuntimeError] = useState("");
   const [webHostPairingRequired, setWebHostPairingRequired] = useState(false);
   const [composer, setComposer] = useState("");
+  const [composerInitialSegments, setComposerInitialSegments] = useState<RichSegment[] | null>(null);
+  const composerDraftSegmentsRef = useRef<RichSegment[]>([]);
   const [approvalGuidance, setApprovalGuidance] = useState("");
   const [questionError, setQuestionError] = useState("");
   const [settings, setSettings] = useState<SettingsFormState>({
@@ -365,6 +370,8 @@ export function useDesktopRuntime() {
   const clearActiveComposerDraft = useCallback(() => {
     const key = sessionUiKey(snapshotRef.current?.composerSessionKey);
     setComposer("");
+    setComposerInitialSegments(null);
+    composerDraftSegmentsRef.current = [];
     setComposerLocalFileAttachments([]);
     setAgentModeChipDismissed(false);
     if (!key) {
@@ -386,12 +393,17 @@ export function useDesktopRuntime() {
       }
       const state: SessionUiState = {
         composer,
+        composerSegments: composerDraftSegmentsRef.current,
         questionDrafts,
         localFilePaths: pathsFromComposerAttachments(composerLocalFileAttachments),
         agentModeChipDismissed,
       };
       sessionUiCacheRef.current.set(key, state);
-      persistSessionUiDraft(key, state);
+      persistSessionUiDraft(key, {
+        composer,
+        localFilePaths: state.localFilePaths,
+        composerSegments: state.composerSegments,
+      });
     },
     [agentModeChipDismissed, composer, composerLocalFileAttachments, questionDrafts, sessionUiKey],
   );
@@ -402,6 +414,8 @@ export function useDesktopRuntime() {
       const key = sessionUiKey(snapshotLike?.composerSessionKey);
       if (snapshotLike?.activeSession?.readOnly) {
         setComposer("");
+        setComposerInitialSegments(null);
+        composerDraftSegmentsRef.current = [];
         setQuestionDrafts({});
         setComposerLocalFileAttachments([]);
         setAgentModeChipDismissed(false);
@@ -410,6 +424,8 @@ export function useDesktopRuntime() {
       }
       if (!key) {
         setComposer("");
+        setComposerInitialSegments(null);
+        composerDraftSegmentsRef.current = [];
         setQuestionDrafts({});
         setComposerLocalFileAttachments([]);
         setAgentModeChipDismissed(false);
@@ -419,6 +435,8 @@ export function useDesktopRuntime() {
       const cached = sessionUiCacheRef.current.get(key);
       if (cached) {
         setComposer(cached.composer);
+        composerDraftSegmentsRef.current = cached.composerSegments;
+        setComposerInitialSegments(cached.composerSegments.length > 0 ? cached.composerSegments : null);
         setQuestionDrafts(cached.questionDrafts);
         setComposerLocalFileAttachments(attachmentsFromPaths(cached.localFilePaths));
         setAgentModeChipDismissed(cached.agentModeChipDismissed ?? false);
@@ -427,6 +445,8 @@ export function useDesktopRuntime() {
       }
       const stored = readComposerDraft(key);
       setComposer(stored?.text ?? "");
+      composerDraftSegmentsRef.current = stored?.segments ?? [];
+      setComposerInitialSegments(stored?.segments?.length ? stored.segments : null);
       setQuestionDrafts({});
       setComposerLocalFileAttachments(attachmentsFromPaths(stored?.localFilePaths ?? []));
       setAgentModeChipDismissed(false);
@@ -434,6 +454,10 @@ export function useDesktopRuntime() {
     },
     [sessionUiKey],
   );
+
+  const setComposerDraftSegments = useCallback((segments: RichSegment[]) => {
+    composerDraftSegmentsRef.current = segments;
+  }, []);
 
   useEffect(() => {
     agentModeChipDismissedRef.current = agentModeChipDismissed;
@@ -469,11 +493,16 @@ export function useDesktopRuntime() {
       const localFilePaths = pathsFromComposerAttachments(composerLocalFileAttachments);
       sessionUiCacheRef.current.set(key, {
         composer,
+        composerSegments: composerDraftSegmentsRef.current,
         questionDrafts,
         localFilePaths,
         agentModeChipDismissed,
       });
-      persistSessionUiDraft(key, { composer, localFilePaths });
+      persistSessionUiDraft(key, {
+        composer,
+        localFilePaths,
+        composerSegments: composerDraftSegmentsRef.current,
+      });
     }, COMPOSER_DRAFT_PERSIST_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeout);
@@ -3048,7 +3077,9 @@ export function useDesktopRuntime() {
     busyAction,
     agentModeChipDismissed,
     composer,
+    composerInitialSegments,
     composerLocalFileAttachments,
+    setComposerDraftSegments,
     hostKind: kind,
     pendingQuestions,
     questionDrafts,

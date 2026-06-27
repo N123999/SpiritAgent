@@ -29,23 +29,30 @@ test('normalizeComposerSessionKey normalizes Windows-style paths', () => {
   );
 });
 
-test('writeComposerDraft and readComposerDraft round-trip text and attachments', () => {
+test('writeComposerDraft and readComposerDraft round-trip text attachments and segments', () => {
   const storage = createMemoryStorage();
   const sessionKey = 'D:/SpiritAgent/chats/session-a.json';
+  const segments = [
+    { kind: 'text', value: 'fix ' },
+    { kind: 'workspaceFile', path: 'src/App.tsx' },
+    { kind: 'skill', alias: '/git-commit' },
+  ];
 
   writeComposerDraft(
     sessionKey,
     {
-      text: 'half-written idea',
+      text: 'fix @src/App.tsx',
       localFilePaths: ['D:\\tmp\\note.png', 'D:/tmp/note.png'],
+      segments,
     },
     storage,
   );
 
   const restored = readComposerDraft(sessionKey, storage);
   assert.deepEqual(restored, {
-    text: 'half-written idea',
+    text: 'fix @src/App.tsx',
     localFilePaths: ['D:/tmp/note.png'],
+    segments,
     updatedAt: restored.updatedAt,
   });
   assert.equal(typeof restored.updatedAt, 'number');
@@ -55,19 +62,38 @@ test('writeComposerDraft deletes empty drafts', () => {
   const storage = createMemoryStorage();
   const sessionKey = 'session-empty';
 
-  writeComposerDraft(sessionKey, { text: 'temp', localFilePaths: [] }, storage);
-  writeComposerDraft(sessionKey, { text: '   ', localFilePaths: [] }, storage);
+  writeComposerDraft(sessionKey, { text: 'temp', localFilePaths: [], segments: [] }, storage);
+  writeComposerDraft(sessionKey, { text: '   ', localFilePaths: [], segments: [] }, storage);
 
   assert.equal(readComposerDraft(sessionKey, storage), undefined);
   const raw = JSON.parse(storage.getItem(COMPOSER_DRAFT_STORAGE_KEY));
   assert.equal(raw.drafts['session-empty'], undefined);
 });
 
+test('readComposerDraft discards v1 drafts without migration', () => {
+  const storage = createMemoryStorage();
+  storage.setItem(
+    COMPOSER_DRAFT_STORAGE_KEY,
+    JSON.stringify({
+      version: 1,
+      drafts: {
+        'legacy-session': {
+          text: '@README.md hello',
+          localFilePaths: [],
+          updatedAt: 1,
+        },
+      },
+    }),
+  );
+
+  assert.equal(readComposerDraft('legacy-session', storage), undefined);
+});
+
 test('clearComposerDraft removes a stored draft', () => {
   const storage = createMemoryStorage();
   const sessionKey = 'session-clear';
 
-  writeComposerDraft(sessionKey, { text: 'keep me briefly', localFilePaths: [] }, storage);
+  writeComposerDraft(sessionKey, { text: 'keep me briefly', localFilePaths: [], segments: [] }, storage);
   clearComposerDraft(sessionKey, storage);
 
   assert.equal(readComposerDraft(sessionKey, storage), undefined);

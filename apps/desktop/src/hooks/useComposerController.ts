@@ -979,8 +979,10 @@ export function useComposerController({
   }, [slashQuery]);
 
   const handleComposerSegmentsCommit = useCallback(() => {
+    const segments = composerRichInputRef.current?.getSegments() ?? [];
+    runtime.setComposerDraftSegments(segments);
     setComposerSegmentsRevision((revision) => revision + 1);
-  }, []);
+  }, [runtime]);
 
   return {
     composerBrowserElementAttachments,
