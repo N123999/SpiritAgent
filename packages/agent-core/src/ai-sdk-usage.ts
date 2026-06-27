@@ -4,6 +4,7 @@ type MaybePromise<T> = T | PromiseLike<T>;
 
 export interface AiSdkUsageSource {
   usage?: MaybePromise<unknown>;
+  /** @deprecated AI SDK 7：与 `usage` 同义，优先读 `usage`。 */
   totalUsage?: MaybePromise<unknown>;
 }
 
@@ -12,6 +13,18 @@ function readNonNegativeInt(value: unknown): number | undefined {
     return undefined;
   }
   return Math.trunc(value);
+}
+
+function readNestedTokenDetail(
+  record: Record<string, unknown>,
+  detailsKey: 'inputTokenDetails' | 'outputTokenDetails',
+  field: string,
+): number | undefined {
+  const details = record[detailsKey];
+  if (typeof details !== 'object' || details === null) {
+    return undefined;
+  }
+  return readNonNegativeInt((details as Record<string, unknown>)[field]);
 }
 
 function normalizeLanguageModelUsage(value: unknown): LlmTokenUsage | undefined {
@@ -48,14 +61,16 @@ function normalizeLanguageModelUsage(value: unknown): LlmTokenUsage | undefined 
   };
 
   const reasoningTokens =
-    readNonNegativeInt(record.reasoningTokens)
+    readNestedTokenDetail(record, 'outputTokenDetails', 'reasoningTokens')
+    ?? readNonNegativeInt(record.reasoningTokens)
     ?? readNonNegativeInt(record.reasoning_tokens);
   if (reasoningTokens !== undefined) {
     usage.reasoningTokens = reasoningTokens;
   }
 
   const cachedInputTokens =
-    readNonNegativeInt(record.cachedInputTokens)
+    readNestedTokenDetail(record, 'inputTokenDetails', 'cacheReadTokens')
+    ?? readNonNegativeInt(record.cachedInputTokens)
     ?? readNonNegativeInt(record.cached_input_tokens);
   if (cachedInputTokens !== undefined) {
     usage.cachedInputTokens = cachedInputTokens;
@@ -72,14 +87,12 @@ async function resolveMaybePromise<T>(value: MaybePromise<T> | undefined): Promi
 }
 
 export async function readAiSdkUsage(source: AiSdkUsageSource): Promise<LlmTokenUsage | undefined> {
-  const totalUsage = await resolveMaybePromise(source.totalUsage);
-  if (totalUsage !== undefined) {
-    const normalized = normalizeLanguageModelUsage(totalUsage);
-    if (normalized) {
-      return normalized;
-    }
+  const usage = await resolveMaybePromise(source.usage);
+  const normalizedUsage = normalizeLanguageModelUsage(usage);
+  if (normalizedUsage) {
+    return normalizedUsage;
   }
 
-  const usage = await resolveMaybePromise(source.usage);
-  return normalizeLanguageModelUsage(usage);
+  const totalUsage = await resolveMaybePromise(source.totalUsage);
+  return normalizeLanguageModelUsage(totalUsage);
 }

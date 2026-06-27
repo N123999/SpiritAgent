@@ -379,6 +379,7 @@ export class AiSdkOpenAiCompatibleTransport
         model: createAiSdkLanguageModel(config),
         messages: openAiMessagesToAiSdkMessages(requestMessages) as any,
         allowSystemInMessages: true,
+        include: { responseBody: true },
         ...(normalizedTools.length === 0
           ? {}
           : {
