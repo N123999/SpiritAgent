@@ -158,7 +158,7 @@ test('buildResponsesProviderOptions maps gateway xiaomi reasoning via openai nam
   );
 });
 
-test('buildResponsesProviderOptions maps direct xiaomi reasoning via openai namespace', () => {
+test('buildResponsesProviderOptions maps direct xiaomi reasoning via xiaomi namespace', () => {
   assert.deepEqual(
     buildResponsesProviderOptions({
       transportKind: 'open-responses',
@@ -168,7 +168,7 @@ test('buildResponsesProviderOptions maps direct xiaomi reasoning via openai name
       reasoningEffort: 'none',
     }),
     {
-      openai: {
+      xiaomi: {
         reasoningEffort: 'none',
       },
     },

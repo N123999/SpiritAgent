@@ -139,7 +139,7 @@ test('buildGatewayXiaomiResponsesProviderOptions maps reasoningEffort via openai
   );
 });
 
-test('buildDirectXiaomiResponsesProviderOptions maps reasoningEffort via openai namespace', () => {
+test('buildDirectXiaomiResponsesProviderOptions maps reasoningEffort via xiaomi namespace', () => {
   assert.deepEqual(
     buildDirectXiaomiResponsesProviderOptions(
       {
@@ -149,7 +149,7 @@ test('buildDirectXiaomiResponsesProviderOptions maps reasoningEffort via openai 
       'none',
     ),
     {
-      openai: {
+      xiaomi: {
         reasoningEffort: 'none',
       },
     },

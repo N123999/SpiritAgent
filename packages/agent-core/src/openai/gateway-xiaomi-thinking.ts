@@ -44,25 +44,26 @@ export function isXiaomiResponsesReasoningEffortContext(
   return false;
 }
 
-function buildXiaomiOpenAiReasoningOptions(
+function buildXiaomiResponsesReasoningOptions(
   model: string,
   reasoningEffort: string | undefined,
   reasoningSummary: OpenResponsesReasoningSummary | undefined,
+  providerOptionsKey: 'openai' | 'xiaomi',
 ): Record<string, JsonObject> {
   if (!isXiaomiThinkingSwitchEligibleModel(model)) {
     return {};
   }
 
-  const openaiOptions: JsonObject = {
+  const reasoningOptions: JsonObject = {
     ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
     ...(reasoningSummary !== undefined ? { reasoningSummary } : {}),
   };
 
-  if (Object.keys(openaiOptions).length === 0) {
+  if (Object.keys(reasoningOptions).length === 0) {
     return {};
   }
 
-  return { openai: openaiOptions };
+  return { [providerOptionsKey]: reasoningOptions };
 }
 
 /** Gateway Xiaomi MiMo Responses：经 openai 命名空间注入 reasoningEffort。 */
@@ -74,10 +75,13 @@ export function buildGatewayXiaomiResponsesProviderOptions(
   if (!isGatewayXiaomiModel(config.llmVendor, config.model)) {
     return {};
   }
-  return buildXiaomiOpenAiReasoningOptions(config.model, reasoningEffort, reasoningSummary);
+  return buildXiaomiResponsesReasoningOptions(config.model, reasoningEffort, reasoningSummary, 'openai');
 }
 
-/** 直连 Xiaomi MiMo Responses：经 openai 命名空间注入 reasoningEffort。 */
+/**
+ * 直连 Xiaomi MiMo Responses：经 xiaomi 命名空间注入 reasoningEffort。
+ * @ai-sdk/open-responses 的 providerOptionsName 与 createOpenResponses({ name }) 一致，须用 xiaomi 而非 openai。
+ */
 export function buildDirectXiaomiResponsesProviderOptions(
   config: Pick<OpenAiTransportConfig, 'llmVendor' | 'model'>,
   reasoningEffort: string | undefined,
@@ -86,7 +90,7 @@ export function buildDirectXiaomiResponsesProviderOptions(
   if (config.llmVendor !== 'xiaomi') {
     return {};
   }
-  return buildXiaomiOpenAiReasoningOptions(config.model, reasoningEffort, reasoningSummary);
+  return buildXiaomiResponsesReasoningOptions(config.model, reasoningEffort, reasoningSummary, 'xiaomi');
 }
 
 /** Gateway Xiaomi MiMo Chat：经 xiaomi 命名空间注入 thinking.type（非 openai 命名空间）。 */
