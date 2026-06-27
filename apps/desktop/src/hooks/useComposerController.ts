@@ -16,6 +16,7 @@ import {
 
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { segmentsToMessageText } from "@/components/composer-rich-input";
+import { extractComposerChipMetadata } from "@/lib/composer-segment-model";
 import { cycleAgentMode, type DesktopAgentMode } from "@/lib/agent-mode";
 import { currentWorkspaceFileReferenceQueryFromSegments } from "@/lib/composer-file-reference-query";
 import {
@@ -709,12 +710,19 @@ export function useComposerController({
       applyForkSlash();
       return;
     }
+    const chipMetadata = extractComposerChipMetadata(segs);
     const payload = {
       text: fullText,
       ...(runtime.composerLocalFileAttachments.length > 0
         ? {
             localFilePaths: runtime.composerLocalFileAttachments.map((item) => item.path),
           }
+        : {}),
+      ...(chipMetadata.referencedWorkspaceFilePaths.length > 0
+        ? { referencedWorkspaceFilePaths: chipMetadata.referencedWorkspaceFilePaths }
+        : {}),
+      ...(chipMetadata.skillChipAliases.length > 0
+        ? { skillChipAliases: chipMetadata.skillChipAliases }
         : {}),
     };
 

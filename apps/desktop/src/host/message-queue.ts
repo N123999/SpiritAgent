@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
-import type { PendingWorkspaceFile } from '@spirit-agent/core';
+import type { PendingWorkspaceFile, LlmActiveSkill } from '@spirit-agent/core';
 
 import i18n from '../lib/i18n-host.js';
 import type { ConversationMessageSnapshot, DesktopSnapshot } from '../types.js';
@@ -15,6 +15,7 @@ export interface QueuedUserTurn {
   text: string;
   displayText: string;
   explicitWorkspaceFiles?: PendingWorkspaceFile[];
+  turnSkills?: LlmActiveSkill[];
   localFileAttachments?: ConversationMessageSnapshot['localFileAttachments'];
   enqueuedAtUnixMs: number;
 }
@@ -96,6 +97,7 @@ function pendingWorkspaceFilesToAttachmentSnapshots(
 export interface EnqueueUserTurnInput {
   text: string;
   explicitWorkspaceFiles?: PendingWorkspaceFile[];
+  turnSkills?: LlmActiveSkill[];
   displayText?: string;
 }
 
@@ -105,6 +107,7 @@ export async function enqueueUserTurnCommand(
 ): Promise<DesktopSnapshot> {
   const bundle = ctx.activeBundle();
   const explicitWorkspaceFiles = input.explicitWorkspaceFiles ?? [];
+  const turnSkills = input.turnSkills ?? [];
   const trimmed = input.text.trim();
   if (!trimmed && explicitWorkspaceFiles.length === 0) {
     throw new Error(i18n.t('error.messageRequired'));
@@ -136,6 +139,7 @@ export async function enqueueUserTurnCommand(
     ...(explicitWorkspaceFiles.length > 0
       ? { explicitWorkspaceFiles: [...explicitWorkspaceFiles], localFileAttachments }
       : {}),
+    ...(turnSkills.length > 0 ? { turnSkills: cloneTurnSkills(turnSkills) } : {}),
     enqueuedAtUnixMs: Date.now(),
   };
 
@@ -195,6 +199,17 @@ export function moveQueuedUserTurnUp(bundle: SessionBundle, queueId: string): bo
 
 export function explicitWorkspaceFilesFromQueuedItem(item: QueuedUserTurn): PendingWorkspaceFile[] {
   return item.explicitWorkspaceFiles ? [...item.explicitWorkspaceFiles] : [];
+}
+
+function cloneTurnSkills(skills: readonly LlmActiveSkill[]): LlmActiveSkill[] {
+  return skills.map((skill) => ({
+    ...skill,
+    resources: skill.resources.map((resource) => ({ ...resource })),
+  }));
+}
+
+export function turnSkillsFromQueuedItem(item: QueuedUserTurn): LlmActiveSkill[] {
+  return item.turnSkills ? cloneTurnSkills(item.turnSkills) : [];
 }
 
 export function peekNextQueuedUserTurn(bundle: SessionBundle): QueuedUserTurn | undefined {

@@ -136,6 +136,35 @@ export function hasSkillSegment(segs: RichSegment[]): boolean {
   return segs.some((s) => s.kind === "skill");
 }
 
+export function extractComposerChipMetadata(segs: RichSegment[]): {
+  referencedWorkspaceFilePaths: string[];
+  skillChipAliases: string[];
+} {
+  const referencedWorkspaceFilePaths: string[] = [];
+  const skillChipAliases: string[] = [];
+  const seenPaths = new Set<string>();
+  const seenSkills = new Set<string>();
+
+  for (const seg of segs) {
+    if (seg.kind === "workspaceFile") {
+      const normalized = normalizeWorkspaceFilePath(seg.path);
+      const key = normalized.toLowerCase();
+      if (seenPaths.has(key)) {
+        continue;
+      }
+      seenPaths.add(key);
+      referencedWorkspaceFilePaths.push(normalized);
+      continue;
+    }
+    if (seg.kind === "skill" && !seenSkills.has(seg.alias)) {
+      seenSkills.add(seg.alias);
+      skillChipAliases.push(seg.alias);
+    }
+  }
+
+  return { referencedWorkspaceFilePaths, skillChipAliases };
+}
+
 /** Separator between serialized parts; avoids extra blank lines around inline chips. */
 export function messageSegmentSeparator(prev: RichSegment, next: RichSegment): string {
   if (prev.kind === "text" && next.kind === "text") return "";

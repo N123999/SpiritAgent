@@ -31,6 +31,7 @@ import {
   type PendingWorkspaceFile,
   type RuntimeToolExecution,
   type SpiritLlmTransport,
+  type LlmActiveSkill,
 } from '@spirit-agent/core';
 import {
   buildStartImplementingUserTurn,
@@ -38,6 +39,7 @@ import {
   createHostExtensionMarketplace,
   createHostExtensionManager,
   localFileAttachmentFromPath,
+  workspaceFileReferenceAttachmentFromPath,
   classifyLocalFileComposerRoute as resolveLocalFileComposerRoute,
   type LocalFileComposerRoute,
   restoreHostFileChanges,
@@ -373,6 +375,7 @@ import {
   createDesktopRuntime,
   type DesktopRuntime,
 } from './runtime.js';
+import { buildActiveSkillPayload } from './skills.js';
 import { createDesktopSubagentWorkspaceBootstrap } from './subagent-worktree-bootstrap.js';
 import {
   buildDreamContextText,
@@ -1434,17 +1437,19 @@ class DesktopHostService {
       const trimmed = request.text.trim();
       const bundle = this.activeBundle();
       const hasLocalFiles = Array.isArray(request.localFilePaths) && request.localFilePaths.length > 0;
-      if (!trimmed && !hasLocalFiles) {
+      const hasReferencedPaths = Array.isArray(request.referencedWorkspaceFilePaths)
+        && request.referencedWorkspaceFilePaths.length > 0;
+      if (!trimmed && !hasLocalFiles && !hasReferencedPaths) {
         throw new Error(i18n.t('error.messageRequired'));
       }
 
-      const explicitWorkspaceFiles = await this.resolveExplicitLocalFileAttachments(
-        request.localFilePaths,
-      );
+      const explicitWorkspaceFiles = await this.resolveMergedExplicitWorkspaceFiles(request);
+      const turnSkills = await this.resolveTurnSkillsFromChipAliases(request.skillChipAliases);
       if (canEnqueueUserTurn(bundle)) {
         return enqueueUserTurnCommand(this.sessionTurnContext(), {
           text: request.text,
           explicitWorkspaceFiles,
+          turnSkills,
         });
       }
 
@@ -1454,12 +1459,13 @@ class DesktopHostService {
           this.sessionTurnContext(),
           this.worktreeBootstrapHost(),
           request.text,
-          { explicitWorkspaceFiles },
+          { explicitWorkspaceFiles, turnSkills },
         );
       }
 
       return this.submitUserTurnAfterInitialized(request.text, {
         explicitWorkspaceFiles,
+        turnSkills,
       });
     });
   }
@@ -1655,6 +1661,93 @@ class DesktopHostService {
       }
     }
     return attachments;
+  }
+
+  private async resolveReferencedWorkspaceFileAttachments(
+    referencePaths: readonly string[] | undefined,
+  ): Promise<PendingWorkspaceFile[]> {
+    if (!Array.isArray(referencePaths) || referencePaths.length === 0) {
+      return [];
+    }
+
+    const state = this.requireState();
+    const attachments: PendingWorkspaceFile[] = [];
+    for (const referencePath of referencePaths) {
+      try {
+        attachments.push(
+          await workspaceFileReferenceAttachmentFromPath(state.workspaceRoot, referencePath),
+        );
+      } catch {
+        // 仅 composer 显式插入的 workspaceFile chip 会进入此路径；解析失败静默忽略。
+      }
+    }
+    return attachments;
+  }
+
+  private mergeExplicitWorkspaceFiles(
+    ...groups: readonly PendingWorkspaceFile[][]
+  ): PendingWorkspaceFile[] {
+    const seen = new Set<string>();
+    const merged: PendingWorkspaceFile[] = [];
+    for (const group of groups) {
+      for (const file of group) {
+        const key = file.path.replace(/\\/gu, '/').toLowerCase();
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        merged.push(file);
+      }
+    }
+    return merged;
+  }
+
+  private async resolveMergedExplicitWorkspaceFiles(
+    request: Pick<SubmitUserTurnRequest, 'localFilePaths' | 'referencedWorkspaceFilePaths'>,
+  ): Promise<PendingWorkspaceFile[]> {
+    return this.mergeExplicitWorkspaceFiles(
+      await this.resolveExplicitLocalFileAttachments(request.localFilePaths),
+      await this.resolveReferencedWorkspaceFileAttachments(request.referencedWorkspaceFilePaths),
+    );
+  }
+
+  private skillNameFromChipAlias(alias: string): string {
+    const trimmed = alias.trim();
+    if (!trimmed.startsWith('/')) {
+      throw new Error(i18n.t('error.skillNameRequired'));
+    }
+    return trimmed.slice(1);
+  }
+
+  private async resolveTurnSkillsFromChipAliases(
+    aliases: readonly string[] | undefined,
+  ): Promise<LlmActiveSkill[]> {
+    if (!Array.isArray(aliases) || aliases.length === 0) {
+      return [];
+    }
+
+    const turnSkills: LlmActiveSkill[] = [];
+    const seen = new Set<string>();
+    for (const alias of aliases) {
+      let skillName: string;
+      try {
+        skillName = this.skillNameFromChipAlias(alias);
+      } catch {
+        continue;
+      }
+      const key = skillName.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      try {
+        const skill = this.requireEnabledSkillEntry(skillName);
+        turnSkills.push(await buildActiveSkillPayload(skill));
+      } catch {
+        // 未启用或不存在的 skill chip 静默忽略。
+      }
+    }
+    return turnSkills;
   }
 
   private async appendInlineAssistantReply(

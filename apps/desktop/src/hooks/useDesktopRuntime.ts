@@ -17,7 +17,6 @@ import {
 import {
   isCompactSlashInput,
   isLogSessionSlashInput,
-  matchSkillSlashInput,
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
 import { isAgentModeChipKind } from "@/lib/composer-agent-mode-segments";
@@ -1954,9 +1953,12 @@ export function useDesktopRuntime() {
     }
 
     const localFilePaths = request.localFilePaths ?? [];
+    const referencedWorkspaceFilePaths = request.referencedWorkspaceFilePaths ?? [];
+    const skillChipAliases = request.skillChipAliases ?? [];
     const hasLocalFiles = localFilePaths.length > 0;
+    const hasReferencedPaths = referencedWorkspaceFilePaths.length > 0;
     const text = request.text.trim();
-    if (!text && !hasLocalFiles) {
+    if (!text && !hasLocalFiles && !hasReferencedPaths) {
       return false;
     }
     if (isLogSessionSlashInput(text)) {
@@ -2021,21 +2023,16 @@ export function useDesktopRuntime() {
 
     setBusyAction("send");
     try {
-      const skillSlash = snapshot ? matchSkillSlashInput(text, snapshot.skillsList) : undefined;
-      if (hasLocalFiles && (isCompactSlashInput(text) || skillSlash)) {
+      if (hasLocalFiles && skillChipAliases.length > 0) {
         setRuntimeError(i18n.t('error.attachmentsNotSupportedWithSlash'));
         return false;
       }
-      const next = skillSlash
-        ? await api.submitSkillSlash({
-            skillName: skillSlash.skillName,
-            rawText: text,
-            ...(skillSlash.extraNote ? { extraNote: skillSlash.extraNote } : {}),
-          })
-        : await api.submitUserTurn({
-            text: request.text,
-            ...(hasLocalFiles ? { localFilePaths } : {}),
-          });
+      const next = await api.submitUserTurn({
+        text: request.text,
+        ...(hasLocalFiles ? { localFilePaths } : {}),
+        ...(hasReferencedPaths ? { referencedWorkspaceFilePaths } : {}),
+        ...(skillChipAliases.length > 0 ? { skillChipAliases } : {}),
+      });
       applySnapshot(next);
       clearActiveComposerDraft();
       setRuntimeError("");
