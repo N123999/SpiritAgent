@@ -41,14 +41,14 @@ export function connectTransportOptionsForProvider(provider: DesktopModelProvide
       return [connectTransportOptionCatalog.chatCompletions];
     case "minimax":
     case "deepseek":
+    case "siliconflow":
+      return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.messagesApi];
     case "xiaomi":
       return [
         connectTransportOptionCatalog.chatCompletions,
         connectTransportOptionCatalog.messagesApi,
         connectTransportOptionCatalog.openResponsesApi,
       ];
-    case "siliconflow":
-      return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.messagesApi];
     case "alibaba":
       return [
         connectTransportOptionCatalog.chatCompletions,
