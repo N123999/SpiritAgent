@@ -7,12 +7,12 @@ import {
   type RichSegment,
 } from "@/lib/composer-segment-model";
 
-function segmentPlainTextLength(seg: RichSegment): number {
+function segmentPlainTextCharCount(seg: RichSegment): number {
   if (seg.kind === "text") {
-    return seg.value.length;
+    return Array.from(seg.value).length;
   }
   if (seg.kind === "workspaceFile") {
-    return workspaceFilePlainToken(seg.path).length;
+    return Array.from(workspaceFilePlainToken(seg.path)).length;
   }
   return 0;
 }
@@ -31,7 +31,7 @@ export function currentWorkspaceFileReferenceQueryFromSegments(
   const merged = mergeAdjacentTextSegments(segments);
   let pos = 0;
   for (const seg of merged) {
-    const len = segmentPlainTextLength(seg);
+    const len = segmentPlainTextCharCount(seg);
     const segStart = pos;
     const segEnd = pos + len;
     if (

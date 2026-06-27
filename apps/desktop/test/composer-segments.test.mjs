@@ -1184,3 +1184,14 @@ test("currentWorkspaceFileReferenceQueryFromSegments allows typing @ in text seg
   const query = currentWorkspaceFileReferenceQueryFromSegments(segments, plain, cursor);
   assert.equal(query?.raw, "@readme");
 });
+
+test("currentWorkspaceFileReferenceQueryFromSegments suppresses chip after supplementary unicode", () => {
+  const emoji = "😀";
+  const segments = [{ kind: "text", value: emoji }, { kind: "workspaceFile", path: "README.md" }];
+  const plain = `${emoji}@README.md`;
+  const cursor = Array.from(plain).length;
+  assert.equal(
+    currentWorkspaceFileReferenceQueryFromSegments(segments, plain, cursor),
+    undefined,
+  );
+});
