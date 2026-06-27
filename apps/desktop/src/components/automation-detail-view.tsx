@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
-import { AutomationKanban } from "@/components/automation-kanban";
+import { AutomationHistoryTable } from "@/components/automation-history-table";
 import { AutomationSettingsPanel } from "@/components/automation-settings-panel";
 import type {
   DesktopAutomationDetail,
@@ -10,14 +10,12 @@ import type {
   DesktopUpdateAutomationRequest,
   GitHubAutomationRepositoriesSnapshot,
   SearchGitHubAutomationRepositoriesSnapshot,
-  SessionListItem,
 } from "@/types";
 import { cn } from "@/lib/utils";
 
 type AutomationDetailViewProps = {
   automationId: string;
   snapshot: DesktopSnapshot | null;
-  sessions: SessionListItem[];
   onBack(): void;
   onOpenSession(sessionPath: string): void;
   getAutomation(automationId: string): Promise<DesktopAutomationDetail | undefined>;
@@ -37,13 +35,13 @@ type AutomationDetailViewProps = {
   ): Promise<SearchGitHubAutomationRepositoriesSnapshot>;
 };
 
-type AutomationDetailTab = "kanban" | "settings";
+type AutomationDetailTab = "history" | "settings";
 
 const AUTOMATION_DETAIL_TABS: ReadonlyArray<{
   id: AutomationDetailTab;
-  labelKey: "automations.tabKanban" | "automations.tabSettings";
+  labelKey: "automations.tabHistory" | "automations.tabSettings";
 }> = [
-  { id: "kanban", labelKey: "automations.tabKanban" },
+  { id: "history", labelKey: "automations.tabHistory" },
   { id: "settings", labelKey: "automations.tabSettings" },
 ];
 
@@ -87,7 +85,6 @@ function AutomationDetailTabs({
 export function AutomationDetailView({
   automationId,
   snapshot,
-  sessions,
   onBack,
   onOpenSession,
   getAutomation,
@@ -101,7 +98,7 @@ export function AutomationDetailView({
   searchGitHubRepositories,
 }: AutomationDetailViewProps) {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<AutomationDetailTab>("kanban");
+  const [activeTab, setActiveTab] = useState<AutomationDetailTab>("history");
   const [detail, setDetail] = useState<DesktopAutomationDetail | undefined>();
   const [loading, setLoading] = useState(true);
   const showInitialLoadingRef = useRef(true);
@@ -122,7 +119,7 @@ export function AutomationDetailView({
   }, [automationId, getAutomation]);
 
   useEffect(() => {
-    setActiveTab("kanban");
+    setActiveTab("history");
     showInitialLoadingRef.current = true;
   }, [automationId]);
 
@@ -154,11 +151,10 @@ export function AutomationDetailView({
           </nav>
 
           <AutomationDetailTabs activeTab={activeTab} onTabChange={setActiveTab}>
-            {activeTab === "kanban" ? (
+            {activeTab === "history" ? (
               <div className={cn(loading && "opacity-70")}>
-                <AutomationKanban
+                <AutomationHistoryTable
                   runs={detail?.runs ?? []}
-                  sessions={sessions}
                   onOpenSession={onOpenSession}
                 />
               </div>

@@ -398,7 +398,6 @@ export default function App() {
               <AutomationDetailView
                 automationId={surfaceNav.selectedAutomationId}
                 snapshot={snapshot}
-                sessions={runtime.sessions}
                 onBack={() => {
                   surfaceNav.setSelectedAutomationId(null);
                   surfaceNav.setActiveSurface("automations");
