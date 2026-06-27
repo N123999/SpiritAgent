@@ -11,13 +11,13 @@ import {
 import type { TFunction } from "i18next";
 
 import {
-  currentWorkspaceFileReferenceQuery,
   codeUnitIndexToCharCount,
 } from "@spirit-agent/host-internal/workspace-file-reference-query";
 
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { segmentsToMessageText } from "@/components/composer-rich-input";
 import { cycleAgentMode, type DesktopAgentMode } from "@/lib/agent-mode";
+import { currentWorkspaceFileReferenceQueryFromSegments } from "@/lib/composer-file-reference-query";
 import {
   resolveComposerDirectMediaTool,
 } from "@/lib/composer-direct-media";
@@ -104,6 +104,7 @@ export function useComposerController({
   const [fileReferenceSelectedIndex, setFileReferenceSelectedIndex] = useState(-1);
   const [dismissedFileReferenceKey, setDismissedFileReferenceKey] = useState<string | null>(null);
   const [dismissedSlashQueryKey, setDismissedSlashQueryKey] = useState<string | null>(null);
+  const [composerSegmentsRevision, setComposerSegmentsRevision] = useState(0);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
   const [branchCheckoutDialogOpen, setBranchCheckoutDialogOpen] = useState(false);
@@ -185,10 +186,27 @@ export function useComposerController({
     [slashQuery, snapshot?.skillsList],
   );
 
-  const fileReferenceQuery = useMemo(
-    () => currentWorkspaceFileReferenceQuery(runtime.composer, composerCursorChars),
-    [composerCursorChars, runtime.composer],
-  );
+  const fileReferenceQuery = useMemo(() => {
+    const segments = composerRichInputRef.current?.getSegments() ?? [];
+    return currentWorkspaceFileReferenceQueryFromSegments(
+      segments,
+      runtime.composer,
+      composerCursorChars,
+    );
+  }, [composerCursorChars, composerSegmentsRevision, runtime.composer]);
+
+  useEffect(() => {
+    if (!fileReferenceQuery && dismissedFileReferenceKey !== null) {
+      setDismissedFileReferenceKey(null);
+    }
+  }, [dismissedFileReferenceKey, fileReferenceQuery]);
+
+  useEffect(() => {
+    const query = currentSkillSlashQueryAtCursor(runtime.composer, composerCursorChars);
+    if (!query && dismissedSlashQueryKey !== null) {
+      setDismissedSlashQueryKey(null);
+    }
+  }, [composerCursorChars, dismissedSlashQueryKey, runtime.composer]);
 
   const fileReferenceQueryKey = useMemo(
     () =>
@@ -927,6 +945,25 @@ export function useComposerController({
     composerRichInputRef.current?.focus();
   }, []);
 
+  const dismissFileReferenceSuggestions = useCallback(() => {
+    setDismissedFileReferenceKey(fileReferenceQueryKey);
+    setFileReferenceSelectedIndex(-1);
+    setFileReferenceSuggestions(null);
+  }, [fileReferenceQueryKey]);
+
+  const dismissSlashSuggestions = useCallback(() => {
+    if (!slashQuery) {
+      setSlashSelectedIndex(-1);
+      return;
+    }
+    setDismissedSlashQueryKey(skillSlashQueryKey(slashQuery));
+    setSlashSelectedIndex(-1);
+  }, [slashQuery]);
+
+  const handleComposerSegmentsCommit = useCallback(() => {
+    setComposerSegmentsRevision((revision) => revision + 1);
+  }, []);
+
   return {
     composerBrowserElementAttachments,
     setComposerBrowserElementAttachments,
@@ -980,5 +1017,8 @@ export function useComposerController({
     commitBusy,
     gitChipBusy,
     focusComposer,
+    dismissFileReferenceSuggestions,
+    dismissSlashSuggestions,
+    handleComposerSegmentsCommit,
   };
 }

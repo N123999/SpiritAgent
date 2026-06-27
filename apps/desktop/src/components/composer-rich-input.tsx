@@ -21,6 +21,7 @@ import { caretToDomRange, selectionToCaret } from "@/lib/composer-segment-select
 import {
   caretAtEnd,
   caretToPlainTextOffset,
+  plainTextOffsetToCaret,
   replaceSkillSlashQueryInSegments,
   replaceWorkspaceFileReferenceInSegments,
   normalizeWorkspaceFilePath,
@@ -97,6 +98,8 @@ type Props = {
   askChipLabel?: string;
   onTextChange(text: string): void;
   onElementAttachmentsChange(attachments: BrowserElementAttachment[]): void;
+  /** Rich segments committed locally; plain text / cursor may be unchanged. */
+  onSegmentsCommit?(): void;
   onLoopEnabledChange?(enabled: boolean): void;
   onAgentModeChange?(mode: DesktopAgentMode): void;
   onKeyDown?(e: KeyboardEvent<HTMLDivElement>): void;
@@ -155,6 +158,7 @@ export type ComposerRichInputHandle = {
   resetAfterSend(agentMode: DesktopAgentMode): void;
   getSegments(): RichSegment[];
   setSegments(segments: RichSegment[]): void;
+  getPlainTextCaretClientRect(plainTextOffset: number): DOMRect | null;
 };
 
 export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
@@ -173,6 +177,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       askChipLabel = "Ask",
       onTextChange,
       onElementAttachmentsChange,
+      onSegmentsCommit,
       onLoopEnabledChange,
       onAgentModeChange,
       onKeyDown,
@@ -207,6 +212,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     const onElementAttachmentsChangeRef = useRef(onElementAttachmentsChange);
     const onLoopEnabledChangeRef = useRef(onLoopEnabledChange);
     const onAgentModeChangeRef = useRef(onAgentModeChange);
+    const onSegmentsCommitRef = useRef(onSegmentsCommit);
     const onSelectionChangeRef = useRef(onSelectionChange);
     const loopEnabledRef = useRef(loopEnabled);
     const agentModeRef = useRef(agentMode);
@@ -244,6 +250,10 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     useEffect(() => {
       onAgentModeChangeRef.current = onAgentModeChange;
     }, [onAgentModeChange]);
+
+    useEffect(() => {
+      onSegmentsCommitRef.current = onSegmentsCommit;
+    }, [onSegmentsCommit]);
 
     const syncLoopEnabledFromSegments = useCallback((next: RichSegment[]) => {
       const hasLoop = hasLoopSegment(next);
@@ -362,6 +372,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         segmentsRef.current = merged;
         pendingCaretRef.current = resolvedCaret;
         setSegments(merged);
+        onSegmentsCommitRef.current?.();
         if (options?.syncLoop !== false && !loopEnabledRef.current) {
           syncLoopEnabledFromSegments(merged);
         }
@@ -720,6 +731,37 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments],
     );
 
+    const getPlainTextCaretClientRect = useCallback((plainTextOffset: number): DOMRect | null => {
+      const root = divRef.current;
+      if (!root) {
+        return null;
+      }
+
+      const segments = segmentsRef.current;
+      const caret = plainTextOffsetToCaret(segments, plainTextOffset);
+      const selection = window.getSelection();
+      const savedRanges: Range[] = [];
+      if (selection) {
+        for (let index = 0; index < selection.rangeCount; index += 1) {
+          savedRanges.push(selection.getRangeAt(index).cloneRange());
+        }
+      }
+
+      caretToDomRange(root, segments, caret);
+
+      let rect: DOMRect | null = null;
+      if (selection && selection.rangeCount > 0) {
+        rect = selection.getRangeAt(0).getBoundingClientRect();
+      }
+
+      selection?.removeAllRanges();
+      for (const range of savedRanges) {
+        selection?.addRange(range);
+      }
+
+      return rect;
+    }, []);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -744,6 +786,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         resetAfterSend,
         getSegments,
         setSegments: (next: RichSegment[]) => applySegments(next),
+        getPlainTextCaretClientRect,
       }),
       [
         insertAttachment,
@@ -765,6 +808,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         insertSkillChip,
         resetAfterSend,
         getSegments,
+        getPlainTextCaretClientRect,
         applySegments,
       ],
     );

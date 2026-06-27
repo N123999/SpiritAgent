@@ -4,6 +4,7 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
+  useRef,
 } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,6 +13,7 @@ import { BranchSelectMenu } from "@/components/branch-select-menu";
 import { ComposerSurface } from "@/components/composer/composer-surface";
 import { ComposerChangesCard } from "@/components/composer-changes-card";
 import { ComposerContextUsageRing } from "@/components/composer-context-usage-ring";
+import { ComposerSuggestionDropdown } from "@/components/composer-suggestion-dropdown";
 import { ComposerTodoCard } from "@/components/composer-todo-card";
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { EmptyStateWorkspaceSelector } from "@/components/empty-state-workspace-selector";
@@ -32,6 +34,7 @@ import type { ActiveSkillSlashQuery, SkillSlashSuggestion } from "@/lib/skill-sl
 import { sameWorkspacePath } from "@/lib/workspace-display-label";
 import { shouldShowComposerChangesCard } from "@/lib/composer-changes-card-visibility";
 import { cn } from "@/lib/utils";
+import { useComposerSuggestionAnchor } from "@/hooks/use-composer-suggestion-anchor";
 import type {
   DesktopSnapshot,
   WorkspaceFileReferenceSuggestionsResponse,
@@ -56,11 +59,14 @@ export type ComposerDockProps = {
   fileReferenceSelectedIndex: number;
   onFileReferenceSelectedIndexChange: (index: number) => void;
   onApplyFileReferenceSuggestion: (path: string) => void;
+  onDismissFileReferenceSuggestions: () => void;
   slashQuery: ActiveSkillSlashQuery | undefined;
   slashSuggestions: SkillSlashSuggestion[];
   slashSelectedIndex: number;
   onSlashSelectedIndexChange: (index: number) => void;
   onApplySlashSuggestionItem: (suggestion: SkillSlashSuggestion) => void;
+  onDismissSlashSuggestions: () => void;
+  composerCursorCodeUnits: number;
   composerPlaceholder: string;
   composerCanSend: boolean;
   conversationInterruptible: boolean;
@@ -79,6 +85,7 @@ export type ComposerDockProps = {
   onComposerPaste: (event: ReactClipboardEvent<HTMLTextAreaElement>) => void;
   onComposerDragOver: (event: ReactDragEvent<HTMLElement>) => void;
   onComposerDrop: (event: ReactDragEvent<HTMLElement>) => void;
+  onComposerSegmentsCommit: () => void;
   models: DesktopSnapshot["config"]["models"];
   useMicaBackdrop: boolean;
   onOpenGitTab: () => void;
@@ -101,11 +108,14 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     fileReferenceSelectedIndex,
     onFileReferenceSelectedIndexChange,
     onApplyFileReferenceSuggestion,
+    onDismissFileReferenceSuggestions,
     slashQuery,
     slashSuggestions,
     slashSelectedIndex,
     onSlashSelectedIndexChange,
     onApplySlashSuggestionItem,
+    onDismissSlashSuggestions,
+    composerCursorCodeUnits,
     composerPlaceholder,
     composerCanSend,
     conversationInterruptible,
@@ -124,6 +134,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     onComposerPaste,
     onComposerDragOver,
     onComposerDrop,
+    onComposerSegmentsCommit,
     models,
     useMicaBackdrop,
     onOpenGitTab,
@@ -131,6 +142,17 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
   ref,
 ) {
   const { t } = useTranslation();
+  const composerRootRef = useRef<HTMLDivElement | null>(null);
+  const fileReferenceAnchor = useComposerSuggestionAnchor(
+    composerRichInputRef,
+    fileReferenceSuggestions ? composerCursorCodeUnits : null,
+    composerRootRef,
+  );
+  const slashAnchor = useComposerSuggestionAnchor(
+    composerRichInputRef,
+    slashQuery ? composerCursorCodeUnits : null,
+    composerRootRef,
+  );
   const showChangesCard = shouldShowComposerChangesCard(snapshot?.git);
   const changesLineDelta = snapshot?.git.workingTreeLineDelta;
   const hasComposerTodos = Boolean(snapshot?.conversation.todos);
@@ -285,7 +307,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
             />
           ) : null}
 
-          <div className="relative">
+          <div className="relative" ref={composerRootRef}>
             <div className="relative z-10 flex flex-col">
               {!isEmptySession && showChangesCard && changesLineDelta ? (
                 <div
@@ -303,30 +325,6 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                     todos={snapshot.conversation.todos}
                     sessionKey={snapshot.composerSessionKey}
                   />
-                </div>
-              ) : null}
-              {fileReferenceSuggestions ? (
-                <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 pb-2">
-                  <div className="pointer-events-auto">
-                    <WorkspaceFileReferenceMenu
-                      suggestions={fileReferenceSuggestions.suggestions}
-                      selectedIndex={fileReferenceSelectedIndex}
-                      onSelectIndex={onFileReferenceSelectedIndexChange}
-                      onApplySuggestion={onApplyFileReferenceSuggestion}
-                    />
-                  </div>
-                </div>
-              ) : null}
-              {slashQuery ? (
-                <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 pb-2">
-                  <div className="pointer-events-auto">
-                    <SkillSlashMenu
-                      suggestions={slashSuggestions}
-                      selectedIndex={slashSelectedIndex}
-                      onSelectIndex={onSlashSelectedIndexChange}
-                      onApplySuggestion={onApplySlashSuggestionItem}
-                    />
-                  </div>
                 </div>
               ) : null}
               <ComposerSurface
@@ -373,9 +371,42 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                 onPaste={onComposerPaste}
                 onDragOver={onComposerDragOver}
                 onDrop={onComposerDrop}
+                onSegmentsCommit={onComposerSegmentsCommit}
                 saveLocalImageAs={runtime.saveLocalImageAs}
               />
             </div>
+            {fileReferenceSuggestions ? (
+              <ComposerSuggestionDropdown
+                open
+                anchor={fileReferenceAnchor}
+                composerRootRef={composerRootRef}
+                ariaLabel={t("workspace.fileReferenceCandidates")}
+                onDismiss={onDismissFileReferenceSuggestions}
+              >
+                <WorkspaceFileReferenceMenu
+                  suggestions={fileReferenceSuggestions.suggestions}
+                  selectedIndex={fileReferenceSelectedIndex}
+                  onSelectIndex={onFileReferenceSelectedIndexChange}
+                  onApplySuggestion={onApplyFileReferenceSuggestion}
+                />
+              </ComposerSuggestionDropdown>
+            ) : null}
+            {slashQuery ? (
+              <ComposerSuggestionDropdown
+                open
+                anchor={slashAnchor}
+                composerRootRef={composerRootRef}
+                ariaLabel={t("composer.slashCommand")}
+                onDismiss={onDismissSlashSuggestions}
+              >
+                <SkillSlashMenu
+                  suggestions={slashSuggestions}
+                  selectedIndex={slashSelectedIndex}
+                  onSelectIndex={onSlashSelectedIndexChange}
+                  onApplySuggestion={onApplySlashSuggestionItem}
+                />
+              </ComposerSuggestionDropdown>
+            ) : null}
             {!isEmptySession ? (
               <div
                 className={cn(

@@ -1164,3 +1164,34 @@ test("insertSegmentAtCaret adds trailing space after fileSnippet at caret", () =
   assert.equal(caret.segmentIndex, 1);
   assert.equal(caret.offset, 1);
 });
+
+import { currentWorkspaceFileReferenceQueryFromSegments } from "../src/lib/composer-file-reference-query.ts";
+
+test("currentWorkspaceFileReferenceQueryFromSegments suppresses query on workspaceFile chip", () => {
+  const segments = [{ kind: "workspaceFile", path: "README.md" }];
+  const plain = "@README.md";
+  const cursor = Array.from(plain).length;
+  assert.equal(
+    currentWorkspaceFileReferenceQueryFromSegments(segments, plain, cursor),
+    undefined,
+  );
+});
+
+test("currentWorkspaceFileReferenceQueryFromSegments allows typing @ in text segment", () => {
+  const segments = [{ kind: "text", value: "@readme" }];
+  const plain = "@readme";
+  const cursor = Array.from(plain).length;
+  const query = currentWorkspaceFileReferenceQueryFromSegments(segments, plain, cursor);
+  assert.equal(query?.raw, "@readme");
+});
+
+test("currentWorkspaceFileReferenceQueryFromSegments suppresses chip after supplementary unicode", () => {
+  const emoji = "😀";
+  const segments = [{ kind: "text", value: emoji }, { kind: "workspaceFile", path: "README.md" }];
+  const plain = `${emoji}@README.md`;
+  const cursor = Array.from(plain).length;
+  assert.equal(
+    currentWorkspaceFileReferenceQueryFromSegments(segments, plain, cursor),
+    undefined,
+  );
+});

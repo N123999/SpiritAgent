@@ -1,21 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ComposerSuggestionMenuItem } from '@/components/composer-suggestion-menu-item'
 import { WorkspaceFilePickerRow } from '@/components/workspace-file-picker-row'
-import {
-  Command,
-  CommandEmpty,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
-import {
-  DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_HOVER,
-  DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_SELECTED,
-  DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT,
-  DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE,
-  instantHoverMotionClass,
-} from '@/lib/desktop-chrome'
-import { cn } from '@/lib/utils'
 
 type WorkspaceFileReferenceMenuProps = {
   suggestions: string[]
@@ -30,7 +17,7 @@ export function WorkspaceFileReferenceMenu({
   onSelectIndex,
   onApplySuggestion,
 }: WorkspaceFileReferenceMenuProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   const scrollViewportRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -44,45 +31,32 @@ export function WorkspaceFileReferenceMenu({
     selectedItem?.scrollIntoView({ block: 'nearest' })
   }, [selectedIndex, suggestions])
 
+  if (suggestions.length === 0) {
+    return (
+      <div className="px-2 py-2.5 text-xs text-muted-foreground">{t('app.noMatches')}</div>
+    )
+  }
+
   return (
-    <Command
-      shouldFilter={false}
-      aria-label={t('workspace.fileReferenceCandidates')}
-      className={cn('p-1.5', DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE)}
+    <div
+      ref={scrollViewportRef}
+      className="flex w-full min-w-0 flex-col gap-0.5"
+      onMouseLeave={() => onSelectIndex(-1)}
     >
-      <div
-        ref={scrollViewportRef}
-        className={DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT}
-      >
-        <CommandList className="max-h-none overflow-visible" onMouseLeave={() => onSelectIndex(-1)}>
-          {suggestions.map((path, index) => (
-            <CommandItem
-              key={path}
-              value={path}
-              data-workspace-file-reference-index={index}
-              className={cn(
-                'min-w-0 cursor-pointer rounded-xl bg-transparent px-3 py-2 [&>svg:last-child]:hidden',
-                instantHoverMotionClass,
-                DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_HOVER,
-                // 覆盖 CommandItem 默认 data-selected:bg-muted（实色）；改实色时与 desktop-chrome 常量一并还原
-                '!data-[selected=true]:bg-transparent',
-                index === selectedIndex
-                  ? DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_SELECTED
-                  : 'text-foreground',
-              )}
-              onMouseDown={(event) => event.preventDefault()}
-              onMouseEnter={() => onSelectIndex(index)}
-              onFocus={() => onSelectIndex(index)}
-              onSelect={() => onApplySuggestion(path)}
-            >
-              <WorkspaceFilePickerRow path={path} tone="menu" />
-            </CommandItem>
-          ))}
-          <CommandEmpty className="px-3 py-2.5 text-left text-sm text-muted-foreground">
-            {t('app.noMatches')}
-          </CommandEmpty>
-        </CommandList>
-      </div>
-    </Command>
+      {suggestions.map((path, index) => (
+        <ComposerSuggestionMenuItem
+          key={path}
+          data-workspace-file-reference-index={index}
+          selected={index === selectedIndex}
+          title={path}
+          onMouseDown={(event) => event.preventDefault()}
+          onMouseEnter={() => onSelectIndex(index)}
+          onFocus={() => onSelectIndex(index)}
+          onClick={() => onApplySuggestion(path)}
+        >
+          <WorkspaceFilePickerRow path={path} tone="menu" layout="stacked" />
+        </ComposerSuggestionMenuItem>
+      ))}
+    </div>
   )
 }

@@ -1,15 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ComposerSuggestionMenuItem } from '@/components/composer-suggestion-menu-item'
 import {
-  DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_HOVER,
-  DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_SELECTED,
-  DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT,
-  DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE,
-  instantHoverMotionClass,
+  DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
+  DESKTOP_OVERLAY_LIST_ITEM_SECONDARY,
 } from '@/lib/desktop-chrome'
 import { SLASH_SUGGESTION_ICONS } from '@/lib/slash-command-icons'
-import { cn } from '@/lib/utils'
 import type { SkillSlashSuggestion, SkillSlashSuggestionKind } from '@/lib/skill-slash'
 
 type SkillSlashMenuProps = {
@@ -21,7 +18,7 @@ type SkillSlashMenuProps = {
 
 function SlashSuggestionIcon({ kind }: { kind: SkillSlashSuggestionKind }) {
   const Icon = SLASH_SUGGESTION_ICONS[kind]
-  return <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+  return <Icon className="mt-0.5 size-3.5 shrink-0 opacity-70" aria-hidden />
 }
 
 export function SkillSlashMenu({
@@ -44,51 +41,48 @@ export function SkillSlashMenu({
     selectedItem?.scrollIntoView({ block: 'nearest' })
   }, [selectedIndex, suggestions])
 
+  if (suggestions.length === 0) {
+    return (
+      <div className="px-2 py-2.5 text-xs text-muted-foreground">{t('app.noMatches')}</div>
+    )
+  }
+
   return (
-    <div className={cn('w-full min-w-0', DESKTOP_COMPOSER_SUGGESTION_MENU_SURFACE)}>
-      <div ref={scrollViewportRef} className={DESKTOP_COMPOSER_SUGGESTION_MENU_SCROLL_VIEWPORT}>
-        {suggestions.length > 0 ? (
-          <div className="grid w-full min-w-0 gap-0.5 p-1.5" onMouseLeave={() => onSelectIndex(-1)}>
-            {suggestions.map((suggestion, index) => {
-              const description = suggestion.descriptionKey
-                ? t(suggestion.descriptionKey)
-                : suggestion.description ?? ''
-              return (
-                <button
-                  key={suggestion.id}
-                  type="button"
-                  data-skill-slash-index={index}
-                  title={`${suggestion.name} — ${description}`}
-                  className={cn(
-                    'w-full min-w-0 max-w-full overflow-hidden rounded-xl bg-transparent px-3 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
-                    instantHoverMotionClass,
-                    DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_HOVER,
-                    index === selectedIndex
-                      ? DESKTOP_COMPOSER_SUGGESTION_MENU_ITEM_SELECTED
-                      : 'text-foreground',
-                  )}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseEnter={() => onSelectIndex(index)}
-                  onFocus={() => onSelectIndex(index)}
-                  onClick={() => onApplySuggestion(suggestion)}
-                >
-                  <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                    <SlashSuggestionIcon kind={suggestion.kind} />
-                    <span className="shrink-0 whitespace-nowrap text-sm font-medium leading-6 text-foreground">
-                      {suggestion.name}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs leading-6 text-muted-foreground">
-                      {description}
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        ) : (
-          <div className="px-3 py-2.5 text-sm text-muted-foreground">{t('app.noMatches')}</div>
-        )}
-      </div>
+    <div
+      ref={scrollViewportRef}
+      className="flex w-full min-w-0 flex-col gap-0.5"
+      onMouseLeave={() => onSelectIndex(-1)}
+    >
+      {suggestions.map((suggestion, index) => {
+        const description = suggestion.descriptionKey
+          ? t(suggestion.descriptionKey)
+          : suggestion.description ?? ''
+
+        return (
+          <ComposerSuggestionMenuItem
+            key={suggestion.id}
+            data-skill-slash-index={index}
+            selected={index === selectedIndex}
+            title={`${suggestion.name} — ${description}`}
+            onMouseDown={(event) => event.preventDefault()}
+            onMouseEnter={() => onSelectIndex(index)}
+            onFocus={() => onSelectIndex(index)}
+            onClick={() => onApplySuggestion(suggestion)}
+          >
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <SlashSuggestionIcon kind={suggestion.kind} />
+              <div className="min-w-0 flex-1">
+                <div className={DESKTOP_OVERLAY_LIST_ITEM_PRIMARY} title={suggestion.name}>
+                  {suggestion.name}
+                </div>
+                <div className={DESKTOP_OVERLAY_LIST_ITEM_SECONDARY} title={description}>
+                  {description}
+                </div>
+              </div>
+            </div>
+          </ComposerSuggestionMenuItem>
+        )
+      })}
     </div>
   )
 }
