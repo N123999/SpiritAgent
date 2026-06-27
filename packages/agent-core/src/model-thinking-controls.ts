@@ -10,7 +10,7 @@ import {
 import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
 import { isMinimaxM3ThinkingSwitchModel } from './openai/gateway-minimax-thinking.js';
 import { isMoonshotThinkingSwitchModel } from './openai/moonshot-thinking-switch.js';
-import { isXiaomiThinkingSwitchEligibleModel } from './openai/gateway-xiaomi-thinking.js';
+import { isXiaomiResponsesReasoningEffortContext, isXiaomiThinkingSwitchEligibleModel } from './openai/gateway-xiaomi-thinking.js';
 import { isZaiThinkingSwitchEligibleModel } from './openai/gateway-zai-thinking.js';
 import {
   isRoutedAnthropicClaudeModel,
@@ -137,6 +137,9 @@ function isGatewayThinkingSwitchModel(context?: ModelReasoningEffortContext): bo
     return isMoonshotThinkingSwitchModel(context);
   }
   if (slug === 'xiaomi') {
+    if (context.transportKind === 'open-responses') {
+      return false;
+    }
     return isXiaomiThinkingSwitchEligibleModel(context.model ?? '');
   }
   if (slug === 'zai') {
@@ -197,6 +200,9 @@ export function modelUsesReasoningEffortPrimaryControl(
   if (isOpenRouterAnthropicClaudeReasoningModel(context)) {
     return true;
   }
+  if (isXiaomiResponsesReasoningEffortContext(context)) {
+    return true;
+  }
 
   return false;
 }
@@ -217,6 +223,9 @@ export function modelSupportsThinkingSwitch(context?: ModelReasoningEffortContex
     return isMinimaxM3ThinkingSwitchModel(context?.model ?? '');
   }
   if (provider !== undefined && DIRECT_THINKING_SWITCH_PROVIDERS.has(provider)) {
+    if (provider === 'xiaomi' && context?.transportKind === 'open-responses') {
+      return false;
+    }
     return true;
   }
   if (isDeepSeekThinkingSwitchModel(context)) {

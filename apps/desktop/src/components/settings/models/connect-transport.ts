@@ -41,9 +41,14 @@ export function connectTransportOptionsForProvider(provider: DesktopModelProvide
       return [connectTransportOptionCatalog.chatCompletions];
     case "minimax":
     case "deepseek":
-    case "xiaomi":
     case "siliconflow":
       return [connectTransportOptionCatalog.chatCompletions, connectTransportOptionCatalog.messagesApi];
+    case "xiaomi":
+      return [
+        connectTransportOptionCatalog.chatCompletions,
+        connectTransportOptionCatalog.messagesApi,
+        connectTransportOptionCatalog.openResponsesApi,
+      ];
     case "alibaba":
       return [
         connectTransportOptionCatalog.chatCompletions,
@@ -139,6 +144,10 @@ export function connectTransportOptionSummary(
 
   if (option.value === "open-responses" && provider === "alibaba") {
     return i18n.t('settings.transportAlibabaResponses');
+  }
+
+  if (option.value === "open-responses" && provider === "xiaomi") {
+    return i18n.t('settings.transportResponsesApi');
   }
 
   return option.summaryKey ? i18n.t(option.summaryKey) : undefined;

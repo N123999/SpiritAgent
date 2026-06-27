@@ -125,6 +125,56 @@ test('buildResponsesProviderOptions maps gateway openai reasoning options', () =
   });
 });
 
+test('buildResponsesProviderOptions maps gateway xiaomi reasoning via openai namespace', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'xiaomi/mimo-v2.5',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'none',
+    }),
+    {
+      openai: {
+        reasoningEffort: 'none',
+      },
+    },
+  );
+
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'xiaomi/mimo-v2.5',
+      llmVendor: 'vercel-ai-gateway',
+      reasoningEffort: 'medium',
+    }),
+    {
+      openai: {
+        reasoningEffort: 'medium',
+        reasoningSummary: 'auto',
+      },
+    },
+  );
+});
+
+test('buildResponsesProviderOptions maps direct xiaomi reasoning via xiaomi namespace', () => {
+  assert.deepEqual(
+    buildResponsesProviderOptions({
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'mimo-v2.5-pro',
+      llmVendor: 'xiaomi',
+      reasoningEffort: 'none',
+    }),
+    {
+      xiaomi: {
+        reasoningEffort: 'none',
+      },
+    },
+  );
+});
+
 test('buildResponsesProviderOptions maps gateway xai reasoning via xai namespace', () => {
   assert.deepEqual(
     buildResponsesProviderOptions({

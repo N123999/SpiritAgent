@@ -5,6 +5,9 @@ import {
   resolveGatewayAnthropicClaudeCapabilities,
 } from './openai/gateway-anthropic-thinking.js';
 import { parseGatewayUpstreamSlug } from './openai/gateway-code-completion-thinking.js';
+import { isXiaomiResponsesReasoningEffortContext } from './openai/gateway-xiaomi-thinking.js';
+
+export { isXiaomiResponsesReasoningEffortContext } from './openai/gateway-xiaomi-thinking.js';
 import { isGatewayGoogleGeminiModel, isGoogleGeminiMinimalThinkingLevelModel, isGoogleGeminiThinkingLevelModel } from './openai/gateway-google-thinking.js';
 import { isOpenRouterAnthropicClaudeModel } from './openai/openrouter-anthropic-reasoning.js';
 import {
@@ -236,6 +239,10 @@ export function defaultModelReasoningEffort(
     return 'default';
   }
 
+  if (isXiaomiResponsesReasoningEffortContext(context)) {
+    return 'default';
+  }
+
   return DEFAULT_MODEL_REASONING_EFFORT;
 }
 
@@ -286,6 +293,10 @@ export function modelReasoningEffortOptions(
     );
   }
 
+  if (isXiaomiResponsesReasoningEffortContext(context)) {
+    return OPENAI_COMPATIBLE_REASONING_EFFORT_OPTIONS;
+  }
+
   return OPENAI_COMPATIBLE_REASONING_EFFORT_OPTIONS;
 }
 
@@ -302,7 +313,7 @@ export function resolveOpenAiTransportReasoningEffortForContext(
 ): OpenAiTransportConfig['reasoningEffort'] | undefined {
   const normalized = resolveModelReasoningEffortForContext(value, {
     ...context,
-    transportKind: 'openai-compatible',
+    transportKind: context?.transportKind ?? 'openai-compatible',
   });
 
   switch (normalized) {

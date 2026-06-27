@@ -53,7 +53,8 @@ import {
   isGatewayMoonshotModel,
 } from '../openai/moonshot-thinking-switch.js';
 import {
-  buildGatewayXiaomiProviderOptions,
+  buildDirectXiaomiResponsesProviderOptions,
+  buildGatewayXiaomiResponsesProviderOptions,
   isGatewayXiaomiModel,
 } from '../openai/gateway-xiaomi-thinking.js';
 import {
@@ -268,7 +269,11 @@ export function buildResponsesProviderOptions(
     }
 
     if (isGatewayXiaomiModel(config.llmVendor, config.model)) {
-      const xiaomiOptions = buildGatewayXiaomiProviderOptions(config);
+      const xiaomiOptions = buildGatewayXiaomiResponsesProviderOptions(
+        config,
+        reasoningEffort,
+        reasoningSummary,
+      );
       if (Object.keys(xiaomiOptions).length > 0) {
         return xiaomiOptions;
       }
@@ -355,6 +360,17 @@ export function buildResponsesProviderOptions(
   if (provider !== 'openai') {
     if (isOpenRouterAnthropicClaudeModel(config.llmVendor, config.model)) {
       return {};
+    }
+
+    if (config.llmVendor === 'xiaomi') {
+      const xiaomiOptions = buildDirectXiaomiResponsesProviderOptions(
+        config,
+        reasoningEffort,
+        reasoningSummary,
+      );
+      if (Object.keys(xiaomiOptions).length > 0) {
+        return xiaomiOptions;
+      }
     }
 
     const providerOptions: JsonObject = {

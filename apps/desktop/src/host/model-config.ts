@@ -7,6 +7,7 @@ import {
   type OpenResponsesSdkProvider,
 } from '@spirit-agent/core';
 import {
+  isXiaomiResponsesReasoningEffortContext,
   resolveAnthropicTransportReasoningEffortForContext,
   resolveOpenAiTransportReasoningEffortForContext,
   type ModelReasoningEffortContext,
@@ -213,6 +214,12 @@ function resolveAgentOpenAiReasoningEffort(
     transportKind,
   };
   const thinkingEnabled = profile?.thinkingEnabled !== false;
+  if (
+    isXiaomiResponsesReasoningEffortContext(context)
+    && profile?.thinkingEnabled === false
+  ) {
+    return 'none';
+  }
   if (
     modelSupportsThinkingSwitch(context)
     && shouldPinReasoningEffortToDefault(thinkingEnabled, context)

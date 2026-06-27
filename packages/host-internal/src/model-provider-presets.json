@@ -31,7 +31,8 @@
     },
     "xiaomi": {
       "openai-compatible": "https://api.xiaomimimo.com/v1",
-      "anthropic": "https://api.xiaomimimo.com/anthropic"
+      "anthropic": "https://api.xiaomimimo.com/anthropic",
+      "open-responses": "https://api.xiaomimimo.com/v1"
     },
     "alibaba": {
       "openai-compatible": "https://dashscope.aliyuncs.com/compatible-mode/v1",

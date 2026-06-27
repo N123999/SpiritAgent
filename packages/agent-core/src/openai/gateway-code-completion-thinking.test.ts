@@ -147,8 +147,9 @@ test('buildGatewayCodeCompletionProviderOptions routes zai alibaba minimax xiaom
       model: 'xiaomi/mimo-v2',
     }),
     {
-      xiaomi: {
-        thinking: { type: 'disabled' },
+      openai: {
+        reasoningEffort: 'none',
+        reasoningSummary: 'off',
       },
     },
   );
