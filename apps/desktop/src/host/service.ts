@@ -606,11 +606,12 @@ class DesktopHostService {
   private modelCommandContext(): HostModelCommandContext {
     return {
       runSerialized: (work) => this.runSerialized(work),
-      ensureInitialized: () => this.ensureInitialized(),
+      ensureInitialized: (options) => this.ensureInitialized(undefined, options),
       requireState: () => this.requireState(),
       activeBundle: () => this.activeBundle(),
       isRuntimeBusy: () => this.runtime?.isBusy() === true,
       refreshRuntime: () => this.refreshRuntime(),
+      refreshActiveModelTransportConfig: () => this.refreshActiveModelTransportConfig(),
       refreshModelKeyPresence: () => this.refreshModelKeyPresence(),
       flushDeferredRuntimeRefreshIfIdle: () => this.flushDeferredRuntimeRefreshIfIdle(),
       persistCurrentSessionIfNeeded: () => this.persistCurrentSessionIfNeeded(),
@@ -2150,6 +2151,12 @@ class DesktopHostService {
     }
   }
 
+  private async refreshActiveModelTransportConfig(): Promise<void> {
+    const bundle = this.activeBundle();
+    await this.refreshRuntimeForBundle(bundle, { inferencePreferenceOnly: true });
+    this.syncActiveRuntimePointer();
+  }
+
   private resolveBundleActivePlanPath(bundle: SessionBundle): string | undefined {
     const existing = bundle.activePlanPath?.trim();
     if (existing) {
@@ -2176,14 +2183,20 @@ class DesktopHostService {
     );
   }
 
-  private async refreshRuntimeForBundle(bundle: SessionBundle): Promise<void> {
+  private async refreshRuntimeForBundle(
+    bundle: SessionBundle,
+    options: { inferencePreferenceOnly?: boolean } = {},
+  ): Promise<void> {
     const state = this.requireState();
+    const inferencePreferenceOnly = options.inferencePreferenceOnly === true;
     const hadRuntime = bundle.runtime !== undefined;
-    if (hadRuntime) {
+    if (hadRuntime && !inferencePreferenceOnly) {
       await this.runSessionEndForBundle(bundle, 'switch');
     }
-    await this.syncPlanStateForBundle(bundle);
-    await this.ensureToolExecutor(bundle, { skipMcpCatalogRefresh: true });
+    if (!inferencePreferenceOnly) {
+      await this.syncPlanStateForBundle(bundle);
+      await this.ensureToolExecutor(bundle, { skipMcpCatalogRefresh: true });
+    }
     // 保留 bundle.currentTurnSkills：斜杠激活的 turn skill 须在 startUserTurnStreaming 时注入用户消息 meta
     const activeProfile = state.config.models.find((m) => m.name === state.config.activeModel);
     const activeTransportKind = resolveDesktopTransportKind(activeProfile);
@@ -2264,6 +2277,13 @@ class DesktopHostService {
       apiKey: videoGenerationApiKey,
     });
     bundle.runtimeTransport = createLlmTransport(runtimeTransportConfig);
+
+    if (inferencePreferenceOnly && bundle.runtime?.isBusy()) {
+      const toolExecutor = await this.ensureToolExecutor(bundle, { skipMcpCatalogRefresh: true });
+      toolExecutor.setActiveTransportConfig(runtimeTransportConfig);
+      bundle.deferredRuntimeRefreshWhileBusy = true;
+      return;
+    }
 
     const desktopMessages = bundle.messageTimeline.toMessages();
     const llmHistoryForRuntime = bundle.archiveHistory.length > 0

@@ -99,11 +99,12 @@ interface HostModelBundle {
 
 export interface HostModelCommandContext {
   runSerialized<T>(work: () => Promise<T>): Promise<T>;
-  ensureInitialized(): Promise<void>;
+  ensureInitialized(options?: { fastPath?: boolean }): Promise<void>;
   requireState(): HostModelState;
   activeBundle(): HostModelBundle;
   isRuntimeBusy(): boolean;
   refreshRuntime(): Promise<void>;
+  refreshActiveModelTransportConfig(): Promise<void>;
   refreshModelKeyPresence(): Promise<void>;
   flushDeferredRuntimeRefreshIfIdle(): Promise<void>;
   persistCurrentSessionIfNeeded(): Promise<void>;
@@ -120,7 +121,7 @@ export async function updateConfigCommand(
   request: UpdateConfigRequest,
 ): Promise<DesktopSnapshot> {
   return ctx.runSerialized(async () => {
-    await ctx.ensureInitialized();
+    await ctx.ensureInitialized({ fastPath: true });
     const state = ctx.requireState();
     const wasBusy = ctx.isRuntimeBusy();
     const prevActiveModel = state.config.activeModel;
@@ -129,6 +130,15 @@ export async function updateConfigCommand(
     const prevApiBase = currentApiBase(state.config);
     const prevAgentMode = resolveDesktopAgentMode(state.config);
     const prevLspEnabled = state.config.agents.lsp.enabled;
+    const prevActiveModelProfile = state.config.models.find(
+      (model) => model.name === state.config.activeModel,
+    );
+    const prevActiveModelInference = prevActiveModelProfile
+      ? {
+          thinkingEnabled: prevActiveModelProfile.thinkingEnabled,
+          reasoningEffort: prevActiveModelProfile.reasoningEffort,
+        }
+      : undefined;
 
     if (ctx.isRuntimeBusy() && Boolean(request.apiKey?.trim())) {
       throw new Error(i18n.t('error.runtimeBusy'));
@@ -319,7 +329,6 @@ export async function updateConfigCommand(
       await ctx.disposeAllLspServices();
       ctx.invalidateToolExecutors();
     }
-    await ctx.refreshLspSnapshot();
 
     if (state.config.activeModel !== prevActiveModel) {
       ctx.clearActiveContextUsage();
@@ -330,6 +339,21 @@ export async function updateConfigCommand(
       || modelOrEndpointChanged
       || imageGenerationModelChanged
       || videoGenerationModelChanged;
+    const activeModelProfile = state.config.models.find(
+      (model) => model.name === state.config.activeModel,
+    );
+    const inferencePreferenceOnlyUpdate =
+      !transportOrPlanChanged
+      && !lspEnabledChanged
+      && agentModeNow === prevAgentMode
+      && !Boolean(request.apiKey?.trim())
+      && activeModelProfile !== undefined
+      && prevActiveModelInference !== undefined
+      && state.config.activeModel === prevActiveModel
+      && (
+        activeModelProfile.thinkingEnabled !== prevActiveModelInference.thinkingEnabled
+        || activeModelProfile.reasoningEffort !== prevActiveModelInference.reasoningEffort
+      );
     const deferRuntimeRefresh =
       wasBusy &&
       transportOrPlanChanged &&
@@ -337,10 +361,18 @@ export async function updateConfigCommand(
 
     if (deferRuntimeRefresh) {
       ctx.activeBundle().deferredRuntimeRefreshWhileBusy = true;
+    } else if (inferencePreferenceOnlyUpdate) {
+      ctx.activeBundle().deferredRuntimeRefreshWhileBusy = false;
+      await ctx.refreshActiveModelTransportConfig();
     } else {
       ctx.activeBundle().deferredRuntimeRefreshWhileBusy = false;
       await ctx.refreshRuntime();
     }
+
+    if (!inferencePreferenceOnlyUpdate) {
+      await ctx.refreshLspSnapshot();
+    }
+
     ctx.setLastRuntimeError('');
     // 勿在此处 persist：仅改 config（如 agentMode）不应刷新 savedAtUnixMs，否则会话在侧栏会误排到首位
     await ctx.flushDeferredRuntimeRefreshIfIdle();

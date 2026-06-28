@@ -314,10 +314,6 @@ async function invokeMainDesktopHostCommand(
   if (isDesktopSnapshot(result) && (command === 'bootstrap' || command === 'updateConfig')) {
     const config = await loadConfig();
     await syncDesktopWebHostWithConfig(config.webHost);
-    if (command === 'updateConfig') {
-      const polled = await invokeDesktopHostCommand('poll');
-      return polled;
-    }
   }
   return result;
 }
