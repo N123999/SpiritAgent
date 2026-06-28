@@ -89,7 +89,7 @@ function ChangeRow({
         </div>
         <span
           className={cn(
-            "ml-1 shrink-0 font-mono text-[10px] font-medium tabular-nums",
+            "ml-1 shrink-0 text-[10px] font-medium tabular-nums",
             statusCodeClass(change.code),
           )}
           title={change.code}
