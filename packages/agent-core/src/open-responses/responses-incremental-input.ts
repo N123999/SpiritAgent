@@ -21,9 +21,9 @@ export interface ResponsesRoundInput {
 
 const storedStateRequestStore = new AsyncLocalStorage<{ previousResponseId?: string }>();
 
-/** 官方 OpenAI/Azure SDK，以及百炼 Responses（经 fetch 注入 store / previous_response_id）。 */
+/** 官方 OpenAI/Azure SDK，以及百炼/火山方舟 Responses（经 fetch 注入 store / previous_response_id）。 */
 export function responsesUsesStoredState(config: OpenResponsesTransportConfig): boolean {
-  if (config.llmVendor === 'alibaba') {
+  if (config.llmVendor === 'alibaba' || config.llmVendor === 'volcengine') {
     return true;
   }
 
@@ -41,7 +41,7 @@ export function endResponsesStoredStateRound(): void {
   roundStoredStatePreviousResponseId = undefined;
 }
 
-/** 供 Alibaba fetch 等 compatible 路径读取本轮 previous_response_id。 */
+/** 供百炼/火山方舟等 compatible fetch 路径读取本轮 previous_response_id。 */
 export function readResponsesStoredStateRequestPreviousResponseId(): string | undefined {
   return storedStateRequestStore.getStore()?.previousResponseId ?? roundStoredStatePreviousResponseId;
 }

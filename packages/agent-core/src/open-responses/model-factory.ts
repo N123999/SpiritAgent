@@ -10,6 +10,7 @@ import {
 import { getLlmFetch } from '../llm-fetch.js';
 import type { JsonObject } from '../ports.js';
 import { createAlibabaResponsesAwareFetch } from './alibaba-responses-fetch.js';
+import { createResponsesStoredStateAwareFetch, shouldUseResponsesStoredStateFetch } from './responses-stored-state-fetch.js';
 import { createApplyPatchAwareFetch } from './apply-patch-responses-fetch.js';
 import { createOpenRouterReasoningAwareFetch } from './openrouter-reasoning-responses-fetch.js';
 import {
@@ -109,6 +110,9 @@ function responsesFetchForConfig(config: OpenResponsesTransportConfig): typeof f
   let fetchFn: typeof fetch = getLlmFetch();
   if (shouldUseAlibabaResponsesBuiltInTools(config)) {
     fetchFn = createAlibabaResponsesAwareFetch(config, fetchFn);
+  }
+  if (shouldUseResponsesStoredStateFetch(config)) {
+    fetchFn = createResponsesStoredStateAwareFetch(config, fetchFn);
   }
   fetchFn = createOpenRouterReasoningAwareFetch(config, fetchFn);
   if (shouldUseApplyPatchFileTools(config)) {
@@ -381,11 +385,15 @@ export function buildResponsesProviderOptions(
 
     if (config.llmVendor === 'alibaba') {
       providerOptions.enable_thinking = !isCodeCompletionTransportProfile(config);
-      if (responsesUsesStoredState(config)) {
-        providerOptions.store = config.store ?? true;
-        if (previousResponseId) {
-          providerOptions.previousResponseId = previousResponseId;
-        }
+    }
+
+    if (
+      (config.llmVendor === 'alibaba' || config.llmVendor === 'volcengine')
+      && responsesUsesStoredState(config)
+    ) {
+      providerOptions.store = config.store ?? true;
+      if (previousResponseId) {
+        providerOptions.previousResponseId = previousResponseId;
       }
     }
 

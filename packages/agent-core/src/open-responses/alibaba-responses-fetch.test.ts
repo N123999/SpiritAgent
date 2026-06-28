@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createAlibabaResponsesAwareFetch } from './alibaba-responses-fetch.js';
-import { runWithResponsesStoredStateRequestContext } from './responses-incremental-input.js';
 import type { OpenResponsesTransportConfig } from './responses-compat.js';
 
 const alibabaResponsesConfig: OpenResponsesTransportConfig = {
@@ -12,28 +11,6 @@ const alibabaResponsesConfig: OpenResponsesTransportConfig = {
   baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   llmVendor: 'alibaba',
 };
-
-test('alibaba responses fetch injects store and previous_response_id', async () => {
-  let capturedBody: Record<string, unknown> | undefined;
-  const baseFetch: typeof fetch = async (_input, init) => {
-    capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    return new Response('{}', { status: 200 });
-  };
-
-  const fetch = createAlibabaResponsesAwareFetch(alibabaResponsesConfig, baseFetch);
-  await runWithResponsesStoredStateRequestContext('resp_alibaba_prev', async () => {
-    await fetch('https://dashscope.example/v1/responses', {
-      method: 'POST',
-      body: JSON.stringify({
-        model: 'qwen3-max',
-        input: [{ role: 'user', content: 'hi' }],
-      }),
-    });
-  });
-
-  assert.equal(capturedBody?.store, true);
-  assert.equal(capturedBody?.previous_response_id, 'resp_alibaba_prev');
-});
 
 test('alibaba responses fetch merges builtin tools', async () => {
   let capturedBody: Record<string, unknown> | undefined;
