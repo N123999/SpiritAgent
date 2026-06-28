@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
-  Folder,
   ListTodo,
 } from "lucide-react";
 
@@ -90,6 +89,19 @@ function isExplorerListChromeDragTarget(target: EventTarget | null): boolean {
 export { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 
 export { joinExplorerRel } from "@/lib/workspace-explorer-dir-collapse";
+
+const EXPLORER_ROW_TRIGGER_CLASS = cn(
+  "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
+  "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+);
+const EXPLORER_ROW_ICON_CLASS = "size-3.5 shrink-0 opacity-70";
+const EXPLORER_ROW_LEADING_SPACER = (
+  <span className="inline-block w-4 shrink-0" aria-hidden />
+);
+
+function explorerRowPaddingLeft(depth: number): number {
+  return depth * 12 + 4;
+}
 
 type DirCacheEntry =
   | { status: "loading" }
@@ -218,8 +230,7 @@ function ExplorerRow({
   };
 
   const rowClassName = cn(
-    "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
-    "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+    EXPLORER_ROW_TRIGGER_CLASS,
     selected && "bg-foreground/[0.08] dark:bg-foreground/12",
     dropHighlight && "bg-primary/15",
   );
@@ -227,8 +238,7 @@ function ExplorerRow({
     "min-w-0 truncate",
     ignored && "text-foreground/60",
   );
-  const iconClassName = "size-3.5 shrink-0 opacity-70";
-  const rowStyle = { paddingLeft: `${depth * 12 + 4}px` };
+  const rowStyle = { paddingLeft: `${explorerRowPaddingLeft(depth)}px` };
 
   const renameInput = (
     <input
@@ -253,7 +263,7 @@ function ExplorerRow({
   const rowTrigger = renaming ? (
     <div className={rowClassName} style={rowStyle} role="treeitem">
       {leading}
-      <Icon className={iconClassName} aria-hidden />
+      <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
       {renameInput}
     </div>
   ) : (
@@ -271,7 +281,7 @@ function ExplorerRow({
       onDrop={onDrop}
     >
       {leading}
-      <Icon className={iconClassName} aria-hidden />
+      <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
       <span className={labelClassName}>{rowLabel}</span>
     </button>
   );
@@ -858,7 +868,6 @@ export function WorkspaceFilesPanel({
             && collapsedDir !== null
             && isWorkspaceExplorerCollapsedDirOpen(collapsedDir.chainRels, expanded);
           const ignored = entry.ignored === true;
-          const chevronClassName = "size-3.5 shrink-0 opacity-60";
           const target: WorkspaceExplorerContextTarget = {
             relativePath: dirRel,
             kind: entry.kind,
@@ -887,7 +896,7 @@ export function WorkspaceFilesPanel({
                 onRenameCommit={() => void handleRenameCommit()}
                 onRenameCancel={handleRenameCancel}
                 onClick={() => onOpenFile?.(childRel)}
-                leading={<span className="inline-block w-4 shrink-0" aria-hidden />}
+                leading={EXPLORER_ROW_LEADING_SPACER}
                 icon={Icon}
                 draggable
                 onDragStart={(event) => handleDragStart(event, target)}
@@ -916,14 +925,8 @@ export function WorkspaceFilesPanel({
               onRenameCancel={handleRenameCancel}
               onClick={() => onToggleDir(dirRel, collapsedDir?.chainRels ?? [dirRel])}
               label={collapsedDir?.displayName}
-              leading={
-                open ? (
-                  <ChevronDown className={chevronClassName} aria-hidden />
-                ) : (
-                  <ChevronRight className={chevronClassName} aria-hidden />
-                )
-              }
-              icon={Icon}
+              leading={EXPLORER_ROW_LEADING_SPACER}
+              icon={open ? ChevronDown : ChevronRight}
               dropHighlight={dragOverDirectory === dirRel}
               draggable
               onDragStart={(event) => handleDragStart(event, target)}
@@ -971,19 +974,15 @@ export function WorkspaceFilesPanel({
       >
         <button
           type="button"
-          className={cn(
-            "mb-1 flex w-full min-w-0 shrink-0 items-center gap-1 rounded px-1 py-1 text-left",
-            "text-foreground hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
-          )}
+          className={cn(EXPLORER_ROW_TRIGGER_CLASS, "mb-1 shrink-0")}
           aria-expanded={rootOpen}
           onClick={() => setRootOpen((o) => !o)}
         >
           {rootOpen ? (
-            <ChevronDown className="size-3.5 shrink-0 opacity-60" aria-hidden />
+            <ChevronDown className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
           ) : (
-            <ChevronRight className="size-3.5 shrink-0 opacity-60" aria-hidden />
+            <ChevronRight className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
           )}
-          <Folder className="size-3.5 shrink-0 opacity-70" aria-hidden />
           <span className="min-w-0 truncate">{rootLabel}</span>
         </button>
       </WorkspaceFileContextMenu>
