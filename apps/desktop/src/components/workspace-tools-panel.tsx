@@ -71,6 +71,8 @@ import {
 } from "@/lib/workspace-new-tool-tab-shortcut-bridge";
 import { useWorkspaceToolsChromeActions, useWorkspaceToolsChromeOpen } from "@/contexts/workspace-tools-chrome-context";
 import { useGitHubAuthConnected } from "@/hooks/use-github-auth-connected";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import { WORKSPACE_TOOL_TABS_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import type {
   EditorFileTarget,
   WorkspaceEditorViewMode,
@@ -526,6 +528,17 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   );
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [addToolTabMenuOpen, setAddToolTabMenuOpen] = useState(false);
+  const toolTabsBarRef = useRef<HTMLDivElement>(null);
+
+  useWorkspaceToolsShellHorizontalDivider(
+    toolTabsBarRef,
+    {
+      enabled: true,
+      edge: "bottom",
+      dividerAttr: WORKSPACE_TOOL_TABS_SHELL_DIVIDER_ATTR,
+    },
+    [tabs.length, activeTabId],
+  );
 
   useEffect(() => {
     registerWorkspaceNewToolTabShortcut({
@@ -683,7 +696,10 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
 
   return (
     <>
-          <div className="flex shrink-0 items-end gap-0 border-b border-border/40 pt-1.5 pb-0 pl-1 pr-1">
+          <div
+            ref={toolTabsBarRef}
+            className="flex shrink-0 items-end gap-0 pt-1.5 pb-0 pl-1 pr-1"
+          >
             <ScrollArea
               scrollbars="horizontal"
               type="hover"

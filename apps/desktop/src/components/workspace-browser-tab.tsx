@@ -18,6 +18,8 @@ import {
   type PickerMarqueeResult,
 } from "@/lib/browser-element-picker";
 import { desktopMicaBrowserTintClass } from "@/lib/desktop-mica-surface";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import { BROWSER_NAV_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import { cn } from "@/lib/utils";
 
 export type WorkspaceBrowserTabProps = {
@@ -286,6 +288,7 @@ export function WorkspaceBrowserTab({
 }: WorkspaceBrowserTabProps) {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const navBarRef = useRef<HTMLDivElement | null>(null);
   const pageSlotRef = useRef<HTMLDivElement | null>(null);
   const showNewTab = isBrowserNewTabUrl(browserUrl);
   const [addressDraft, setAddressDraft] = useState("");
@@ -789,6 +792,16 @@ export function WorkspaceBrowserTab({
 
   const navDisabled = showNewTab;
 
+  useWorkspaceToolsShellHorizontalDivider(
+    navBarRef,
+    {
+      enabled: canEmbed,
+      edge: "bottom",
+      dividerAttr: BROWSER_NAV_SHELL_DIVIDER_ATTR,
+    },
+    [showNewTab],
+  );
+
   if (!canEmbed) {
     return (
       <div className="p-3 text-muted-foreground">
@@ -799,7 +812,10 @@ export function WorkspaceBrowserTab({
 
   return (
     <div ref={rootRef} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="electron-no-drag flex shrink-0 items-center gap-0.5 border-b border-border/40 px-1.5 py-1.5">
+      <div
+        ref={navBarRef}
+        className="electron-no-drag flex shrink-0 items-center gap-0.5 px-1.5 py-1.5"
+      >
         <Button
           type="button"
           variant="ghost"

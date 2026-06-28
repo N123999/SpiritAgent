@@ -24,6 +24,8 @@ export type DetailPageTabsProps<T extends string> = {
   tabListClassName?: string;
   /** Draw tab divider on workspace tools shell (spans resize column + panel). */
   edgeToPanelDivider?: boolean;
+  /** Shell divider data attribute; defaults to PR sub-tab attr. */
+  shellDividerAttr?: string;
   /** Re-sync shell divider when sibling layout changes (e.g. resizable overview pane). */
   shellDividerWatchRefs?: RefObject<HTMLElement | null>[];
   shellDividerLayoutDeps?: readonly unknown[];
@@ -55,6 +57,7 @@ export function DetailPageTabs<T extends string>({
   contentClassName,
   tabListClassName,
   edgeToPanelDivider = false,
+  shellDividerAttr = PR_SUBTAB_SHELL_DIVIDER_ATTR,
   shellDividerWatchRefs,
   shellDividerLayoutDeps = [],
 }: DetailPageTabsProps<T>) {
@@ -66,7 +69,7 @@ export function DetailPageTabs<T extends string>({
     {
       enabled: edgeToPanelDivider,
       edge: "bottom",
-      dividerAttr: PR_SUBTAB_SHELL_DIVIDER_ATTR,
+      dividerAttr: shellDividerAttr,
       watchRefs: shellDividerWatchRefs,
     },
     [activeTab, ...shellDividerLayoutDeps],

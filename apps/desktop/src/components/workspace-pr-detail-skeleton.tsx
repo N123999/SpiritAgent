@@ -1,7 +1,10 @@
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import { PR_SUBTAB_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import { cn } from "@/lib/utils";
 
 /** Mirrors comment card indent in `workspace-pr-conversation-timeline` — not tied to demo data. */
@@ -57,6 +60,16 @@ export function WorkspacePrDetailSkeleton({
 }: WorkspacePrDetailSkeletonProps) {
   const { t } = useTranslation();
   const ariaLabel = loadingLabel ?? t("workspace.prLoading");
+  const subTabBarRef = useRef<HTMLDivElement>(null);
+
+  useWorkspaceToolsShellHorizontalDivider(
+    subTabBarRef,
+    {
+      enabled: true,
+      edge: "bottom",
+      dividerAttr: PR_SUBTAB_SHELL_DIVIDER_ATTR,
+    },
+  );
 
   return (
     <article
@@ -89,7 +102,7 @@ export function WorkspacePrDetailSkeleton({
       <div className="h-1 shrink-0" aria-hidden />
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="shrink-0 w-full border-b border-border/40">
+        <div ref={subTabBarRef} className="shrink-0 w-full">
           <div className="flex flex-wrap gap-3 px-3 pt-0.5 pb-3">
             {PR_DETAIL_TAB_WIDTHS.map((widthClass, index) => (
               <PrSkeletonBlock

@@ -1,10 +1,13 @@
 import type { CSSProperties } from "react";
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { LoaderCircle } from "lucide-react";
 
 import { GitChangesActions } from "@/components/git-changes-actions";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
+import { GIT_CHANGES_HEADER_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 import { cn } from "@/lib/utils";
 import type {
@@ -118,13 +121,27 @@ export function GitChangesSection({
   style,
 }: GitChangesSectionProps) {
   const { t } = useTranslation();
+  const headerRef = useRef<HTMLDivElement>(null);
   const isRepository = gitSnapshot?.isRepository === true && workingTree?.isRepository !== false;
   const changes = workingTree?.changes ?? [];
   const branchLabel = gitSnapshot?.branch ?? gitSnapshot?.worktreeBranch;
 
+  useWorkspaceToolsShellHorizontalDivider(
+    headerRef,
+    {
+      enabled: true,
+      edge: "bottom",
+      dividerAttr: GIT_CHANGES_HEADER_SHELL_DIVIDER_ATTR,
+    },
+    [branchLabel, changes.length, loading, error],
+  );
+
   return (
     <section className={cn("flex min-h-0 flex-col", className)} style={style}>
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/40 px-2 py-1.5">
+      <div
+        ref={headerRef}
+        className="flex shrink-0 items-center justify-between gap-2 px-2 py-1.5"
+      >
         <div className="flex min-w-0 items-center gap-1">
           <h3 className="m-0 shrink-0 text-xs font-medium leading-none text-foreground">
             {t("workspace.git.changes")}

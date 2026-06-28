@@ -410,6 +410,7 @@ export const WorkspacePrListView = forwardRef<WorkspacePrListViewHandle, Workspa
           onTabChange={setActiveTab}
           ariaLabel={t("workspace.prListTabsAria")}
           size="compact"
+          edgeToPanelDivider
           tabListClassName="pt-3"
           className="min-h-0 flex-1"
           contentClassName="flex min-h-0 flex-1 flex-col overflow-hidden"

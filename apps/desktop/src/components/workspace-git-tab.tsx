@@ -12,6 +12,11 @@ import {
   readGitChangesPaneRatio,
   writeGitChangesPaneRatio,
 } from "@/lib/layout-prefs";
+import {
+  GIT_CHANGES_HISTORY_SPLIT_SHELL_DIVIDER_ATTR,
+  GIT_HISTORY_HEADER_SHELL_DIVIDER_ATTR,
+} from "@/lib/workspace-tools-panel-edge";
+import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
 import { cn } from "@/lib/utils";
 import type { GitCommitAttachment } from "@/lib/git-commit-attachment";
 import type {
@@ -76,6 +81,8 @@ export function WorkspaceGitTab({
   const [mergeButtonFlashMerged, setMergeButtonFlashMerged] = useState(false);
   const mergeFlashTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const splitContainerRef = useRef<HTMLDivElement>(null);
+  const changesHistorySplitterRef = useRef<HTMLDivElement>(null);
+  const historyHeaderRef = useRef<HTMLDivElement>(null);
   const latestChangesPaneHeightPxRef = useRef<number | null>(null);
   const [changesPaneHeightPx, setChangesPaneHeightPx] = useState<number | null>(null);
   latestChangesPaneHeightPxRef.current = changesPaneHeightPx;
@@ -124,6 +131,28 @@ export function WorkspaceGitTab({
     observer.observe(container);
     return () => observer.disconnect();
   }, [clampChangesPaneHeight]);
+
+  useWorkspaceToolsShellHorizontalDivider(
+    changesHistorySplitterRef,
+    {
+      enabled: true,
+      edge: "top",
+      dividerAttr: GIT_CHANGES_HISTORY_SPLIT_SHELL_DIVIDER_ATTR,
+      watchRefs: [splitContainerRef],
+    },
+    [changesPaneHeightPx],
+  );
+
+  useWorkspaceToolsShellHorizontalDivider(
+    historyHeaderRef,
+    {
+      enabled: true,
+      edge: "bottom",
+      dividerAttr: GIT_HISTORY_HEADER_SHELL_DIVIDER_ATTR,
+      watchRefs: [splitContainerRef, changesHistorySplitterRef],
+    },
+    [changesPaneHeightPx],
+  );
 
   const onSplitResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -370,6 +399,7 @@ export function WorkspaceGitTab({
         onOpenChangedFile={onOpenChangedFile}
       />
       <div
+        ref={changesHistorySplitterRef}
         role="separator"
         aria-orientation="horizontal"
         aria-label={t("workspace.git.resizeChangesHistory")}
@@ -381,14 +411,9 @@ export function WorkspaceGitTab({
         onPointerMove={onSplitResizePointerMove}
         onPointerUp={endSplitResize}
         onPointerCancel={endSplitResize}
-      >
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-border/40 transition-colors group-hover:bg-border/55"
-          aria-hidden
-        />
-      </div>
+      />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0 border-b border-border/40 px-2 py-1.5">
+        <div ref={historyHeaderRef} className="shrink-0 px-2 py-1.5">
           <h3 className="text-xs font-medium text-foreground">{t("workspace.git.history")}</h3>
         </div>
         <GitCommitGraph

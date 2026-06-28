@@ -8,6 +8,15 @@ export const PR_LIST_SEARCH_SHELL_DIVIDER_ATTR = "data-spirit-pr-list-search-she
 export const PR_OVERVIEW_SHELL_DIVIDER_ATTR = "data-spirit-pr-overview-shell-divider";
 export const FILES_EXPLORER_TOOLBAR_SHELL_DIVIDER_ATTR =
   "data-spirit-files-explorer-toolbar-shell-divider";
+export const WORKSPACE_TOOL_TABS_SHELL_DIVIDER_ATTR =
+  "data-spirit-workspace-tool-tabs-shell-divider";
+export const GIT_CHANGES_HEADER_SHELL_DIVIDER_ATTR =
+  "data-spirit-git-changes-header-shell-divider";
+export const GIT_CHANGES_HISTORY_SPLIT_SHELL_DIVIDER_ATTR =
+  "data-spirit-git-changes-history-split-shell-divider";
+export const GIT_HISTORY_HEADER_SHELL_DIVIDER_ATTR =
+  "data-spirit-git-history-header-shell-divider";
+export const BROWSER_NAV_SHELL_DIVIDER_ATTR = "data-spirit-browser-nav-shell-divider";
 export const WORKSPACE_TOOLS_SHELL_LIST_DIVIDER_HOST_ATTR =
   "data-spirit-workspace-tools-shell-list-divider-host";
 
