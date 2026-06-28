@@ -7,6 +7,7 @@ import {
   findPreviousResponseId,
 } from './provider-state.js';
 import {
+  isBedrockMantleOpenResponsesConfig,
   resolveOpenResponsesSdkProvider,
   type OpenResponsesTransportConfig,
 } from './responses-compat.js';
@@ -23,6 +24,11 @@ const storedStateRequestStore = new AsyncLocalStorage<{ previousResponseId?: str
 
 /** 官方 OpenAI/Azure SDK，以及百炼/火山方舟 Responses（经 fetch 注入 store / previous_response_id）。 */
 export function responsesUsesStoredState(config: OpenResponsesTransportConfig): boolean {
+  // Bedrock Mantle 虽走 responsesProvider: openai，但不支持 OpenAI 式远端 store 链。
+  if (isBedrockMantleOpenResponsesConfig(config)) {
+    return false;
+  }
+
   if (config.llmVendor === 'alibaba' || config.llmVendor === 'volcengine') {
     return true;
   }

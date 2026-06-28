@@ -407,7 +407,7 @@ export function buildResponsesProviderOptions(
   }
 
   const openaiOptions: JsonObject = {
-    store: config.store ?? true,
+    store: config.store ?? responsesUsesStoredState(config),
     ...(config.truncation === 'auto' ? { truncation: 'auto' } : { truncation: 'disabled' }),
   };
 

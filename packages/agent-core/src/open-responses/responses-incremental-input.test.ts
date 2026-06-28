@@ -53,6 +53,17 @@ test('responsesUsesStoredState is true for openai and azure providers', () => {
     }),
     false,
   );
+  assert.equal(
+    responsesUsesStoredState({
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'openai.gpt-5.5',
+      baseUrl: 'https://bedrock-mantle.us-east-2.api.aws/openai/v1',
+      responsesProvider: 'openai',
+      llmVendor: 'openai',
+    }),
+    false,
+  );
 });
 
 test('buildResponsesRoundInput returns full messages without a response chain', () => {
