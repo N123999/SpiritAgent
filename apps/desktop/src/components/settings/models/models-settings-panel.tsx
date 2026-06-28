@@ -1088,7 +1088,11 @@ export function ModelsSettingsPanel({
           <DialogHeader>
             <DialogTitle>{t('settings.setAsDefault')}</DialogTitle>
             <DialogDescription>
-              {t('settings.setAsDefaultDescription', { name: modelDefaultsDialogModel?.name ?? '' })}
+              {t('settings.setAsDefaultDescription', {
+                name: modelDefaultsDialogTarget
+                  ? modelDisplayTitleFromMap(modelDefaultsDialogTarget, displayTitleByModelName)
+                  : '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-1">
