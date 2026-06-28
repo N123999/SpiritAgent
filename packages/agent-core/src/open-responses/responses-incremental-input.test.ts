@@ -117,6 +117,35 @@ test('buildResponsesRoundInput tool loop sends only post-anchor delta', () => {
   assert.equal((result.apiMessages[0] as { role: string }).role, 'tool');
 });
 
+test('buildResponsesRoundInput cross-turn includes system and user only', () => {
+  const messages = [
+    { role: 'system', content: 'sys-v2' },
+    { role: 'user', content: 'old' },
+    {
+      role: 'assistant',
+      content: 'prior answer',
+      providerState: { openAiResponses: { responseId: 'resp_cross' } },
+    },
+    { role: 'user', content: 'new turn' },
+  ];
+  const result = buildResponsesRoundInput(
+    messages,
+    {
+      transportKind: 'open-responses',
+      apiKey: 'k',
+      model: 'gpt-5',
+      responsesProvider: 'openai',
+      llmVendor: 'openai',
+    },
+    1,
+  );
+
+  assert.equal(result.mode, 'incremental');
+  assert.equal(result.apiMessages.length, 2);
+  assert.equal((result.apiMessages[0] as { role: string }).role, 'system');
+  assert.equal((result.apiMessages[1] as { content: string }).content, 'new turn');
+});
+
 test('buildResponsesRoundInput reads top-level openAiResponses from history spread', () => {
   const messages = [
     { role: 'system', content: 'sys' },
