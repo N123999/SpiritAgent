@@ -497,6 +497,7 @@ export function WorkspaceFilesPanel({
   const renameCommitInFlightRef = useRef(false);
   const createCommitInFlightRef = useRef(false);
   const treeHoverContainerRef = useRef<HTMLDivElement>(null);
+  const explorerTreeRef = useRef<HTMLDivElement>(null);
   const prevGitRevisionRef = useRef<number | undefined>(undefined);
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
@@ -955,16 +956,21 @@ export function WorkspaceFilesPanel({
     setFocusedDirectoryRel(null);
   }, []);
 
-  const handleTreeBlankMouseDown = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      if (!isExplorerTreeBlankTarget(event.target)) {
-        return;
-      }
+  const handleScrollAreaMouseDownCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const treeRect = explorerTreeRef.current?.getBoundingClientRect();
+    const clickBelowTreeContent = treeRect ? event.clientY > treeRect.bottom : false;
+    const clickedTreeItem = target?.closest('[role="treeitem"]');
+    const clickedButton = target?.closest("button");
+    const isBlank =
+      !clickedTreeItem
+      && !clickedButton
+      && (isExplorerTreeBlankTarget(event.target) || clickBelowTreeContent);
+    if (isBlank) {
       clearFocusedDirectory();
       handleCreateCancel();
-    },
-    [clearFocusedDirectory, handleCreateCancel],
-  );
+    }
+  }, [clearFocusedDirectory, handleCreateCancel]);
 
   const fileRowSelected = useCallback(
     (childRel: string) =>
@@ -1379,17 +1385,22 @@ export function WorkspaceFilesPanel({
           </div>
         </div>
         {rootOpen ? (
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+          onMouseDownCapture={handleScrollAreaMouseDownCapture}
+        >
         <ScrollArea className="min-h-0 min-w-0 flex-1" type="auto">
           <div
+            ref={explorerTreeRef}
             role="tree"
             aria-label={t("workspace.fileList")}
             aria-busy={cache[""]?.status === "loading" ? true : undefined}
-            onMouseDown={handleTreeBlankMouseDown}
           >
             {renderDirBody("", 0)}
             <div className="mt-1">{renderPlanItem()}</div>
           </div>
         </ScrollArea>
+        </div>
       ) : (
         <div className="mb-1">{renderPlanItem()}</div>
       )}
