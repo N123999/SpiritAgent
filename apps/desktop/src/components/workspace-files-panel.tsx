@@ -495,7 +495,9 @@ export function WorkspaceFilesPanel({
   /** 目录点击暂留；`""` 为工作区根。与文件 selected 高亮互斥。 */
   const [focusedDirectoryRel, setFocusedDirectoryRel] = useState<string | null>(null);
   const [treeHovered, setTreeHovered] = useState(false);
+  const [createTooltipAnchorLocked, setCreateTooltipAnchorLocked] = useState(false);
   const [creatingEntry, setCreatingEntry] = useState<CreatingEntryState | null>(null);
+  const createTooltipOpenKindsRef = useRef<Set<"file" | "dir">>(new Set());
   const renameCommitInFlightRef = useRef(false);
   const createCommitInFlightRef = useRef(false);
   const treeHoverContainerRef = useRef<HTMLDivElement>(null);
@@ -1047,6 +1049,28 @@ export function WorkspaceFilesPanel({
     setTreeHovered(false);
   }, []);
 
+  const handleCreateTooltipOpenChange = useCallback((kind: "file" | "dir", open: boolean) => {
+    if (open) {
+      createTooltipOpenKindsRef.current.add(kind);
+      setCreateTooltipAnchorLocked(true);
+    } else if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      createTooltipOpenKindsRef.current.delete(kind);
+      if (createTooltipOpenKindsRef.current.size === 0) {
+        setCreateTooltipAnchorLocked(false);
+      }
+    }
+  }, []);
+
+  const handleCreateTooltipAnimationEnd = useCallback((kind: "file" | "dir", state: string | null) => {
+    if (state !== "closed") {
+      return;
+    }
+    createTooltipOpenKindsRef.current.delete(kind);
+    if (createTooltipOpenKindsRef.current.size === 0) {
+      setCreateTooltipAnchorLocked(false);
+    }
+  }, []);
+
   if (!workspaceRoot.trim()) {
     return <p className="text-muted-foreground">{t("workspace.connectToShowFiles")}</p>;
   }
@@ -1349,9 +1373,18 @@ export function WorkspaceFilesPanel({
                 <span className="min-w-0 truncate">{rootLabel}</span>
               </button>
             </WorkspaceFileContextMenu>
-            {isElectron && treeHovered ? (
-              <div className="absolute inset-y-0 right-0.5 flex items-center gap-0">
-                <Tooltip delayDuration={300} disableHoverableContent>
+            {isElectron && (treeHovered || createTooltipAnchorLocked) ? (
+              <div
+                className={cn(
+                  "absolute inset-y-0 right-0.5 flex items-center gap-0",
+                  createTooltipAnchorLocked && !treeHovered && "pointer-events-none opacity-0",
+                )}
+              >
+                <Tooltip
+                  delayDuration={300}
+                  disableHoverableContent
+                  onOpenChange={(open) => handleCreateTooltipOpenChange("file", open)}
+                >
                   <TooltipTrigger asChild>
                     <button
                       type="button"
@@ -1366,11 +1399,27 @@ export function WorkspaceFilesPanel({
                       <FilePlus className="size-3" aria-hidden />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" sideOffset={4}>
+                  <TooltipContent
+                    side="bottom"
+                    sideOffset={4}
+                    onAnimationEnd={(event) => {
+                      if (event.target !== event.currentTarget) {
+                        return;
+                      }
+                      handleCreateTooltipAnimationEnd(
+                        "file",
+                        event.currentTarget.getAttribute("data-state"),
+                      );
+                    }}
+                  >
                     {t("workspace.createFile")}
                   </TooltipContent>
                 </Tooltip>
-                <Tooltip delayDuration={300} disableHoverableContent>
+                <Tooltip
+                  delayDuration={300}
+                  disableHoverableContent
+                  onOpenChange={(open) => handleCreateTooltipOpenChange("dir", open)}
+                >
                   <TooltipTrigger asChild>
                     <button
                       type="button"
@@ -1385,7 +1434,19 @@ export function WorkspaceFilesPanel({
                       <FolderPlus className="size-3" aria-hidden />
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom" sideOffset={4}>
+                  <TooltipContent
+                    side="bottom"
+                    sideOffset={4}
+                    onAnimationEnd={(event) => {
+                      if (event.target !== event.currentTarget) {
+                        return;
+                      }
+                      handleCreateTooltipAnimationEnd(
+                        "dir",
+                        event.currentTarget.getAttribute("data-state"),
+                      );
+                    }}
+                  >
                     {t("workspace.createFolder")}
                   </TooltipContent>
                 </Tooltip>
