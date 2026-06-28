@@ -2,14 +2,25 @@ import type { JsonObject, JsonValue } from '../ports.js';
 import { cloneJsonValue, isJsonObject } from '../tool-agent.js';
 import { resolveOpenResponsesSdkProvider, type OpenResponsesTransportConfig } from './responses-compat.js';
 
-export function findPreviousResponseId(messages: readonly JsonValue[]): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (!isJsonObject(message) || message.role !== 'assistant') {
-      continue;
-    }
+const RESPONSE_ID_PROVIDER_KEYS = ['openAiResponses', 'openResponses'] as const;
 
-    const responseId = readResponseIdFromProviderState(message);
+function readResponseIdFromProviderBucket(bucket: unknown): string | undefined {
+  if (!isJsonObject(bucket as JsonValue | undefined)) {
+    return undefined;
+  }
+
+  const responseId = (bucket as JsonObject).responseId;
+  return typeof responseId === 'string' && responseId.length > 0 ? responseId : undefined;
+}
+
+export function readResponseIdFromMessage(message: JsonObject): string | undefined {
+  const fromNested = readResponseIdFromProviderState(message);
+  if (fromNested) {
+    return fromNested;
+  }
+
+  for (const key of RESPONSE_ID_PROVIDER_KEYS) {
+    const responseId = readResponseIdFromProviderBucket(message[key]);
     if (responseId) {
       return responseId;
     }
@@ -18,23 +29,50 @@ export function findPreviousResponseId(messages: readonly JsonValue[]): string |
   return undefined;
 }
 
+export function findPreviousResponseId(messages: readonly JsonValue[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isJsonObject(message) || message.role !== 'assistant') {
+      continue;
+    }
+
+    const responseId = readResponseIdFromMessage(message);
+    if (responseId) {
+      return responseId;
+    }
+  }
+
+  return undefined;
+}
+
+export function findAnchorIndexForResponseId(
+  messages: readonly JsonValue[],
+  responseId: string,
+): number {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!isJsonObject(message) || message.role !== 'assistant') {
+      continue;
+    }
+
+    if (readResponseIdFromMessage(message) === responseId) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
 export function readResponseIdFromProviderState(message: JsonObject): string | undefined {
   if (!isJsonObject(message.providerState)) {
     return undefined;
   }
 
-  const openAi = message.providerState.openAiResponses;
-  if (isJsonObject(openAi) && typeof openAi.responseId === 'string' && openAi.responseId.length > 0) {
-    return openAi.responseId;
-  }
-
-  const openResponses = message.providerState.openResponses;
-  if (
-    isJsonObject(openResponses) &&
-    typeof openResponses.responseId === 'string' &&
-    openResponses.responseId.length > 0
-  ) {
-    return openResponses.responseId;
+  for (const key of RESPONSE_ID_PROVIDER_KEYS) {
+    const responseId = readResponseIdFromProviderBucket(message.providerState[key]);
+    if (responseId) {
+      return responseId;
+    }
   }
 
   return undefined;

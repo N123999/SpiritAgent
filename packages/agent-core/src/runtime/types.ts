@@ -392,6 +392,10 @@ export interface AgentRuntimeOptions<
     state: State,
     calls: ToolCallRequest[],
   ) => LlmMessage | undefined;
+  finalAssistantHistoryMessageFromState?: (
+    state: State,
+    assistantText: string,
+  ) => LlmMessage;
   appendUserMessage?: (state: State, content: string) => State;
   appendUserLlmMessage?: (state: State, message: LlmMessage) => State;
   extractAssistantText: (state: State) => string | undefined;

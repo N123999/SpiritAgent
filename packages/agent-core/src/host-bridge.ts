@@ -9,6 +9,7 @@ import {
 } from './openai/index.js';
 import {
   assistantToolCallMessageFromLlmState,
+  finalAssistantHistoryMessageFromLlmState,
   appendLlmToolResultMessage,
   appendLlmUserMessage,
   appendLlmUserLlmMessage,
@@ -1766,6 +1767,7 @@ async function createRuntime(
       ),
     appendToolResultMessage: appendLlmToolResultMessage,
     assistantToolCallMessageFromState: assistantToolCallMessageFromLlmState,
+    finalAssistantHistoryMessageFromState: finalAssistantHistoryMessageFromLlmState,
     appendUserMessage: appendLlmUserMessage,
     appendUserLlmMessage: (state, message) => appendLlmUserLlmMessage(state, message, workspaceRoot),
     extractAssistantText: extractLastLlmAssistantText,

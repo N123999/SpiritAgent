@@ -203,7 +203,6 @@ pub(crate) fn resolve_transport_config_json_for(host: &TransportHost<'_>, config
                 "model": active.name,
                 "baseUrl": api_base,
                 "workspaceRoot": host.workspace_root,
-                "store": false,
             });
             if let Some(responses_provider) = open_responses_sdk_provider(active.provider) {
                 if let Some(obj) = transport.as_object_mut() {
@@ -243,7 +242,6 @@ pub(crate) fn resolve_transport_config_json_for(host: &TransportHost<'_>, config
                     "model": active.name,
                     "baseUrl": mantle_base,
                     "workspaceRoot": host.workspace_root,
-                    "store": false,
                     "responsesProvider": "openai",
                     "llmVendor": "openai",
                 });

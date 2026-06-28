@@ -16,6 +16,16 @@ export {
   normalizeOpenResponsesApiBase,
   openResponsesPostUrl,
 } from './responses-compat.js';
+export {
+  buildResponsesRoundInput,
+  responsesUsesStoredState,
+  type ResponsesRoundInput,
+  type ResponsesRoundInputMode,
+} from './responses-incremental-input.js';
+export {
+  findAnchorIndexForResponseId,
+  readResponseIdFromMessage,
+} from './provider-state.js';
 export { AiSdkOpenResponsesTransport } from './ai-sdk-transport.js';
 export {
   buildResponsesGenerateTools,

@@ -316,7 +316,6 @@ export function buildPrimaryTransportConfig(input: {
       spiritAgentMode,
       responsesProvider: 'openai',
       llmVendor: 'openai',
-      store: false,
       ...(input.profile?.capabilities
         ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }
         : {}),
@@ -366,7 +365,6 @@ export function buildPrimaryTransportConfig(input: {
       workspaceRoot: input.workspaceRoot,
       spiritAgentMode,
       ...(responsesProvider ? { responsesProvider } : {}),
-      store: false,
       ...(llmVendor ? { llmVendor } : {}),
       ...(input.profile?.capabilities
         ? { modelCapabilities: modelCapabilitiesFromConfig(input.profile.capabilities) }

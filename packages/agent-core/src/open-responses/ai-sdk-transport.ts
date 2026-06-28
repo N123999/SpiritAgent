@@ -68,8 +68,13 @@ import {
 import {
   attachResponseIdToAssistantMessage,
   extractResponseIdFromGenerateTextResult,
-  findPreviousResponseId,
 } from './provider-state.js';
+import {
+  buildResponsesRoundInput,
+  bindResponsesStoredStateRequestContextAsyncIterable,
+  runInResponsesStoredStateRequestContextSync,
+  runWithResponsesStoredStateRequestContext,
+} from './responses-incremental-input.js';
 import {
   buildOpenResponsesRequestTrace,
   buildOpenResponsesTraceExtras,
@@ -182,12 +187,12 @@ export class AiSdkOpenResponsesTransport
 
     const requestMessages = nextState.messages.map((message) => cloneJsonValue(message));
     const normalizedTools = normalizeResponsesToolDefinitions(tools);
-    const previousResponseId = findPreviousResponseId(requestMessages);
-    const traceExtras = buildOpenResponsesTraceExtras(config, previousResponseId);
+    const roundInput = buildResponsesRoundInput(requestMessages, config, nextState.steps);
+    const traceExtras = buildOpenResponsesTraceExtras(config, roundInput.previousResponseId);
     const tracedRequest = buildOpenResponsesRequestTrace(
       config,
       nextState.steps,
-      requestMessages,
+      roundInput.apiMessages,
       buildResponsesTraceTools(config, normalizedTools),
       false,
       traceExtras,
@@ -202,13 +207,15 @@ export class AiSdkOpenResponsesTransport
     }
 
     try {
-      return await runWithApplyPatchBridgeContext(async () => {
+      return await runWithResponsesStoredStateRequestContext(
+        roundInput.previousResponseId,
+        () => runWithApplyPatchBridgeContext(async () => {
         const generateTools = buildResponsesGenerateTools(config, normalizedTools);
         const hasGenerateTools = Object.keys(generateTools).length > 0;
         const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
         const result = await generateText({
           model: createResponsesLanguageModel(config) as any,
-          messages: openAiMessagesToResponsesAiSdkMessages(requestMessages, config) as any,
+          messages: openAiMessagesToResponsesAiSdkMessages(roundInput.apiMessages, config) as any,
           allowSystemInMessages: true,
           ...(hasGenerateTools
             ? {
@@ -217,7 +224,7 @@ export class AiSdkOpenResponsesTransport
               }
             : {}),
           ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
-          providerOptions: buildResponsesProviderOptions(config, previousResponseId),
+          providerOptions: buildResponsesProviderOptions(config, roundInput.previousResponseId),
           maxRetries: 0,
         });
 
@@ -284,7 +291,8 @@ export class AiSdkOpenResponsesTransport
             ...(usage ? { usage } : {}),
           },
         } as ToolAgentRoundCompletion<ToolAgentState>;
-      });
+      }),
+      );
     } catch (error) {
       return {
         kind: 'failure',
@@ -306,12 +314,12 @@ export class AiSdkOpenResponsesTransport
 
     const requestMessages = nextState.messages.map((message) => cloneJsonValue(message));
     const normalizedTools = normalizeResponsesToolDefinitions(tools);
-    const previousResponseId = findPreviousResponseId(requestMessages);
-    const traceExtras = buildOpenResponsesTraceExtras(config, previousResponseId);
+    const roundInput = buildResponsesRoundInput(requestMessages, config, nextState.steps);
+    const traceExtras = buildOpenResponsesTraceExtras(config, roundInput.previousResponseId);
     const requestTrace = buildOpenResponsesRequestTrace(
       config,
       nextState.steps,
-      requestMessages,
+      roundInput.apiMessages,
       buildResponsesTraceTools(config, normalizedTools),
       true,
       traceExtras,
@@ -335,32 +343,40 @@ export class AiSdkOpenResponsesTransport
       beginApplyPatchBridgeRound();
       const generateTools = buildResponsesGenerateTools(config, normalizedTools);
       const hasGenerateTools = Object.keys(generateTools).length > 0;
-      const providerOptions = buildResponsesProviderOptions(config, previousResponseId);
-      const sdkMessages = openAiMessagesToResponsesAiSdkMessages(requestMessages, config);
+      const providerOptions = buildResponsesProviderOptions(config, roundInput.previousResponseId);
+      const sdkMessages = openAiMessagesToResponsesAiSdkMessages(roundInput.apiMessages, config);
       const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
-      const result: { stream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = streamText({
-        model: createResponsesLanguageModel(config) as any,
-        messages: sdkMessages as any,
-        allowSystemInMessages: true,
-        ...(hasGenerateTools
-          ? {
-              tools: generateTools as any,
-              toolChoice: 'auto' as const,
-            }
-          : {}),
-        ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
-        providerOptions,
-        include: { rawChunks: true },
-        maxRetries: 0,
-        abortSignal: abortController.signal,
-      });
+      const result: { stream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = runInResponsesStoredStateRequestContextSync(
+        roundInput.previousResponseId,
+        () => streamText({
+          model: createResponsesLanguageModel(config) as any,
+          messages: sdkMessages as any,
+          allowSystemInMessages: true,
+          ...(hasGenerateTools
+            ? {
+                tools: generateTools as any,
+                toolChoice: 'auto' as const,
+              }
+            : {}),
+          ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
+          providerOptions,
+          include: { rawChunks: true },
+          maxRetries: 0,
+          abortSignal: abortController.signal,
+        }),
+      );
       const completion = createDeferred<ToolAgentRoundCompletion<ToolAgentState>>();
-      void completion.promise.finally(endApplyPatchBridgeRound);
+      void completion.promise.finally(() => {
+        endApplyPatchBridgeRound();
+      });
 
       return {
         eventStream: responsesEventStreamToRuntimeEvents(
           config,
-          result.stream as any,
+          bindResponsesStoredStateRequestContextAsyncIterable(
+            roundInput.previousResponseId,
+            result.stream as any,
+          ),
           result,
           nextState,
           requestTrace,

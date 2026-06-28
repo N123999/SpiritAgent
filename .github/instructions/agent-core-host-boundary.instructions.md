@@ -187,8 +187,8 @@ apps 必须尽量薄，避免 CLI 与 Desktop 再次分叉。
 
 - 现有 `provider=openai` 配置默认仍为 `openai-compatible`；切换到 Responses 须由用户显式选择 `open-responses`。
 - `provider=azure` **固定** `open-responses`，不提供 transport 选择；Azure 无 `/models` 端点，部署名写入 `ModelProfile.name`。
-- OpenAI 官方 Responses 的 `store: true` / `previousResponseId` 会涉及服务端状态与隐私语义，默认 `store: false`；Desktop/CLI 文案须说明。
-- Open Responses 兼容 endpoint 的存储语义取决于用户配置的服务方，本项目不替用户假设。
+- OpenAI / Azure 官方 Responses 默认 `store: true`，并通过 `previous_response_id` 做增量续聊；`agent-core` 在支持远端存储的 provider 上仅发送 delta input
+- Open Responses 兼容 endpoint 是否支持服务端存储取决于用户配置的上游；未支持时 transport 回退为全量 input
 
 ## 设计判断
 

@@ -13,6 +13,7 @@ import {
   appendLoopContinuationGuidance,
   cloneHistory,
   renderError,
+  resolveFinalAssistantHistoryMessage,
 } from './helpers.js';
 import type {
   AgentRuntimeOptions,
@@ -520,10 +521,20 @@ export async function handlePendingStreamEvent<
     if (!runtime.pendingAssistantTextStore.trim()) {
       runtime.emitEvent({ kind: 'remove-pending-assistant' });
     } else if (!resumeAfterProviderSearch) {
-      runtime.historyStore.push({
-        role: 'assistant',
-        content: createLlmMessageContentFromText(runtime.pendingAssistantTextStore),
-      });
+      const finalState =
+        pending.completion?.kind === 'success' ? pending.completion.result.state : undefined;
+      runtime.historyStore.push(
+        finalState !== undefined
+          ? resolveFinalAssistantHistoryMessage(
+              runtime.options,
+              finalState,
+              runtime.pendingAssistantTextStore,
+            )
+          : {
+              role: 'assistant',
+              content: createLlmMessageContentFromText(runtime.pendingAssistantTextStore),
+            },
+      );
       runtime.pendingUserTurnStore = undefined;
       runtime.emitEvent({ kind: 'assistant-response-completed' });
     }
@@ -712,10 +723,13 @@ export async function handlePendingStreamingCompletion<
     } else if (!pending.streamEnded && runtime.pendingAssistantTextStore.trim()) {
       // 与流式 `done` 分支一致：completion 先于 `done` 事件到达时，须把已输出的正文写入 history，
       // 否则 `clearPendingStreamingState` 会丢弃例如「OK」等前缀。
-      runtime.historyStore.push({
-        role: 'assistant',
-        content: createLlmMessageContentFromText(runtime.pendingAssistantTextStore),
-      });
+      runtime.historyStore.push(
+        resolveFinalAssistantHistoryMessage(
+          runtime.options,
+          round.state,
+          runtime.pendingAssistantTextStore,
+        ),
+      );
       runtime.pendingUserTurnStore = undefined;
       runtime.emitEvent({ kind: 'assistant-response-completed' });
     }
@@ -751,10 +765,9 @@ export async function handlePendingStreamingCompletion<
   if (!pending.streamEnded && !runtime.pendingAssistantTextStore.trim()) {
     runtime.pendingAssistantTextStore = assistantText;
     runtime.emitEvent({ kind: 'assistant-chunk', text: assistantText });
-    runtime.historyStore.push({
-      role: 'assistant',
-      content: createLlmMessageContentFromText(assistantText),
-    });
+    runtime.historyStore.push(
+      resolveFinalAssistantHistoryMessage(runtime.options, round.state, assistantText),
+    );
     runtime.pendingUserTurnStore = undefined;
     clearPendingStreamingState(runtime);
     if (runtime.loopEnabled()) {

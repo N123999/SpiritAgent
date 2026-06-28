@@ -108,7 +108,6 @@ function buildTransportFromProfile(
       spiritAgentMode: 'agent',
       responsesProvider: 'openai',
       llmVendor: 'openai',
-      store: false,
       ...(profile.capabilities
         ? { modelCapabilities: modelCapabilitiesFromConfig(profile.capabilities) }
         : {}),
@@ -158,7 +157,6 @@ function buildTransportFromProfile(
       workspaceRoot,
       spiritAgentMode: 'agent',
       ...(responsesProvider ? { responsesProvider } : {}),
-      store: false,
       ...(llmVendor ? { llmVendor } : {}),
       ...(profile.capabilities
         ? { modelCapabilities: modelCapabilitiesFromConfig(profile.capabilities) }

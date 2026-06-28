@@ -40,8 +40,9 @@ export interface OpenResponsesTransportConfig {
    * Gateway `openai/*` → `@ai-sdk/openai`、其余 Gateway 与其它厂商 → `open-responses-compatible`。
    */
   responsesProvider?: OpenResponsesSdkProvider;
-  /** OpenAI 官方 Responses：是否由 OpenAI 服务端存储会话。默认 false。 */
+  /** OpenAI 官方 Responses：是否由 OpenAI 服务端存储会话。未设置时默认 true。 */
   store?: boolean;
+  /** @deprecated 由 responsesUsesStoredState 决定；保留字段仅为兼容旧配置序列化。 */
   previousResponseMode?: OpenResponsesPreviousResponseMode;
   reasoningEffort?: 'default' | 'minimal' | 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   reasoningSummary?: OpenResponsesReasoningSummary;

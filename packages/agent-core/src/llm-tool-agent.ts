@@ -25,6 +25,8 @@ export { formatActiveSkillUserMessageMeta } from './runtime/user-turn-timestamp.
 export {
   assistantToolCallMessageFromState,
   assistantToolCallMessageFromState as assistantToolCallMessageFromLlmState,
+  finalAssistantHistoryMessageFromState,
+  finalAssistantHistoryMessageFromState as finalAssistantHistoryMessageFromLlmState,
 } from './tool-agent.js';
 
 export type {

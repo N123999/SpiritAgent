@@ -1,4 +1,4 @@
-import type { ChatArchive } from '@spirit-agent/core';
+import type { ChatArchive, LlmMessage } from '@spirit-agent/core';
 
 import type { ConversationMessageSnapshot } from '../types.js';
 import {
@@ -56,7 +56,7 @@ function truncateLlmHistoryForFork(
     (message) => message.role === 'user' && message.content.trim().length > 0,
   ).length;
   if (userTurnCount <= 0) {
-    return cloneArchiveHistory(fullHistory.slice(0, 1));
+    return stripResponsesProviderStateFromHistory(cloneArchiveHistory(fullHistory.slice(0, 1)));
   }
 
   let usersSeen = 0;
@@ -71,5 +71,20 @@ function truncateLlmHistoryForFork(
       }
     }
   }
-  return cloneArchiveHistory(fullHistory.slice(0, cutExclusive));
+  return stripResponsesProviderStateFromHistory(
+    cloneArchiveHistory(fullHistory.slice(0, cutExclusive)),
+  );
+}
+
+function stripResponsesProviderStateFromHistory(
+  history: ChatArchive['llmHistory'],
+): ChatArchive['llmHistory'] {
+  return history.map((entry) => {
+    if (entry.providerState === undefined) {
+      return entry;
+    }
+
+    const { providerState: _providerState, ...rest } = entry;
+    return rest as LlmMessage;
+  });
 }

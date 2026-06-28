@@ -353,6 +353,22 @@ test('buildResponsesProviderOptions maps azure provider options', () => {
   });
 });
 
+test('buildResponsesProviderOptions attaches previousResponseId for openai stored state', () => {
+  const options = buildResponsesProviderOptions(
+    {
+      transportKind: 'open-responses',
+      apiKey: 'test-key',
+      model: 'gpt-5',
+      llmVendor: 'openai',
+      responsesProvider: 'openai',
+    },
+    'resp_chain_1',
+  );
+
+  assert.equal(options.openai?.store, true);
+  assert.equal(options.openai?.previousResponseId, 'resp_chain_1');
+});
+
 test('buildResponsesProviderOptions omits reasoning for code-completion OpenAI profile', () => {
   const config = applyCodeCompletionTransportProfile({
     transportKind: 'open-responses',
@@ -368,7 +384,7 @@ test('buildResponsesProviderOptions omits reasoning for code-completion OpenAI p
     buildResponsesProviderOptions(config as import('./responses-compat.js').OpenResponsesTransportConfig),
     {
       openai: {
-        store: false,
+        store: true,
         truncation: 'disabled',
         reasoningEffort: 'none',
       },

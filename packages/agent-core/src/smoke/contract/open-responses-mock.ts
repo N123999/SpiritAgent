@@ -120,6 +120,7 @@ export function buildOpenResponsesFinalTextBody(model: string, text: string): Js
           {
             type: 'output_text',
             text,
+            annotations: [],
           },
         ],
       },

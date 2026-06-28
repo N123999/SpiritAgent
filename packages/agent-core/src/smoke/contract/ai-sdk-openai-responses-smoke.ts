@@ -45,7 +45,6 @@ async function main(): Promise<void> {
     baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}/v1`,
     responsesProvider: 'openai' as const,
     llmVendor: 'openai' as const,
-    store: false,
   };
   const tools = demoLookupToolDefinition();
 

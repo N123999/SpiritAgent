@@ -41,6 +41,7 @@ import {
   enqueueDeferredUserGuidance,
   isCompatibleContinuedToolRequest,
   renderError,
+  resolveFinalAssistantHistoryMessage,
   toolArtifactsFromOutput,
 } from './helpers.js';
 import { prepareAndSyncRuntimeToolResultToHistory } from './tool-output-append.js';
@@ -528,10 +529,9 @@ export async function runTurnLoop<
       continue;
     }
 
-    runtime.historyStore.push({
-      role: 'assistant',
-      content: createLlmMessageContentFromText(assistantText),
-    });
+    runtime.historyStore.push(
+      resolveFinalAssistantHistoryMessage(runtime.options, currentState, assistantText),
+    );
     if (runtime.loopEnabled()) {
       currentState = appendLoopContinuationGuidance(runtime, currentState, currentPendingUserInput);
       emptyAssistantRetries = 0;
@@ -1046,10 +1046,9 @@ export async function handlePendingToolAgentRoundCompletion<
     return;
   }
 
-  runtime.historyStore.push({
-    role: 'assistant',
-      content: createLlmMessageContentFromText(assistantText),
-  });
+  runtime.historyStore.push(
+    resolveFinalAssistantHistoryMessage(runtime.options, round.state, assistantText),
+  );
   if (runtime.loopEnabled()) {
     const continuationState = appendLoopContinuationGuidance(
       runtime,
