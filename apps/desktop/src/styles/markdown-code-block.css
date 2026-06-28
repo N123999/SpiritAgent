@@ -6,8 +6,6 @@
   z-index: 0;
   margin-block: 0.5rem;
   max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
   border-radius: var(--radius-md);
   border: 1px solid color-mix(in oklab, var(--border) 40%, transparent) !important;
   background: color-mix(in oklab, var(--muted) 30%, transparent) !important;
@@ -58,7 +56,8 @@
   white-space: pre;
 }
 
-/* lineNumbers=false 时 Streamdown 行 span 无 block 类，须强制每行独占一行 */
+/* lineNumbers=false 时行 span 须 block 才能每行独占一行；空行勿再塞 \\n，否则会叠成两行高 */
 [data-streamdown="code-block-body"] pre code > span {
   display: block;
+  min-height: 1lh;
 }

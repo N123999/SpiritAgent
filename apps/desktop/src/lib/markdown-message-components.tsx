@@ -10,6 +10,7 @@ import type {
 
 import { MarkdownImage, type ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
 import { MarkdownVideo, type ReadManagedVideoPreviewUrl } from "@/components/markdown-video";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { WorkspaceMarkdownLinkClickHandler } from "@/components/workspace-markdown-link-context";
 import { cn } from "@/lib/utils";
 
@@ -165,31 +166,33 @@ export function createMarkdownMessageComponents(
       </code>
     ),
     pre: ({ className, children, ...props }: HTMLAttributes<HTMLPreElement>) => (
-      <pre
-        className={cn(
-          "mb-2 max-w-full overflow-x-auto rounded-md border p-3 font-mono leading-relaxed last:mb-0",
-          compact ? "text-[11px]" : "text-xs",
-          muted ? "border-border/30 bg-muted/20" : "border-border/40 bg-muted/30",
-          blockCodeText,
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </pre>
+      <ScrollArea scrollbars="horizontal" className="mb-2 max-w-full min-w-0 last:mb-0">
+        <pre
+          className={cn(
+            "w-max min-w-full rounded-md border p-3 font-mono leading-relaxed",
+            compact ? "text-[11px]" : "text-xs",
+            muted ? "border-border/30 bg-muted/20" : "border-border/40 bg-muted/30",
+            blockCodeText,
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </pre>
+      </ScrollArea>
     ),
     table: ({ className, children, ...props }: HTMLAttributes<HTMLTableElement>) => (
-      <div className="my-2 max-w-full overflow-x-auto last:mb-0">
+      <ScrollArea scrollbars="horizontal" className="my-2 max-w-full min-w-0 last:mb-0">
         <table
           className={cn(
-            "w-full min-w-[12rem] border-collapse border border-border/50 text-sm",
+            "w-max min-w-full border-collapse border border-border/50 text-sm",
             className,
           )}
           {...props}
         >
           {children}
         </table>
-      </div>
+      </ScrollArea>
     ),
     thead: ({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) => (
       <thead className={cn("bg-muted/40", className)} {...props} />
@@ -251,32 +254,6 @@ export function createMarkdownMessageComponents(
           ),
         }
       : {}),
-  };
-}
-
-/**
- * Streamdown 专用：不传 pre/code，避免覆盖内置 Mermaid / Shiki 围栏渲染；
- * 行内 code 样式经 inlineCode 保留。
- */
-export function createStreamdownMessageComponents(
-  readManagedImagePreviewDataUrl?: ReadManagedImagePreviewDataUrl,
-  tone: MarkdownTone = "default",
-  readManagedVideoPreviewUrl?: ReadManagedVideoPreviewUrl,
-  onLinkClick?: WorkspaceMarkdownLinkClickHandler,
-  size: MarkdownSize = "default",
-  allowHtml = false,
-): Record<string, ComponentType<Record<string, unknown>>> {
-  const { pre: _pre, code, ...rest } = createMarkdownMessageComponents(
-    readManagedImagePreviewDataUrl,
-    tone,
-    readManagedVideoPreviewUrl,
-    onLinkClick,
-    size,
-    allowHtml,
-  );
-  return {
-    ...rest,
-    inlineCode: code,
   };
 }
 

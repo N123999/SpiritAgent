@@ -5,11 +5,10 @@ import { Streamdown, type BlockProps } from "streamdown";
 
 import type { ReadManagedImagePreviewDataUrl } from "@/components/markdown-image";
 import type { ReadManagedVideoPreviewUrl } from "@/components/markdown-video";
-import { createMarkdownMermaidRenderer } from "@/components/markdown-mermaid-block";
 import { useWorkspaceMarkdownLinkClick } from "@/components/workspace-markdown-link-context";
 import { useTheme } from "@/hooks/useTheme";
 import {
-  createStreamdownMessageComponents,
+  createMarkdownMessageComponents,
   markdownMessageRootClassName,
   type MarkdownSize,
   type MarkdownTone,
@@ -18,6 +17,7 @@ import { createSpiritMermaidPlugin } from "@/lib/markdown-mermaid-theme";
 import { createSpiritRemarkPluginsForStreamdown } from "@/lib/markdown-remark-plugins";
 import { streamdownRehypePlugins } from "@/lib/markdown-streamdown-plugins";
 import { streamdownUrlTransform } from "@/lib/markdown-url-transform";
+import { createSpiritStreamdownCodeComponent } from "@/lib/spirit-streamdown-code-component";
 
 const streamdownMathPlugin = math;
 
@@ -69,7 +69,6 @@ export function SpiritStreamdownMarkdown({
       code: spiritStreamdownCodePlugin,
       math: streamdownMathPlugin,
       mermaid: createSpiritMermaidPlugin(resolvedDark),
-      renderers: [createMarkdownMermaidRenderer(resolvedDark)],
     }),
     [resolvedDark],
   );
@@ -79,25 +78,32 @@ export function SpiritStreamdownMarkdown({
     [singleLineBreaks],
   );
 
-  const components = useMemo(
-    () =>
-      createStreamdownMessageComponents(
-        readManagedImagePreviewDataUrl,
-        tone,
-        readManagedVideoPreviewUrl,
-        onMarkdownLinkClick,
-        size,
-        allowHtml,
-      ),
-    [
-      allowHtml,
-      onMarkdownLinkClick,
+  const components = useMemo(() => {
+    const { pre: _pre, code: inlineCode, ...rest } = createMarkdownMessageComponents(
       readManagedImagePreviewDataUrl,
-      readManagedVideoPreviewUrl,
-      size,
       tone,
-    ],
-  );
+      readManagedVideoPreviewUrl,
+      onMarkdownLinkClick,
+      size,
+      allowHtml,
+    );
+    return {
+      ...rest,
+      code: createSpiritStreamdownCodeComponent(
+        spiritStreamdownCodePlugin,
+        inlineCode,
+        resolvedDark,
+      ),
+    };
+  }, [
+    allowHtml,
+    onMarkdownLinkClick,
+    readManagedImagePreviewDataUrl,
+    readManagedVideoPreviewUrl,
+    resolvedDark,
+    size,
+    tone,
+  ]);
 
   return (
     <Streamdown
