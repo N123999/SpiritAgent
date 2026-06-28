@@ -1262,6 +1262,16 @@ function SessionSidebarInner({
     activeFilePath !== null &&
     samePath(sessionPath, activeFilePath);
 
+  const isActiveSessionInSidebar =
+    activeFilePath !== null &&
+    sessions.some((session) => samePath(session.path, activeFilePath));
+
+  const newSessionNavActive =
+    !marketplaceActive &&
+    !automationsActive &&
+    !sessionNavigationBusy &&
+    (newSessionBusy || !isActiveSessionInSidebar);
+
   useEffect(() => {
     if (!activeFilePath) {
       return;
@@ -1418,13 +1428,16 @@ function SessionSidebarInner({
         >
           <Button
             type="button"
-            variant="ghost"
+            variant={sidebarNavButtonVariant(micaStyle, newSessionNavActive)}
             size={narrow ? "icon" : "sm"}
+            aria-current={newSessionNavActive ? "page" : undefined}
             className={cn(
               "text-xs",
               sidebarItemDefaultTextClass,
               sidebarInteractionMotionClass,
-              sidebarItemHoverClass(micaStyle),
+              newSessionNavActive
+                ? sidebarItemSelectedClass(micaStyle)
+                : sidebarItemHoverClass(micaStyle),
               narrow
                 ? "size-8 shrink-0"
                 : "group h-8 w-full justify-start gap-2",
