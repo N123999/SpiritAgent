@@ -187,11 +187,15 @@ export function ComposerSurface({
       onDragLeave={handleSurfaceDragLeave}
       onDrop={handleSurfaceDrop}
     >
-      <ComposerLocalFileStrip
-        attachments={localFileAttachments}
-        onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
-        saveLocalImageAs={saveLocalImageAs}
-      />
+      {localFileAttachments.length > 0 ? (
+        <div className="cursor-text" onMouseDown={handleComposerChromeMouseDown}>
+          <ComposerLocalFileStrip
+            attachments={localFileAttachments}
+            onRemove={(path) => onRemoveLocalFileAttachment?.(path)}
+            saveLocalImageAs={saveLocalImageAs}
+          />
+        </div>
+      ) : null}
       <ComposerRichInput
         ref={richInputRef}
         value={value}
