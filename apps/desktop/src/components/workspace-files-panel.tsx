@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -84,6 +84,17 @@ function isExplorerListChromeDragTarget(target: EventTarget | null): boolean {
   }
   const tag = target.tagName;
   return tag === "UL" || tag === "LI";
+}
+
+/** 文件树空白区域（容器 / 列表间隙），用于清除目录暂留。 */
+function isExplorerTreeBlankTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (target.getAttribute("role") === "tree") {
+    return true;
+  }
+  return isExplorerListChromeDragTarget(target);
 }
 
 export { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
@@ -363,6 +374,8 @@ export function WorkspaceFilesPanel({
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [revealError, setRevealError] = useState("");
+  /** 目录点击暂留；`""` 为工作区根。与文件 selected 高亮互斥。 */
+  const [focusedDirectoryRel, setFocusedDirectoryRel] = useState<string | null>(null);
   const renameCommitInFlightRef = useRef(false);
   const prevGitRevisionRef = useRef<number | undefined>(undefined);
   const cacheRef = useRef(cache);
@@ -450,6 +463,7 @@ export function WorkspaceFilesPanel({
     setCache({});
     setExpanded({});
     setRootOpen(true);
+    setFocusedDirectoryRel(null);
     void loadDirRef.current("");
   }, [workspaceRoot]);
 
@@ -775,6 +789,31 @@ export function WorkspaceFilesPanel({
     [workspaceRootLabel],
   );
 
+  const clearFocusedDirectory = useCallback(() => {
+    setFocusedDirectoryRel(null);
+  }, []);
+
+  const handleTreeBlankMouseDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (!isExplorerTreeBlankTarget(event.target)) {
+        return;
+      }
+      clearFocusedDirectory();
+    },
+    [clearFocusedDirectory],
+  );
+
+  const fileRowSelected = useCallback(
+    (childRel: string) =>
+      focusedDirectoryRel === null && selectedEntryKey === `workspace:${childRel}`,
+    [focusedDirectoryRel, selectedEntryKey],
+  );
+
+  const directoryRowFocused = useCallback(
+    (dirRel: string) => focusedDirectoryRel !== null && focusedDirectoryRel === dirRel,
+    [focusedDirectoryRel],
+  );
+
   if (!workspaceRoot.trim()) {
     return <p className="text-muted-foreground">{t("workspace.connectToShowFiles")}</p>;
   }
@@ -790,11 +829,18 @@ export function WorkspaceFilesPanel({
             "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
             "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
             onOpenPlan && "cursor-pointer",
-            selectedEntryKey === "plan" && "bg-foreground/[0.08] dark:bg-foreground/12",
+            selectedEntryKey === "plan"
+              && focusedDirectoryRel === null
+              && "bg-foreground/[0.08] dark:bg-foreground/12",
           )}
           style={{ paddingLeft: "4px" }}
-          aria-current={selectedEntryKey === "plan" ? "true" : undefined}
-          onClick={() => onOpenPlan?.()}
+          aria-current={
+            selectedEntryKey === "plan" && focusedDirectoryRel === null ? "true" : undefined
+          }
+          onClick={() => {
+            clearFocusedDirectory();
+            onOpenPlan?.();
+          }}
           title={plan.path}
         >
           <span className="inline-block size-3.5 shrink-0" aria-hidden />
@@ -875,7 +921,7 @@ export function WorkspaceFilesPanel({
           };
 
           if (!isDir) {
-            const selected = selectedEntryKey === `workspace:${childRel}`;
+            const selected = fileRowSelected(childRel);
             return (
               <ExplorerRow
                 key={childRel}
@@ -895,7 +941,10 @@ export function WorkspaceFilesPanel({
                 onRenameValueChange={setRenameValue}
                 onRenameCommit={() => void handleRenameCommit()}
                 onRenameCancel={handleRenameCancel}
-                onClick={() => onOpenFile?.(childRel)}
+                onClick={() => {
+                  clearFocusedDirectory();
+                  onOpenFile?.(childRel);
+                }}
                 leading={EXPLORER_ROW_LEADING_SPACER}
                 icon={Icon}
                 draggable
@@ -910,7 +959,7 @@ export function WorkspaceFilesPanel({
               target={target}
               workspaceRoot={workspaceRoot}
               depth={depth}
-              selected={false}
+              selected={directoryRowFocused(dirRel)}
               ignored={ignored}
               isElectron={isElectron}
               renaming={renamingPath === dirRel}
@@ -923,7 +972,10 @@ export function WorkspaceFilesPanel({
               onRenameValueChange={setRenameValue}
               onRenameCommit={() => void handleRenameCommit()}
               onRenameCancel={handleRenameCancel}
-              onClick={() => onToggleDir(dirRel, collapsedDir?.chainRels ?? [dirRel])}
+              onClick={() => {
+                setFocusedDirectoryRel(dirRel);
+                onToggleDir(dirRel, collapsedDir?.chainRels ?? [dirRel]);
+              }}
               label={collapsedDir?.displayName}
               leading={EXPLORER_ROW_LEADING_SPACER}
               icon={open ? ChevronDown : ChevronRight}
@@ -992,6 +1044,7 @@ export function WorkspaceFilesPanel({
             role="tree"
             aria-label={t("workspace.fileList")}
             aria-busy={cache[""]?.status === "loading" ? true : undefined}
+            onMouseDown={handleTreeBlankMouseDown}
           >
             {renderDirBody("", 0)}
             <div className="mt-1">{renderPlanItem()}</div>
