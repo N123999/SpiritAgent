@@ -69,12 +69,12 @@ export function WorkspacePrConversationView({
 
   return (
     <ScrollArea ref={scrollAreaRef} className={cn("h-full min-h-0", className)} type="auto">
-      <div className="space-y-2 px-3 pt-3">
+      <div className="space-y-2 px-3 py-3">
         <PrConversationTimeline items={items} loading={loading} />
         {showLoadMoreFooter ? (
           <div
             ref={loadMoreSentinelRef}
-            className="flex min-h-10 items-center justify-center gap-2 pb-3 text-xs text-muted-foreground"
+            className="flex min-h-10 items-center justify-center gap-2 text-xs text-muted-foreground"
           >
             {loadingMore ? (
               <>
