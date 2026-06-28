@@ -1,6 +1,7 @@
 import {
   AgentRuntime,
   assistantToolCallMessageFromLlmState,
+  finalAssistantHistoryMessageFromLlmState,
   appendLlmToolResultMessage,
   appendLlmUserLlmMessage,
   appendLlmUserMessage,
@@ -117,6 +118,7 @@ export function createDesktopRuntime(input: {
       ),
     appendToolResultMessage: appendLlmToolResultMessage,
     assistantToolCallMessageFromState: assistantToolCallMessageFromLlmState,
+    finalAssistantHistoryMessageFromState: finalAssistantHistoryMessageFromLlmState,
     appendUserMessage: appendLlmUserMessage,
     appendUserLlmMessage: (state, message) => appendLlmUserLlmMessage(state, message, input.workspaceRoot),
     extractAssistantText: extractLastLlmAssistantText,

@@ -40,6 +40,25 @@ export function createTurnContext<ToolRequest>(): RuntimeTurnContext<ToolRequest
   };
 }
 
+export function resolveFinalAssistantHistoryMessage<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  options: Pick<
+    AgentRuntimeOptions<Config, State, ToolRequest, TrustTarget>,
+    'finalAssistantHistoryMessageFromState'
+  >,
+  state: State,
+  assistantText: string,
+): LlmMessage {
+  return options.finalAssistantHistoryMessageFromState?.(state, assistantText) ?? {
+    role: 'assistant',
+    content: createLlmMessageContentFromText(assistantText),
+  };
+}
+
 interface DeferredUserGuidanceRuntime<State, ToolRequest, TrustTarget = string> {
   options: Pick<
     AgentRuntimeOptions<unknown, State, ToolRequest, TrustTarget>,

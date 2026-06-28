@@ -445,6 +445,30 @@ export function assistantToolCallMessageFromState(
   return undefined;
 }
 
+export function finalAssistantHistoryMessageFromState(
+  state: ToolAgentState,
+  assistantText: string,
+): LlmMessage {
+  for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+    const message = state.messages[index];
+    if (!isJsonObject(message) || message.role !== 'assistant') {
+      continue;
+    }
+
+    const providerState = extractAssistantProviderState(message);
+    return {
+      role: 'assistant',
+      content: createLlmMessageContentFromText(assistantText),
+      ...(providerState !== undefined ? { providerState } : {}),
+    };
+  }
+
+  return {
+    role: 'assistant',
+    content: createLlmMessageContentFromText(assistantText),
+  };
+}
+
 export function truncateToolAgentStateForContextRetry(
   state: ToolAgentState,
 ): { state: ToolAgentState; changed: boolean } {
@@ -1019,6 +1043,10 @@ function assistantToolCallsMatchRequests(
 }
 
 function extractAssistantProviderState(message: JsonObject): JsonObject | undefined {
+  if (isJsonObject(message.providerState)) {
+    return cloneLlmProviderState(message.providerState);
+  }
+
   const entries = Object.entries(message).filter(([key]) => (
     key !== 'role'
     && key !== 'content'
@@ -1026,6 +1054,7 @@ function extractAssistantProviderState(message: JsonObject): JsonObject | undefi
     && key !== 'toolCallId'
     && key !== 'tool_call_id'
     && key !== 'toolCalls'
+    && key !== 'providerState'
   ));
 
   if (entries.length === 0) {
