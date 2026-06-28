@@ -133,12 +133,15 @@
     "prepublishOnly": "npm run build && node ../../scripts/npm/assert-no-file-deps.mjs"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^25.6.0",
+    "@types/turndown": "^5.0.6",
     "license-checker-rseidelsohn": "^4.4.2",
     "typescript": "^5.6.3"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock": "^3.1068.0",
+    "@mozilla/readability": "^0.6.0",
     "@spirit-agent/core": "0.2.6",
     "@vscode/ripgrep": "^1.18.0",
     "fast-glob": "^3.3.3",
@@ -146,7 +149,10 @@
     "glob": "^13.0.6",
     "google-auth-library": "^10.6.1",
     "ignore": "^5.3.2",
+    "jsdom": "^29.1.1",
     "tar": "^7.5.13",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2",
     "vscode-jsonrpc": "^8.2.1",
     "vscode-languageserver-protocol": "^3.17.5"
   }

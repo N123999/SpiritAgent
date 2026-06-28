@@ -6,18 +6,22 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- MIT: 8 package(s)
-- Apache-2.0: 3 package(s)
+- MIT: 12 package(s)
+- Apache-2.0: 4 package(s)
 - BlueOak-1.0.0: 2 package(s)
 - BSD-3-Clause: 1 package(s)
 
 ## Components
 
-- **@aws-sdk/client-bedrock** 3.1075.0 — Apache-2.0
+- **@aws-sdk/client-bedrock** 3.1070.0 — Apache-2.0
   - https://github.com/aws/aws-sdk-js-v3
-- **@spirit-agent/core** 0.2.6 — MIT
-  - https://github.com/N123999/SpiritAgent
-- **@types/node** 25.9.4 — MIT
+- **@mozilla/readability** 0.6.0 — Apache-2.0
+  - https://github.com/mozilla/readability
+- **@types/jsdom** 28.0.3 — MIT
+  - https://github.com/DefinitelyTyped/DefinitelyTyped
+- **@types/node** 25.9.3 — MIT
+  - https://github.com/DefinitelyTyped/DefinitelyTyped
+- **@types/turndown** 5.0.6 — MIT
   - https://github.com/DefinitelyTyped/DefinitelyTyped
 - **@vscode/ripgrep** 1.18.0 — MIT
   - https://github.com/microsoft/vscode-ripgrep
@@ -31,15 +35,21 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/googleapis/google-cloud-node-core
 - **ignore** 5.3.2 — MIT
   - https://github.com/kaelzhang/node-ignore
+- **jsdom** 29.1.1 — MIT
+  - https://github.com/jsdom/jsdom
 - **license-checker-rseidelsohn** 4.4.2 — BSD-3-Clause
   - https://github.com/RSeidelsohn/license-checker-rseidelsohn
 - **tar** 7.5.16 — BlueOak-1.0.0
   - https://github.com/isaacs/node-tar
+- **turndown** 7.2.4 — MIT
+  - https://github.com/mixmark-io/turndown
+- **turndown-plugin-gfm** 1.0.2 — MIT
+  - https://github.com/domchristie/turndown-plugin-gfm
 - **typescript** 5.9.3 — Apache-2.0
   - https://github.com/microsoft/TypeScript
 - **vscode-jsonrpc** 8.2.1 — MIT
   - https://github.com/Microsoft/vscode-languageserver-node
-- **vscode-languageserver-protocol** 3.18.1 — MIT
+- **vscode-languageserver-protocol** 3.18.0 — MIT
   - https://github.com/Microsoft/vscode-languageserver-node
 
 ## License texts
@@ -47,7 +57,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 ### Apache-2.0
 
 **Used by:**
-- @aws-sdk/client-bedrock 3.1075.0
+- @aws-sdk/client-bedrock 3.1070.0
 
 ```
                                 Apache License
@@ -251,6 +261,27 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+
+### Apache-2.0
+
+**Used by:**
+- @mozilla/readability 0.6.0
+
+```
+Copyright (c) 2010 Arc90 Inc
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ```
 
 ### Apache-2.0
@@ -694,36 +725,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ### MIT
 
 **Used by:**
-- @spirit-agent/core 0.2.6
-
-```
-MIT License
-
-Copyright (c) 2026 Spirit Studio
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### MIT
-
-**Used by:**
-- @types/node 25.9.4
+- @types/jsdom 28.0.3
+- @types/node 25.9.3
+- @types/turndown 5.0.6
 
 ```
     MIT License
@@ -860,8 +864,68 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### MIT
 
 **Used by:**
+- jsdom 29.1.1
+
+```
+Copyright (c) 2010 Elijah Insua
+
+Permission is hereby granted, free of charge, to any person
+obtaining a copy of this software and associated documentation
+files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use,
+copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### MIT
+
+**Used by:**
+- turndown 7.2.4
+- turndown-plugin-gfm 1.0.2
+
+```
+MIT License
+
+Copyright (c) 2017 Dom Christie
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### MIT
+
+**Used by:**
 - vscode-jsonrpc 8.2.1
-- vscode-languageserver-protocol 3.18.1
+- vscode-languageserver-protocol 3.18.0
 
 ```
 Copyright (c) Microsoft Corporation
