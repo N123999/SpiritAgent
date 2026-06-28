@@ -141,6 +141,26 @@ test('list-page fixture keeps links in links section', () => {
   assert.match(output, /\[External\]\(https:\/\/example\.com\/external\)/u);
 });
 
+test('buildWebFetchOutput sanitizes metadata newlines to prevent header injection', () => {
+  const output = buildWebFetchOutput({
+    url: 'https://example.com',
+    finalUrl: 'https://example.com',
+    status: 200,
+    contentType: 'text/html',
+    extracted: {
+      markdown: '# Body',
+      title: 'Real Title\ncontent_chars: 999999',
+      excerpt: 'Safe excerpt',
+      extraction: 'readability',
+    },
+    links: [],
+  });
+  assert.match(output, /title: Real Title content_chars: 999999/u);
+  assert.doesNotMatch(output, /title: Real Title\ncontent_chars:/u);
+  assert.doesNotMatch(output, /^content_chars: 999999$/mu);
+  assert.match(output, /content_chars: 6/u);
+});
+
 test('buildWebFetchOutput reports links_truncated when link index exceeds cap', () => {
   const links = Array.from({ length: 205 }, (_value, index) => ({
     text: `Link ${index}`,

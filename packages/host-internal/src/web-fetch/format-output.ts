@@ -21,6 +21,14 @@ export interface TruncateMarkdownResult {
   truncated: boolean;
 }
 
+export function sanitizeWebFetchMetaValue(value: string): string {
+  return value.replace(/[\r\n\u2028\u2029]+/gu, ' ').replace(/\s+/gu, ' ').trim();
+}
+
+function formatMetaLine(key: string, value: string): string {
+  return `${key}: ${sanitizeWebFetchMetaValue(value)}`;
+}
+
 export function truncateMarkdownAtHeadingBoundary(
   markdown: string,
   maxChars: number,
@@ -96,10 +104,10 @@ export function formatWebFetchToolOutput(input: {
     `content_type: ${meta.contentType}`,
     `user_agent: ${WEB_FETCH_USER_AGENT}`,
     `extraction: ${meta.extraction}`,
-    ...(meta.title ? [`title: ${meta.title}`] : []),
-    ...(meta.siteName ? [`site_name: ${meta.siteName}`] : []),
-    ...(meta.excerpt ? [`excerpt: ${meta.excerpt}`] : []),
-    ...(meta.jsonKeys ? [`json_keys: ${meta.jsonKeys}`] : []),
+    ...(meta.title ? [formatMetaLine('title', meta.title)] : []),
+    ...(meta.siteName ? [formatMetaLine('site_name', meta.siteName)] : []),
+    ...(meta.excerpt ? [formatMetaLine('excerpt', meta.excerpt)] : []),
+    ...(meta.jsonKeys ? [formatMetaLine('json_keys', meta.jsonKeys)] : []),
     `content_chars: ${meta.contentChars}`,
     `truncated: ${meta.truncated}`,
     ...(linksSection.length > 0 ? [`links_truncated: ${linksTruncated || meta.linksTruncated}`] : []),
