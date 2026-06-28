@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ask_questions::{AskQuestionsQuestionKind, AskQuestionsRequest};
+use crate::ask_questions::AskQuestionsRequest;
 use crate::model_registry::AppConfig;
 use crate::ports::SubagentSessionStatus;
 use crate::session::PendingMcpResource;
@@ -140,6 +140,7 @@ pub struct BottomFormFieldView {
 
 #[derive(Clone, Debug)]
 pub struct AskQuestionsOptionView {
+    pub id: String,
     pub label: String,
     pub summary: Option<String>,
     pub selected: bool,
@@ -156,12 +157,10 @@ pub struct AskQuestionsInputFieldView {
 #[derive(Clone, Debug)]
 pub struct AskQuestionsQuestionView {
     pub id: String,
-    pub kind: AskQuestionsQuestionKind,
-    pub required: bool,
+    pub allow_multiple: bool,
     pub options: Vec<AskQuestionsOptionView>,
     pub selected_row: usize,
-    pub custom_input: Option<AskQuestionsInputFieldView>,
-    pub text_input: Option<AskQuestionsInputFieldView>,
+    pub custom_input: AskQuestionsInputFieldView,
 }
 
 #[derive(Clone, Debug)]

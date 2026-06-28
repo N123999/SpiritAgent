@@ -322,23 +322,10 @@ pub(in crate::ui) fn ask_questions_block_height(form: &BottomFormView, panel_wid
 }
 
 pub(in crate::ui) fn ask_questions_title_text(form: &BottomFormView) -> String {
-    let Some(question) = ask_questions_form::current_question(form) else {
-        return String::new();
-    };
-    let label = form
-        .fields
+    form.fields
         .get(form.selected_field.min(form.fields.len().saturating_sub(1)))
         .map(|field| field.label.clone())
-        .unwrap_or_default();
-    if question.required {
-        format!(
-            "{} {}",
-            label,
-            t!("form.ask_questions.required_badge").into_owned()
-        )
-    } else {
-        label
-    }
+        .unwrap_or_default()
 }
 
 pub(in crate::ui) fn ask_questions_row_block_height(
@@ -347,18 +334,12 @@ pub(in crate::ui) fn ask_questions_row_block_height(
     field_width: usize,
 ) -> u16 {
     let inner_width = field_width.saturating_sub(2).max(1);
-    if matches!(
-        question.kind,
-        crate::ask_questions::AskQuestionsQuestionKind::Text
-    ) {
-        let Some(input) = question.text_input.as_ref() else {
-            return 0;
-        };
+    if row_index >= question.options.len() {
         return bottom_form_text_field_outer_height(
-            &input.label,
+            &question.custom_input.label,
             "",
-            &input.value,
-            &input.placeholder,
+            &question.custom_input.value,
+            &question.custom_input.placeholder,
             field_width,
             inner_width,
         );
@@ -373,17 +354,7 @@ pub(in crate::ui) fn ask_questions_row_block_height(
         return (1 + summary_lines).max(1) as u16 + 2;
     }
 
-    let Some(input) = question.custom_input.as_ref() else {
-        return 0;
-    };
-    bottom_form_text_field_outer_height(
-        &input.label,
-        "",
-        &input.value,
-        &input.placeholder,
-        field_width,
-        inner_width,
-    )
+    0
 }
 
 pub(in crate::ui) fn ask_questions_selection_visible(
@@ -609,37 +580,18 @@ pub(in crate::ui) fn draw_ask_questions_form(
                 !ask_questions_form::submit_selected(form) && row_index == question.selected_row;
             let row_cursor = if let Some(option) = question.options.get(row_index) {
                 draw_ask_questions_option_row(frame, row_area, question, option, row_selected)
-            } else if matches!(
-                question.kind,
-                crate::ask_questions::AskQuestionsQuestionKind::Text
-            ) {
-                question.text_input.as_ref().and_then(|input| {
-                    draw_bottom_form_text_field(
-                        frame,
-                        row_area,
-                        &input.label,
-                        "",
-                        &input.value,
-                        &input.placeholder,
-                        input.cursor,
-                        row_selected,
-                        false,
-                    )
-                })
             } else {
-                question.custom_input.as_ref().and_then(|input| {
-                    draw_bottom_form_text_field(
-                        frame,
-                        row_area,
-                        &input.label,
-                        "",
-                        &input.value,
-                        &input.placeholder,
-                        input.cursor,
-                        row_selected,
-                        false,
-                    )
-                })
+                draw_bottom_form_text_field(
+                    frame,
+                    row_area,
+                    &question.custom_input.label,
+                    "",
+                    &question.custom_input.value,
+                    &question.custom_input.placeholder,
+                    question.custom_input.cursor,
+                    row_selected,
+                    false,
+                )
             };
             if row_selected {
                 cursor = row_cursor;
@@ -708,22 +660,16 @@ pub(in crate::ui) fn draw_ask_questions_option_row(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let marker = match question.kind {
-        crate::ask_questions::AskQuestionsQuestionKind::SingleSelect => {
-            if option.selected {
-                "(x)"
-            } else {
-                "( )"
-            }
+    let marker = if question.allow_multiple {
+        if option.selected {
+            "[x]"
+        } else {
+            "[ ]"
         }
-        crate::ask_questions::AskQuestionsQuestionKind::MultiSelect => {
-            if option.selected {
-                "[x]"
-            } else {
-                "[ ]"
-            }
-        }
-        crate::ask_questions::AskQuestionsQuestionKind::Text => "   ",
+    } else if option.selected {
+        "(x)"
+    } else {
+        "( )"
     };
     let mut lines = vec![Line::from(Span::styled(
         format!("{} {}", marker, option.label),
