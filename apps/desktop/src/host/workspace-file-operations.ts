@@ -1,4 +1,4 @@
-import { lstat, rename, rm, stat, unlink } from 'node:fs/promises';
+import { lstat, mkdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import i18n from '../lib/i18n-host.js';
@@ -50,6 +50,42 @@ async function assertTargetDoesNotExist(
       throw error;
     }
   }
+}
+
+async function assertParentDirectoryExists(
+  workspaceRoot: string,
+  parentDirectoryRel: string,
+): Promise<void> {
+  const parentAbs = await resolveWorkspaceRelativePath(workspaceRoot, parentDirectoryRel);
+  const parentStat = await stat(parentAbs);
+  if (!parentStat.isDirectory()) {
+    throw new Error(i18n.t('error.notADirectory'));
+  }
+}
+
+export type WorkspaceEntryKind = 'file' | 'dir';
+
+export async function createWorkspaceEntry(
+  workspaceRoot: string,
+  parentDirectoryRel: string,
+  name: string,
+  kind: WorkspaceEntryKind,
+): Promise<{ relativePath: string }> {
+  validateEntryName(name);
+  const parentRel = parentDirectoryRel.replace(/\\/g, '/').trim();
+  const trimmedName = name.trim();
+  const newRel = joinWorkspaceRelativePath(parentRel, trimmedName);
+
+  await assertParentDirectoryExists(workspaceRoot, parentRel);
+  await assertTargetDoesNotExist(workspaceRoot, newRel);
+
+  const absPath = await resolveWorkspaceRelativePath(workspaceRoot, newRel);
+  if (kind === 'dir') {
+    await mkdir(absPath);
+  } else {
+    await writeFile(absPath, '', 'utf8');
+  }
+  return { relativePath: newRel };
 }
 
 export async function renameWorkspaceEntry(

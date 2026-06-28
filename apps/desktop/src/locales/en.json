@@ -812,6 +812,8 @@
       "linux": "Reveal in File Manager"
     },
     "rename": "Rename",
+    "createFile": "New File",
+    "createFolder": "New Folder",
     "delete": "Delete",
     "deleteEntryConfirm": "Delete \"{{name}}\"?",
     "move": "Move",

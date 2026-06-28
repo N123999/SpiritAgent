@@ -152,6 +152,11 @@ export type CommandPayloads = {
   writeWorkspaceTextFile: { request: WriteWorkspaceTextFileRequest };
   revealWorkspaceEntry: { relativePath: string; workspaceRoot?: string };
   renameWorkspaceEntry: { relativePath: string; newName: string };
+  createWorkspaceEntry: {
+    parentDirectoryRel: string;
+    name: string;
+    kind: 'file' | 'dir';
+  };
   moveWorkspaceEntry: { relativePath: string; targetDirectoryRel: string };
   trashWorkspaceEntry: { relativePath: string };
   forceDeleteWorkspaceEntry: { relativePath: string };

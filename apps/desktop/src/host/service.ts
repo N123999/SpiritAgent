@@ -198,6 +198,7 @@ import {
   writeWorkspaceTextFileCommand,
   revealWorkspaceEntryCommand,
   renameWorkspaceEntryCommand,
+  createWorkspaceEntryCommand,
   moveWorkspaceEntryCommand,
   trashWorkspaceEntryCommand,
   forceDeleteWorkspaceEntryCommand,
@@ -2035,6 +2036,19 @@ class DesktopHostService {
     newName: string,
   ): Promise<{ relativePath: string }> {
     return renameWorkspaceEntryCommand(this.workspaceGitCommandContext(), relativePath, newName);
+  }
+
+  async createWorkspaceEntry(
+    parentDirectoryRel: string,
+    name: string,
+    kind: 'file' | 'dir',
+  ): Promise<{ relativePath: string }> {
+    return createWorkspaceEntryCommand(
+      this.workspaceGitCommandContext(),
+      parentDirectoryRel,
+      name,
+      kind,
+    );
   }
 
   async moveWorkspaceEntry(

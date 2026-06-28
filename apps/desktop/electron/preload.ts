@@ -362,6 +362,13 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
   renameWorkspaceEntry(relativePath: string, newName: string) {
     return ipcRenderer.invoke('desktop:invoke', 'renameWorkspaceEntry', { relativePath, newName });
   },
+  createWorkspaceEntry(parentDirectoryRel: string, name: string, kind: 'file' | 'dir') {
+    return ipcRenderer.invoke('desktop:invoke', 'createWorkspaceEntry', {
+      parentDirectoryRel,
+      name,
+      kind,
+    });
+  },
   moveWorkspaceEntry(relativePath: string, targetDirectoryRel: string) {
     return ipcRenderer.invoke('desktop:invoke', 'moveWorkspaceEntry', {
       relativePath,

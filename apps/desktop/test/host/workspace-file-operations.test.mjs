@@ -5,6 +5,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import {
+  createWorkspaceEntry,
   forceDeleteWorkspaceEntry,
   isDescendantOrSelf,
   moveWorkspaceEntry,
@@ -25,6 +26,57 @@ test('isDescendantOrSelf detects self and nested paths', () => {
   assert.equal(isDescendantOrSelf('src', 'src/components'), true);
   assert.equal(isDescendantOrSelf('src/components', 'src'), false);
   assert.equal(isDescendantOrSelf('', 'src'), false);
+});
+
+test('createWorkspaceEntry creates a file and directory at workspace root', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'spirit-ws-create-root-'));
+
+  try {
+    const file = await createWorkspaceEntry(workspaceRoot, '', 'notes.txt', 'file');
+    assert.equal(file.relativePath, 'notes.txt');
+    await access(path.join(workspaceRoot, 'notes.txt'));
+
+    const dir = await createWorkspaceEntry(workspaceRoot, '', 'lib', 'dir');
+    assert.equal(dir.relativePath, 'lib');
+    await access(path.join(workspaceRoot, 'lib'));
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('createWorkspaceEntry creates nested entries under a parent directory', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'spirit-ws-create-nested-'));
+  await mkdir(path.join(workspaceRoot, 'src'));
+
+  try {
+    const file = await createWorkspaceEntry(workspaceRoot, 'src', 'App.tsx', 'file');
+    assert.equal(file.relativePath, 'src/App.tsx');
+    await access(path.join(workspaceRoot, 'src', 'App.tsx'));
+
+    const dir = await createWorkspaceEntry(workspaceRoot, 'src', 'components', 'dir');
+    assert.equal(dir.relativePath, 'src/components');
+    await access(path.join(workspaceRoot, 'src', 'components'));
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('createWorkspaceEntry rejects duplicate names and invalid names', async () => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'spirit-ws-create-reject-'));
+  await writeFile(path.join(workspaceRoot, 'exists.txt'), 'x', 'utf8');
+
+  try {
+    await assert.rejects(
+      () => createWorkspaceEntry(workspaceRoot, '', 'exists.txt', 'file'),
+      /already exists|已存在同名/u,
+    );
+    await assert.rejects(
+      () => createWorkspaceEntry(workspaceRoot, '', 'bad/name', 'file'),
+      /Invalid file name|无效文件名/u,
+    );
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
 });
 
 test('renameWorkspaceEntry renames a file within the workspace', async () => {

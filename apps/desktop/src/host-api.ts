@@ -223,6 +223,11 @@ export interface HostApi {
   writeWorkspaceTextFile(request: WriteWorkspaceTextFileRequest): Promise<void>;
   revealWorkspaceEntry(relativePath: string, workspaceRoot?: string): Promise<void>;
   renameWorkspaceEntry(relativePath: string, newName: string): Promise<{ relativePath: string }>;
+  createWorkspaceEntry(
+    parentDirectoryRel: string,
+    name: string,
+    kind: 'file' | 'dir',
+  ): Promise<{ relativePath: string }>;
   moveWorkspaceEntry(
     relativePath: string,
     targetDirectoryRel: string,

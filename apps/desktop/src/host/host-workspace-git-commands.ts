@@ -55,11 +55,13 @@ import {
   writeWorkspaceTextFile as writeWorkspaceTextFileToDisk,
 } from './workspace-files.js';
 import {
+  createWorkspaceEntry as createWorkspaceEntryOnDisk,
   forceDeleteWorkspaceEntry as forceDeleteWorkspaceEntryOnDisk,
   moveWorkspaceEntry as moveWorkspaceEntryOnDisk,
   renameWorkspaceEntry as renameWorkspaceEntryOnDisk,
   revealWorkspaceEntry as revealWorkspaceEntryOnDisk,
   trashWorkspaceEntry as trashWorkspaceEntryOnDisk,
+  type WorkspaceEntryKind,
 } from './workspace-file-operations.js';
 import {
   listStoredSessions,
@@ -436,6 +438,19 @@ export async function renameWorkspaceEntryCommand(
     await ctx.ensureInitialized();
     const state = ctx.requireState();
     return renameWorkspaceEntryOnDisk(state.workspaceRoot, relativePath, newName);
+  });
+}
+
+export async function createWorkspaceEntryCommand(
+  ctx: HostWorkspaceGitCommandContext,
+  parentDirectoryRel: string,
+  name: string,
+  kind: WorkspaceEntryKind,
+): Promise<{ relativePath: string }> {
+  return ctx.runSerialized(async () => {
+    await ctx.ensureInitialized();
+    const state = ctx.requireState();
+    return createWorkspaceEntryOnDisk(state.workspaceRoot, parentDirectoryRel, name, kind);
   });
 }
 

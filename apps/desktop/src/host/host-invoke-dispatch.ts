@@ -119,6 +119,11 @@ export interface HostCommandDelegate {
     relativePath: string,
     newName: string,
   ): Promise<unknown>;
+  createWorkspaceEntry(
+    parentDirectoryRel: string,
+    name: string,
+    kind: 'file' | 'dir',
+  ): Promise<unknown>;
   moveWorkspaceEntry(
     relativePath: string,
     targetDirectoryRel: string,
@@ -249,6 +254,8 @@ const hostCommandDispatch = {
     host.revealWorkspaceEntry(payload.relativePath, payload.workspaceRoot),
   renameWorkspaceEntry: (host, payload) =>
     host.renameWorkspaceEntry(payload.relativePath, payload.newName),
+  createWorkspaceEntry: (host, payload) =>
+    host.createWorkspaceEntry(payload.parentDirectoryRel, payload.name, payload.kind),
   moveWorkspaceEntry: (host, payload) =>
     host.moveWorkspaceEntry(payload.relativePath, payload.targetDirectoryRel),
   trashWorkspaceEntry: (host, payload) => host.trashWorkspaceEntry(payload.relativePath),

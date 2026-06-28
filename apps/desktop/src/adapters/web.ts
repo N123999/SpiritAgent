@@ -389,6 +389,11 @@ export function createWebHostApi(): HostApi {
         new Error('Workspace file shell actions are only available in the Electron desktop app.'),
       );
     },
+    createWorkspaceEntry() {
+      return Promise.reject(
+        new Error('Workspace file shell actions are only available in the Electron desktop app.'),
+      );
+    },
     moveWorkspaceEntry() {
       return Promise.reject(
         new Error('Workspace file shell actions are only available in the Electron desktop app.'),

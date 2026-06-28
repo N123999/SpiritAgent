@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
   ChevronDown,
   ChevronRight,
+  FilePlus,
+  FolderPlus,
   ListTodo,
 } from "lucide-react";
 
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHostApi } from "@/hooks/useHostApi";
 import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
 import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
@@ -49,6 +52,19 @@ function fileBasename(abs: string): string {
   const n = abs.replace(/\\/g, "/");
   const i = n.lastIndexOf("/");
   return i >= 0 ? n.slice(i + 1) || abs : abs;
+}
+
+function parentWorkspaceRelativePath(relativePath: string): string {
+  const posix = relativePath.replace(/\\/g, "/");
+  const index = posix.lastIndexOf("/");
+  return index >= 0 ? posix.slice(0, index) : "";
+}
+
+function workspaceRelFromSelectedEntryKey(selectedEntryKey: string | null | undefined): string | null {
+  if (!selectedEntryKey?.startsWith("workspace:")) {
+    return null;
+  }
+  return selectedEntryKey.slice("workspace:".length);
 }
 
 /** 重命名聚焦时预选文件名主体，不含最后一个扩展名（如 App.tsx → App）。 */
@@ -86,6 +102,17 @@ function isExplorerListChromeDragTarget(target: EventTarget | null): boolean {
   return tag === "UL" || tag === "LI";
 }
 
+/** 文件树空白区域（容器 / 列表间隙），用于清除目录暂留。 */
+function isExplorerTreeBlankTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (target.getAttribute("role") === "tree") {
+    return true;
+  }
+  return isExplorerListChromeDragTarget(target);
+}
+
 export { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
 
 export { joinExplorerRel } from "@/lib/workspace-explorer-dir-collapse";
@@ -114,6 +141,18 @@ type PendingMoveTarget = {
   targetDirectoryRel: string;
   targetDirectoryLabel: string;
 };
+
+type CreatingEntryState = {
+  parentRel: string;
+  kind: "file" | "dir";
+  value: string;
+  error: string;
+};
+
+const EXPLORER_ROOT_CREATE_BUTTON_CLASS = cn(
+  "inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground",
+  "hover:bg-foreground/[0.08] hover:text-foreground dark:hover:bg-foreground/12",
+);
 
 export type WorkspaceFilesPanelProps = {
   workspaceRoot: string;
@@ -323,6 +362,96 @@ function ExplorerRow({
   );
 }
 
+type ExplorerCreateRowProps = {
+  depth: number;
+  kind: CreatingEntryState["kind"];
+  value: string;
+  error: string;
+  onValueChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+};
+
+function ExplorerCreateRow({
+  depth,
+  kind,
+  value,
+  error,
+  onValueChange,
+  onCommit,
+  onCancel,
+}: ExplorerCreateRowProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const skipBlurCommitRef = useRef(false);
+  const Icon = kind === "dir" ? ChevronRight : workspaceExplorerIcon("untitled.txt", "file");
+
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      skipBlurCommitRef.current = true;
+      onCommit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      skipBlurCommitRef.current = true;
+      onCancel();
+    }
+  };
+
+  const rowStyle = { paddingLeft: `${explorerRowPaddingLeft(depth)}px` };
+
+  return (
+    <li className="min-w-0">
+      <div
+        className={cn(
+          EXPLORER_ROW_TRIGGER_CLASS,
+          "bg-foreground/[0.08] dark:bg-foreground/12",
+        )}
+        style={rowStyle}
+        role="treeitem"
+      >
+        {EXPLORER_ROW_LEADING_SPACER}
+        <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+        <input
+          ref={inputRef}
+          type="text"
+          className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1 py-0 text-xs outline-none focus:border-ring"
+          value={value}
+          aria-invalid={error ? true : undefined}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onValueChange(event.target.value)}
+          onBlur={() => {
+            if (skipBlurCommitRef.current) {
+              skipBlurCommitRef.current = false;
+              return;
+            }
+            onCommit();
+          }}
+          onKeyDown={handleKeyDown}
+        />
+      </div>
+      {error ? (
+        <p className="py-0.5 pl-1 text-destructive/90" style={{ paddingLeft: `${depth * 12 + 4}px` }}>
+          {error}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
 export function WorkspaceFilesPanel({
   workspaceRoot,
   plan,
@@ -363,7 +492,14 @@ export function WorkspaceFilesPanel({
   const [moveBusy, setMoveBusy] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [revealError, setRevealError] = useState("");
+  /** 目录点击暂留；`""` 为工作区根。与文件 selected 高亮互斥。 */
+  const [focusedDirectoryRel, setFocusedDirectoryRel] = useState<string | null>(null);
+  const [treeHovered, setTreeHovered] = useState(false);
+  const [creatingEntry, setCreatingEntry] = useState<CreatingEntryState | null>(null);
   const renameCommitInFlightRef = useRef(false);
+  const createCommitInFlightRef = useRef(false);
+  const treeHoverContainerRef = useRef<HTMLDivElement>(null);
+  const explorerTreeRef = useRef<HTMLDivElement>(null);
   const prevGitRevisionRef = useRef<number | undefined>(undefined);
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
@@ -450,6 +586,7 @@ export function WorkspaceFilesPanel({
     setCache({});
     setExpanded({});
     setRootOpen(true);
+    setFocusedDirectoryRel(null);
     void loadDirRef.current("");
   }, [workspaceRoot]);
 
@@ -569,6 +706,8 @@ export function WorkspaceFilesPanel({
   );
 
   const handleRenameStart = useCallback((target: WorkspaceExplorerContextTarget) => {
+    setCreatingEntry(null);
+    setFocusedDirectoryRel(null);
     setRenamingPath(target.relativePath);
     setRenameValue(target.name);
     setRenameError("");
@@ -579,6 +718,46 @@ export function WorkspaceFilesPanel({
     setRenameValue("");
     setRenameError("");
   }, []);
+
+  const handleCreateCancel = useCallback(() => {
+    setCreatingEntry(null);
+  }, []);
+
+  const handleCreateCommit = useCallback(async () => {
+    if (createCommitInFlightRef.current) {
+      return;
+    }
+    if (!creatingEntry || !api) {
+      handleCreateCancel();
+      return;
+    }
+    const trimmed = creatingEntry.value.trim();
+    if (!trimmed) {
+      handleCreateCancel();
+      return;
+    }
+    createCommitInFlightRef.current = true;
+    try {
+      const result = await api.createWorkspaceEntry(
+        creatingEntry.parentRel,
+        trimmed,
+        creatingEntry.kind,
+      );
+      const parentRel = creatingEntry.parentRel;
+      const createdKind = creatingEntry.kind;
+      handleCreateCancel();
+      invalidateDir(parentRel);
+      if (createdKind === "file") {
+        onOpenFile?.(result.relativePath);
+      }
+    } catch (error) {
+      setCreatingEntry((current) =>
+        current ? { ...current, error: describeError(error) } : null,
+      );
+    } finally {
+      createCommitInFlightRef.current = false;
+    }
+  }, [api, creatingEntry, handleCreateCancel, invalidateDir, onOpenFile]);
 
   const handleRenameCommit = useCallback(async () => {
     if (renameCommitInFlightRef.current) {
@@ -775,6 +954,99 @@ export function WorkspaceFilesPanel({
     [workspaceRootLabel],
   );
 
+  const clearFocusedDirectory = useCallback(() => {
+    setFocusedDirectoryRel(null);
+  }, []);
+
+  const handleScrollAreaMouseDownCapture = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const treeRect = explorerTreeRef.current?.getBoundingClientRect();
+    const clickBelowTreeContent = treeRect ? event.clientY > treeRect.bottom : false;
+    const clickedTreeItem = target?.closest('[role="treeitem"]');
+    const clickedButton = target?.closest("button");
+    const isBlank =
+      !clickedTreeItem
+      && !clickedButton
+      && (isExplorerTreeBlankTarget(event.target) || clickBelowTreeContent);
+    if (isBlank) {
+      clearFocusedDirectory();
+      handleCreateCancel();
+    }
+  }, [clearFocusedDirectory, handleCreateCancel]);
+
+  const fileRowSelected = useCallback(
+    (childRel: string) =>
+      focusedDirectoryRel === null && selectedEntryKey === `workspace:${childRel}`,
+    [focusedDirectoryRel, selectedEntryKey],
+  );
+
+  const directoryRowFocused = useCallback(
+    (dirRel: string) => focusedDirectoryRel !== null && focusedDirectoryRel === dirRel,
+    [focusedDirectoryRel],
+  );
+
+  const resolveCreateParentDir = useCallback((): string => {
+    if (focusedDirectoryRel !== null) {
+      return focusedDirectoryRel;
+    }
+    const fileRel = workspaceRelFromSelectedEntryKey(selectedEntryKey);
+    if (fileRel) {
+      return parentWorkspaceRelativePath(fileRel);
+    }
+    return "";
+  }, [focusedDirectoryRel, selectedEntryKey]);
+
+  const ensureParentDirectoryExpanded = useCallback(
+    (parentRel: string) => {
+      setRootOpen(true);
+      const directoriesToExpand = [""];
+      if (parentRel) {
+        let current = "";
+        for (const segment of parentRel.split("/").filter((part) => part.length > 0)) {
+          current = current ? `${current}/${segment}` : segment;
+          directoriesToExpand.push(current);
+        }
+      }
+      setExpanded((previous) => {
+        const next = { ...previous };
+        for (const directory of directoriesToExpand) {
+          next[directory] = true;
+        }
+        return next;
+      });
+      for (const directory of directoriesToExpand) {
+        void loadDir(directory);
+      }
+    },
+    [loadDir],
+  );
+
+  const handleCreateStart = useCallback(
+    (kind: CreatingEntryState["kind"]) => {
+      if (!isElectron) {
+        return;
+      }
+      handleRenameCancel();
+      const parentRel = resolveCreateParentDir();
+      setFocusedDirectoryRel(null);
+      ensureParentDirectoryExpanded(parentRel);
+      setCreatingEntry({ parentRel, kind, value: "", error: "" });
+    },
+    [ensureParentDirectoryExpanded, handleRenameCancel, isElectron, resolveCreateParentDir],
+  );
+
+  const handleTreeMouseEnter = useCallback(() => {
+    setTreeHovered(true);
+  }, []);
+
+  const handleTreeMouseLeave = useCallback((event: MouseEvent<HTMLDivElement>) => {
+    const related = event.relatedTarget;
+    if (related instanceof Node && treeHoverContainerRef.current?.contains(related)) {
+      return;
+    }
+    setTreeHovered(false);
+  }, []);
+
   if (!workspaceRoot.trim()) {
     return <p className="text-muted-foreground">{t("workspace.connectToShowFiles")}</p>;
   }
@@ -790,11 +1062,18 @@ export function WorkspaceFilesPanel({
             "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
             "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
             onOpenPlan && "cursor-pointer",
-            selectedEntryKey === "plan" && "bg-foreground/[0.08] dark:bg-foreground/12",
+            selectedEntryKey === "plan"
+              && focusedDirectoryRel === null
+              && "bg-foreground/[0.08] dark:bg-foreground/12",
           )}
           style={{ paddingLeft: "4px" }}
-          aria-current={selectedEntryKey === "plan" ? "true" : undefined}
-          onClick={() => onOpenPlan?.()}
+          aria-current={
+            selectedEntryKey === "plan" && focusedDirectoryRel === null ? "true" : undefined
+          }
+          onClick={() => {
+            clearFocusedDirectory();
+            onOpenPlan?.();
+          }}
           title={plan.path}
         >
           <span className="inline-block size-3.5 shrink-0" aria-hidden />
@@ -813,6 +1092,9 @@ export function WorkspaceFilesPanel({
     if (state.status === "error") {
       return <p className="py-1 pl-1 text-destructive/90">{state.message}</p>;
     }
+    const firstFileIndex = state.entries.findIndex((entry) => entry.kind === "file");
+    const creatingHere =
+      creatingEntry !== null && creatingEntry.parentRel === rel ? creatingEntry : null;
     return (
       <div
         onDragOver={(event) => {
@@ -844,9 +1126,44 @@ export function WorkspaceFilesPanel({
         }}
       >
         <ul className="list-none space-y-0.5 p-0">
-        {state.entries.map((entry) => {
+        {creatingEntry?.parentRel === rel && creatingEntry.kind === "dir" ? (
+          <ExplorerCreateRow
+            depth={depth}
+            kind="dir"
+            value={creatingEntry.value}
+            error={creatingEntry.error}
+            onValueChange={(value) => {
+              setCreatingEntry((current) =>
+                current ? { ...current, value, error: "" } : null,
+              );
+            }}
+            onCommit={() => void handleCreateCommit()}
+            onCancel={handleCreateCancel}
+          />
+        ) : null}
+        {state.entries.map((entry, index) => {
           const childRel = joinExplorerRel(rel, entry.name);
           const isDir = entry.kind === "dir";
+          const showFileCreateBefore =
+            creatingHere?.kind === "file"
+            && entry.kind === "file"
+            && index === firstFileIndex;
+          const fileCreateRow = showFileCreateBefore ? (
+            <ExplorerCreateRow
+              key="__creating-file__"
+              depth={depth}
+              kind="file"
+              value={creatingHere.value}
+              error={creatingHere.error}
+              onValueChange={(value) => {
+                setCreatingEntry((current) =>
+                  current ? { ...current, value, error: "" } : null,
+                );
+              }}
+              onCommit={() => void handleCreateCommit()}
+              onCancel={handleCreateCancel}
+            />
+          ) : null;
           if (isDir) {
             for (const prefetchRel of collectWorkspaceExplorerDirCollapsePrefetchRels(
               childRel,
@@ -875,10 +1192,11 @@ export function WorkspaceFilesPanel({
           };
 
           if (!isDir) {
-            const selected = selectedEntryKey === `workspace:${childRel}`;
+            const selected = fileRowSelected(childRel);
             return (
-              <ExplorerRow
-                key={childRel}
+              <Fragment key={childRel}>
+                {fileCreateRow}
+                <ExplorerRow
                 target={target}
                 workspaceRoot={workspaceRoot}
                 depth={depth}
@@ -895,22 +1213,27 @@ export function WorkspaceFilesPanel({
                 onRenameValueChange={setRenameValue}
                 onRenameCommit={() => void handleRenameCommit()}
                 onRenameCancel={handleRenameCancel}
-                onClick={() => onOpenFile?.(childRel)}
+                onClick={() => {
+                  clearFocusedDirectory();
+                  onOpenFile?.(childRel);
+                }}
                 leading={EXPLORER_ROW_LEADING_SPACER}
                 icon={Icon}
                 draggable
                 onDragStart={(event) => handleDragStart(event, target)}
               />
+              </Fragment>
             );
           }
 
           return (
-            <ExplorerRow
-              key={dirRel}
+            <Fragment key={dirRel}>
+              {fileCreateRow}
+              <ExplorerRow
               target={target}
               workspaceRoot={workspaceRoot}
               depth={depth}
-              selected={false}
+              selected={directoryRowFocused(dirRel)}
               ignored={ignored}
               isElectron={isElectron}
               renaming={renamingPath === dirRel}
@@ -923,7 +1246,10 @@ export function WorkspaceFilesPanel({
               onRenameValueChange={setRenameValue}
               onRenameCommit={() => void handleRenameCommit()}
               onRenameCancel={handleRenameCancel}
-              onClick={() => onToggleDir(dirRel, collapsedDir?.chainRels ?? [dirRel])}
+              onClick={() => {
+                setFocusedDirectoryRel(dirRel);
+                onToggleDir(dirRel, collapsedDir?.chainRels ?? [dirRel]);
+              }}
               label={collapsedDir?.displayName}
               leading={EXPLORER_ROW_LEADING_SPACER}
               icon={open ? ChevronDown : ChevronRight}
@@ -946,8 +1272,24 @@ export function WorkspaceFilesPanel({
             >
               {open ? <div className="min-w-0">{renderDirBody(dirRel, depth + 1)}</div> : null}
             </ExplorerRow>
+            </Fragment>
           );
         })}
+        {creatingHere?.kind === "file" && firstFileIndex === -1 ? (
+          <ExplorerCreateRow
+            depth={depth}
+            kind="file"
+            value={creatingHere.value}
+            error={creatingHere.error}
+            onValueChange={(value) => {
+              setCreatingEntry((current) =>
+                current ? { ...current, value, error: "" } : null,
+              );
+            }}
+            onCommit={() => void handleCreateCommit()}
+            onCancel={handleCreateCancel}
+          />
+        ) : null}
         </ul>
       </div>
     );
@@ -966,29 +1308,99 @@ export function WorkspaceFilesPanel({
           {revealError}
         </p>
       ) : null}
-      <WorkspaceFileContextMenu
-        target={rootTarget}
-        workspaceRoot={workspaceRoot}
-        isElectron={isElectron}
-        onReveal={handleReveal}
+      <div
+        ref={treeHoverContainerRef}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+        onMouseEnter={handleTreeMouseEnter}
+        onMouseLeave={handleTreeMouseLeave}
       >
-        <button
-          type="button"
-          className={cn(EXPLORER_ROW_TRIGGER_CLASS, "mb-1 shrink-0")}
-          aria-expanded={rootOpen}
-          onClick={() => setRootOpen((o) => !o)}
+        <div className="mb-1 shrink-0">
+          <div
+            className={cn(
+              "relative flex min-w-0 items-center rounded text-foreground/90",
+              "hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+              focusedDirectoryRel === "" && "bg-foreground/[0.08] dark:bg-foreground/12",
+            )}
+          >
+            <WorkspaceFileContextMenu
+              target={rootTarget}
+              workspaceRoot={workspaceRoot}
+              isElectron={isElectron}
+              onReveal={handleReveal}
+            >
+              <button
+                type="button"
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-1 px-1 py-0.5 text-left",
+                  isElectron && "pr-11",
+                )}
+                aria-expanded={rootOpen}
+                aria-current={focusedDirectoryRel === "" ? "true" : undefined}
+                onClick={() => {
+                  setFocusedDirectoryRel("");
+                  setRootOpen((open) => !open);
+                }}
+              >
+                {rootOpen ? (
+                  <ChevronDown className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+                ) : (
+                  <ChevronRight className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+                )}
+                <span className="min-w-0 truncate">{rootLabel}</span>
+              </button>
+            </WorkspaceFileContextMenu>
+            {isElectron && treeHovered ? (
+              <div className="absolute inset-y-0 right-0.5 flex items-center gap-0">
+                <Tooltip delayDuration={300} disableHoverableContent>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={EXPLORER_ROOT_CREATE_BUTTON_CLASS}
+                      aria-label={t("workspace.createFile")}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleCreateStart("file");
+                      }}
+                    >
+                      <FilePlus className="size-3" aria-hidden />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={4}>
+                    {t("workspace.createFile")}
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip delayDuration={300} disableHoverableContent>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={EXPLORER_ROOT_CREATE_BUTTON_CLASS}
+                      aria-label={t("workspace.createFolder")}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleCreateStart("dir");
+                      }}
+                    >
+                      <FolderPlus className="size-3" aria-hidden />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={4}>
+                    {t("workspace.createFolder")}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        {rootOpen ? (
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+          onMouseDownCapture={handleScrollAreaMouseDownCapture}
         >
-          {rootOpen ? (
-            <ChevronDown className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
-          ) : (
-            <ChevronRight className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
-          )}
-          <span className="min-w-0 truncate">{rootLabel}</span>
-        </button>
-      </WorkspaceFileContextMenu>
-      {rootOpen ? (
         <ScrollArea className="min-h-0 min-w-0 flex-1" type="auto">
           <div
+            ref={explorerTreeRef}
             role="tree"
             aria-label={t("workspace.fileList")}
             aria-busy={cache[""]?.status === "loading" ? true : undefined}
@@ -997,9 +1409,11 @@ export function WorkspaceFilesPanel({
             <div className="mt-1">{renderPlanItem()}</div>
           </div>
         </ScrollArea>
+        </div>
       ) : (
         <div className="mb-1">{renderPlanItem()}</div>
       )}
+      </div>
 
       <Dialog
         open={deleteDialogOpen}

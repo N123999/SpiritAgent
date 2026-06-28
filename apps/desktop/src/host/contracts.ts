@@ -105,6 +105,7 @@ export type HostCommandName =
   | 'writeWorkspaceTextFile'
   | 'revealWorkspaceEntry'
   | 'renameWorkspaceEntry'
+  | 'createWorkspaceEntry'
   | 'moveWorkspaceEntry'
   | 'trashWorkspaceEntry'
   | 'forceDeleteWorkspaceEntry'

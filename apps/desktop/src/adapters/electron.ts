@@ -318,6 +318,9 @@ export async function createElectronHostApi(): Promise<HostApi> {
     renameWorkspaceEntry(relativePath, newName) {
       return bridge.renameWorkspaceEntry(relativePath, newName);
     },
+    createWorkspaceEntry(parentDirectoryRel, name, kind) {
+      return bridge.createWorkspaceEntry(parentDirectoryRel, name, kind);
+    },
     moveWorkspaceEntry(relativePath, targetDirectoryRel) {
       return bridge.moveWorkspaceEntry(relativePath, targetDirectoryRel);
     },
