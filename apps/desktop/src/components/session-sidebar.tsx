@@ -1442,7 +1442,7 @@ function SessionSidebarInner({
                 ? "size-8 shrink-0"
                 : "group h-8 w-full justify-start gap-2",
             )}
-            disabled={disabled || newSessionBusy}
+            disabled={disabled || (newSessionBusy && !newSessionNavActive)}
             onClick={onNewSession}
           >
             <SquarePen className="size-3.5" aria-hidden />
