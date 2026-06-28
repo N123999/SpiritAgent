@@ -18,7 +18,11 @@ export function resolveAbsoluteUrl(href: string, baseUrl: string): string | unde
   }
 
   try {
-    return new URL(trimmed, baseUrl).toString();
+    const parsed = new URL(trimmed, baseUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return undefined;
+    }
+    return parsed.toString();
   } catch {
     return undefined;
   }

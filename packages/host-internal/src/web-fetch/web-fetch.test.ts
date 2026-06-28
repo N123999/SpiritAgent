@@ -9,6 +9,7 @@ import {
   collectLinksFromMarkdown,
   convertFetchedPageToToolText,
   extractWebContent,
+  resolveAbsoluteUrl,
   truncateMarkdownAtHeadingBoundary,
 } from './index.js';
 
@@ -172,6 +173,22 @@ test('buildWebFetchOutput escapes forged markdown in link labels', () => {
   });
   assert.ok(output.includes('[safe\\](https://evil.example)](https://example.com/safe)'));
   assert.ok(!output.includes('[safe](https://evil.example)'));
+});
+
+test('resolveAbsoluteUrl allows only http and https schemes', () => {
+  const base = 'https://example.com/page';
+  assert.equal(resolveAbsoluteUrl('/docs', base), 'https://example.com/docs');
+  assert.equal(resolveAbsoluteUrl('https://example.com/a', base), 'https://example.com/a');
+  assert.equal(resolveAbsoluteUrl('file:///etc/passwd', base), undefined);
+  assert.equal(resolveAbsoluteUrl('ftp://example.com/a', base), undefined);
+});
+
+test('collectLinksFromHtml omits non-http URLs from link index', () => {
+  const html =
+    '<html><body><a href="https://example.com/ok">ok</a><a href="file:///etc/passwd">local</a></body></html>';
+  const links = collectLinksFromHtml(html, 'https://example.com');
+  assert.equal(links.length, 1);
+  assert.equal(links[0]?.url, 'https://example.com/ok');
 });
 
 test('buildWebFetchOutput reports links_truncated when link index exceeds cap', () => {
