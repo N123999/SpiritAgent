@@ -13,6 +13,7 @@ import {
 } from '@spirit-agent/core/model-thinking-controls';
 
 import { ModelCatalogDetailPanel } from '@/components/model-catalog-detail-panel';
+import { modelCatalogHasDetailBody } from '@/lib/model-catalog-detail';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -30,6 +31,31 @@ import type {
   ModelProfileSnapshot,
   PreviewModelCatalogEntry,
 } from '@/types';
+
+export function modelPickerInspectorNeedsWideLayout(
+  model: ModelProfileSnapshot,
+  catalogEntry?: PreviewModelCatalogEntry,
+): boolean {
+  if (modelCatalogHasDetailBody({ model, catalogEntry })) {
+    return true;
+  }
+  const modelContext = {
+    ...(model.provider ? { provider: model.provider } : {}),
+    model: model.name,
+    ...(model.supportedReasoningEfforts !== undefined
+      ? { supportedEfforts: model.supportedReasoningEfforts }
+      : {}),
+    ...(model.transportKind ? { transportKind: model.transportKind } : {}),
+  };
+  if (modelSupportsThinkingSwitch(modelContext)) {
+    return true;
+  }
+  const thinkingEnabled = resolveModelThinkingEnabled(model.thinkingEnabled);
+  if (!modelShowsReasoningEffortControl(modelContext, thinkingEnabled)) {
+    return false;
+  }
+  return modelReasoningEffortOptions(modelContext).length > 1;
+}
 
 type ModelPickerInspectorPanelProps = {
   model: ModelProfileSnapshot;

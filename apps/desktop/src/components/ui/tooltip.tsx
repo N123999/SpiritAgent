@@ -28,6 +28,7 @@ type TooltipContentRegistration = {
   collisionPadding?: React.ComponentProps<typeof TooltipPrimitive.Content>["collisionPadding"]
   appearance?: TooltipContentAppearance
   className?: string
+  resolveClassName?: (activeItem: unknown) => string | undefined
   onEscapeKeyDown?: React.ComponentProps<typeof TooltipPrimitive.Content>["onEscapeKeyDown"]
   onAnimationEnd?: React.ComponentProps<typeof TooltipPrimitive.Content>["onAnimationEnd"]
   render: (activeItem: unknown) => React.ReactNode
@@ -276,9 +277,11 @@ function GlobalTooltipContentHost() {
 
   const renderedChildren = contentRegistration.render(global.contentActiveItem)
   const appearance = contentRegistration.appearance ?? "compact"
+  const resolvedClassName = contentRegistration.resolveClassName?.(global.contentActiveItem)
   const contentClassName = cn(
     appearance === "detail" ? TOOLTIP_CONTENT_DETAIL_CLASS : TOOLTIP_CONTENT_COMPACT_CLASS,
     contentRegistration.className,
+    resolvedClassName,
     isNonHoverableContent && "pointer-events-none",
   )
 
@@ -827,6 +830,7 @@ type TooltipContentProps = Omit<
   "children"
 > & {
   appearance?: TooltipContentAppearance
+  resolveClassName?: (activeItem: unknown) => string | undefined
   children: React.ReactNode | ((activeItem: unknown) => React.ReactNode)
 }
 
@@ -838,6 +842,7 @@ function TooltipContent({
   align,
   collisionPadding,
   appearance = "compact",
+  resolveClassName,
   children,
   onEscapeKeyDown,
   onAnimationEnd,
@@ -849,6 +854,8 @@ function TooltipContent({
   const { registrationId } = registration
   const childrenRef = React.useRef(children)
   childrenRef.current = children
+  const resolveClassNameRef = React.useRef(resolveClassName)
+  resolveClassNameRef.current = resolveClassName
 
   React.useEffect(() => {
     const render = (activeItem: unknown) => {
@@ -866,6 +873,7 @@ function TooltipContent({
       collisionPadding,
       appearance,
       className,
+      resolveClassName: (activeItem) => resolveClassNameRef.current?.(activeItem),
       onEscapeKeyDown,
       onAnimationEnd,
       render,

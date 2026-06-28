@@ -3,7 +3,7 @@ import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 
-import { ModelPickerInspectorPanel } from "@/components/model-picker-inspector-panel";
+import { ModelPickerInspectorPanel, modelPickerInspectorNeedsWideLayout } from "@/components/model-picker-inspector-panel";
 import {
   FilteredOverlayMenu,
   FilteredOverlayMenuTrigger,
@@ -40,10 +40,24 @@ import {
   resolveModelThinkingEnabled,
 } from "@spirit-agent/core/model-thinking-controls";
 import { groupModelsForPicker } from "@/lib/model-picker-groups";
-import type { DesktopModelReasoningEffort, DesktopSnapshot, ModelProfileSnapshot } from "@/types";
+import type { DesktopModelReasoningEffort, DesktopSnapshot, ModelProfileSnapshot, PreviewModelCatalogEntry } from "@/types";
 import { cn } from "@/lib/utils";
 
 type ModelPickerItem = DesktopSnapshot["config"]["models"][number];
+
+function resolveModelPickerDetailTooltipWidthClass(
+  activeItem: unknown,
+  models: ModelPickerItem[],
+  catalogDetailByModelName: Map<string, PreviewModelCatalogEntry>,
+): string {
+  const hoveredModel = activeItem as ModelPickerItem | null;
+  if (!hoveredModel) {
+    return "w-max";
+  }
+  const model = models.find((entry) => entry.name === hoveredModel.name) ?? hoveredModel;
+  const catalogEntry = catalogDetailByModelName.get(model.name);
+  return modelPickerInspectorNeedsWideLayout(model, catalogEntry) ? "w-80" : "w-max";
+}
 
 const MODEL_PICKER_TOOLTIP_SHOW_DELAY_MS = 300;
 
@@ -318,9 +332,16 @@ export function ModelPickerMenu({
             sideOffset={8}
             collisionPadding={16}
             className={cn(
-              "z-[200] w-80 max-w-[min(20rem,calc(100vw-2rem))] p-3",
+              "z-[200] max-w-[min(20rem,calc(100vw-2rem))] p-3",
               menuContentClassName,
             )}
+            resolveClassName={(activeItem) =>
+              resolveModelPickerDetailTooltipWidthClass(
+                activeItem,
+                models,
+                catalogDetailByModelName,
+              )
+            }
           >
             {(activeItem) => {
               const hoveredModel = activeItem as ModelPickerItem | null;
@@ -334,11 +355,12 @@ export function ModelPickerMenu({
               const providerLabel = group
                 ? t(group.labelKey, { defaultValue: group.fallbackLabel })
                 : model.provider ?? model.name;
+              const catalogEntry = catalogDetailByModelName.get(model.name);
 
               return (
                 <ModelPickerInspectorPanel
                   model={model}
-                  catalogEntry={catalogDetailByModelName.get(model.name)}
+                  catalogEntry={catalogEntry}
                   providerLabel={providerLabel}
                   onReasoningEffortChange={(modelName, effort) => {
                     onModelReasoningEffortSelect?.(modelName, effort);

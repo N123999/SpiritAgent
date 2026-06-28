@@ -2,6 +2,7 @@ import { formatModelDisplayNameFromId } from '@spirit-agent/core/model-display-n
 import { normalizeOpenAiApiBase } from '@spirit-agent/host-internal/openai-api-base';
 
 import { formatCompactTokenCount } from '@/lib/format-compact-token-count';
+import { parseModelContextLength } from '@/lib/model-context-length';
 
 import type {
   DesktopModelCatalogHint,
@@ -184,6 +185,23 @@ export type ModelCatalogDetailField = {
   label: string;
   value: string;
 };
+
+export function modelCatalogHasDetailBody(input: {
+  model: ModelProfileSnapshot;
+  catalogEntry?: PreviewModelCatalogEntry;
+}): boolean {
+  if (input.catalogEntry?.description?.trim()) {
+    return true;
+  }
+  const contextLength =
+    parseModelContextLength(input.model.contextLength)
+    ?? parseModelContextLength(input.catalogEntry?.contextLength);
+  return buildModelCatalogDetailFields({
+    ...(contextLength !== undefined ? { contextLength } : {}),
+    pricing: input.catalogEntry?.pricing,
+    t: (key) => key,
+  }).length > 0;
+}
 
 export function buildModelCatalogDetailFields(input: {
   contextLength?: number;

@@ -6,6 +6,7 @@ import {
   buildModelCatalogDetailFields,
   findModelCatalogEntry,
   modelCatalogDisplayTitle,
+  modelCatalogHasDetailBody,
   modelDisplayTitleFromMap,
   modelHasCatalogDetail,
 } from '../../src/lib/model-catalog-detail.ts';
@@ -153,4 +154,50 @@ test('findModelCatalogEntry returns entry without pricing', () => {
   const entry = findModelCatalogEntry(model, hints);
   assert.equal(entry?.displayName, 'Claude Sonnet 4');
   assert.equal(modelCatalogDisplayTitle(model, entry), 'Claude Sonnet 4');
+});
+
+test('modelCatalogHasDetailBody is false when only displayName is present', () => {
+  const model = {
+    name: 'minimax/M2.7',
+    apiBase: 'https://example/v1',
+    provider: 'openrouter',
+    transportKind: 'openai-compatible',
+    reasoningEffort: 'default',
+    keyConfigured: true,
+  };
+  assert.equal(
+    modelCatalogHasDetailBody({
+      model,
+      catalogEntry: { id: 'minimax/M2.7', displayName: 'MiniMax M2.7' },
+    }),
+    false,
+  );
+});
+
+test('modelCatalogHasDetailBody is true when description or pricing exists', () => {
+  const model = {
+    name: 'openai/gpt-5',
+    apiBase: 'https://example/v1',
+    provider: 'openrouter',
+    transportKind: 'openai-compatible',
+    reasoningEffort: 'default',
+    keyConfigured: true,
+  };
+  assert.equal(
+    modelCatalogHasDetailBody({
+      model,
+      catalogEntry: { id: 'openai/gpt-5', description: 'Flagship model' },
+    }),
+    true,
+  );
+  assert.equal(
+    modelCatalogHasDetailBody({
+      model,
+      catalogEntry: {
+        id: 'openai/gpt-5',
+        pricing: { inputPerTokenUsd: '0.000003' },
+      },
+    }),
+    true,
+  );
 });
