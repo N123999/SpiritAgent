@@ -2,6 +2,13 @@ import * as React from "react";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { Select as SelectPrimitive } from "radix-ui";
 
+import {
+  DESKTOP_OVERLAY_LIST_LIST_PADDING,
+  DESKTOP_SELECT_CONTENT,
+  DESKTOP_SELECT_ITEM,
+  DESKTOP_SELECT_LABEL,
+  DESKTOP_SELECT_TRIGGER,
+} from "@/lib/desktop-chrome";
 import { getUiLayoutPortalContainer } from "@/lib/ui-layout-scale";
 import { radixAnchoredOverlayMotion } from "@/lib/overlay-motion";
 import { cn } from "@/lib/utils";
@@ -26,13 +33,7 @@ function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
-      className={cn(
-        "flex h-9 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none",
-        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        "data-placeholder:text-muted-foreground [&>span]:line-clamp-1",
-        className,
-      )}
+      className={cn(DESKTOP_SELECT_TRIGGER, className)}
       {...props}
     >
       {children}
@@ -58,9 +59,7 @@ function SelectContent({
         position={position}
         className={cn(
           radixAnchoredOverlayMotion("select"),
-          "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] overflow-hidden",
-          "rounded-xl border border-border/80 bg-popover p-1 text-sm text-popover-foreground shadow-lg",
-          "ring-1 ring-white/5 backdrop-blur-sm",
+          DESKTOP_SELECT_CONTENT,
           position === "popper" &&
             "min-w-[var(--radix-select-trigger-width)] data-side=bottom:translate-y-1 data-side=top:-translate-y-1",
           className,
@@ -72,6 +71,7 @@ function SelectContent({
         </SelectPrimitive.ScrollUpButton>
         <SelectPrimitive.Viewport
           className={cn(
+            DESKTOP_OVERLAY_LIST_LIST_PADDING,
             position === "popper" &&
               "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
           )}
@@ -93,7 +93,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.Label
       data-slot="select-label"
-      className={cn("px-2 py-1.5 text-xs text-muted-foreground", className)}
+      className={cn(DESKTOP_SELECT_LABEL, className)}
       {...props}
     />
   );
@@ -107,12 +107,7 @@ function SelectItem({
   return (
     <SelectPrimitive.Item
       data-slot="select-item"
-      className={cn(
-        "relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pr-8 pl-2 text-sm outline-none",
-        "focus:bg-accent focus:text-accent-foreground",
-        "data-disabled:pointer-events-none data-disabled:opacity-50",
-        className,
-      )}
+      className={cn(DESKTOP_SELECT_ITEM, className)}
       {...props}
     >
       <span className="absolute right-2 flex size-4 items-center justify-center">

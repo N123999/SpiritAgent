@@ -160,6 +160,25 @@ export const DESKTOP_OVERLAY_LIST_ITEM = "px-2 py-1.5";
 export const DESKTOP_OVERLAY_LIST_DROPDOWN_ITEM =
   "relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50";
 
+/** Select 下拉项：与 DropdownMenuItem 同密度 + 右侧 ItemIndicator 留白 */
+export const DESKTOP_SELECT_ITEM = cn(DESKTOP_OVERLAY_LIST_DROPDOWN_ITEM, "pr-8");
+
+/** Select 下拉面板：与 Dropdown 同壳；滚动由 Radix Viewport 承担，外层保持 overflow-hidden */
+export const DESKTOP_SELECT_CONTENT = cn(
+  DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
+  "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] overflow-hidden",
+);
+
+/** 独立边框 Select 触发器（设置页等） */
+export const DESKTOP_SELECT_TRIGGER = cn(
+  "flex h-8 min-h-8 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 py-1 text-sm shadow-xs outline-none",
+  "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
+  "disabled:cursor-not-allowed disabled:opacity-50",
+  "data-placeholder:text-muted-foreground [&>span]:line-clamp-1",
+);
+
+export const DESKTOP_SELECT_LABEL = DESKTOP_OVERLAY_LIST_GROUP_LABEL;
+
 /** 长列表底部单行操作（添加工作区等），密度对齐 LIST 而非 Dropdown 默认 SHORT */
 export const DESKTOP_OVERLAY_LIST_ACTION_ITEM =
   "px-2 py-1.5 text-xs text-popover-foreground";

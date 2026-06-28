@@ -16,6 +16,8 @@ import { changeLanguage, VALID_LANGUAGES } from "@/lib/i18n";
 import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
 import type { ThemePreference } from "@/lib/theme";
 
+const appearanceSelectTriggerClassName = "w-full sm:w-fit sm:max-w-full";
+
 export function AppearanceSettingsPanel({
   theme,
   onThemeChange,
@@ -45,7 +47,7 @@ export function AppearanceSettingsPanel({
         htmlFor="settings-theme-select"
       >
         <Select value={theme} onValueChange={(v) => onThemeChange(v as ThemePreference)}>
-          <SelectTrigger id="settings-theme-select" className="w-full sm:min-w-[12rem]">
+          <SelectTrigger id="settings-theme-select" className={appearanceSelectTriggerClassName}>
             <SelectValue placeholder={t("settings.selectTheme")} />
           </SelectTrigger>
           <SelectContent>
@@ -67,7 +69,7 @@ export function AppearanceSettingsPanel({
           id="settings-font-select"
           value={font}
           onValueChange={onFontChange}
-          triggerClassName="w-full sm:min-w-[12rem]"
+          triggerClassName={appearanceSelectTriggerClassName}
         />
       </SettingsRow>
 
@@ -83,7 +85,7 @@ export function AppearanceSettingsPanel({
             void onSavePatch({ uiLocale: value });
           }}
         >
-          <SelectTrigger id="settings-locale" className="w-full sm:min-w-[12rem]">
+          <SelectTrigger id="settings-locale" className={appearanceSelectTriggerClassName}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

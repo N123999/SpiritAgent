@@ -70,7 +70,7 @@
     "lucide-react": "^1.8.0",
     "monaco-editor": "^0.52.2",
     "node-pty": "^1.1.0",
-    "radix-ui": "^1.4.3",
+    "radix-ui": "^1.6.0",
     "react": "^19.2.5",
     "react-diff-view": "^3.3.3",
     "react-dom": "^19.2.5",

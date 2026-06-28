@@ -10,6 +10,7 @@ import {
 import {
   DESKTOP_OVERLAY_LIST_ITEM_PRIMARY,
   DESKTOP_OVERLAY_LIST_SUB_TRIGGER,
+  DESKTOP_SELECT_TRIGGER,
 } from "@/lib/desktop-chrome";
 import {
   DEFAULT_FONT_ID,
@@ -19,13 +20,8 @@ import {
 } from "@/lib/font";
 import { cn } from "@/lib/utils";
 
-/** 与 [`SelectTrigger`](./ui/select.tsx) 保持一致，便于设置页视觉对齐。 */
-const fontSelectTriggerClassName = cn(
-  "flex h-9 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none",
-  "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
-  "disabled:cursor-not-allowed disabled:opacity-50",
-  "[&>span]:line-clamp-1",
-);
+/** 与 [`SelectTrigger`](./ui/select.tsx) / `DESKTOP_SELECT_TRIGGER` 保持一致，便于设置页视觉对齐。 */
+const fontSelectTriggerClassName = DESKTOP_SELECT_TRIGGER;
 
 type BrowserFontData = {
   family?: string;
@@ -142,7 +138,7 @@ export function FontSelect({
   };
 
   return (
-    <div className="w-full space-y-1.5">
+    <div className="w-full space-y-1.5 sm:w-auto">
       <FilteredOverlayMenu
         open={open}
         onOpenChange={(nextOpen) => {
