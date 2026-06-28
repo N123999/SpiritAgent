@@ -361,6 +361,95 @@ function ExplorerRow({
   );
 }
 
+type ExplorerCreateRowProps = {
+  depth: number;
+  kind: CreatingEntryState["kind"];
+  value: string;
+  error: string;
+  onValueChange: (value: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+};
+
+function ExplorerCreateRow({
+  depth,
+  kind,
+  value,
+  error,
+  onValueChange,
+  onCommit,
+  onCancel,
+}: ExplorerCreateRowProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const skipBlurCommitRef = useRef(false);
+  const Icon = kind === "dir" ? ChevronRight : workspaceExplorerIcon("untitled.txt", "file");
+
+  useLayoutEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus({ preventScroll: true });
+      input.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      skipBlurCommitRef.current = true;
+      onCommit();
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onCancel();
+    }
+  };
+
+  const rowStyle = { paddingLeft: `${explorerRowPaddingLeft(depth)}px` };
+
+  return (
+    <li className="min-w-0">
+      <div
+        className={cn(
+          EXPLORER_ROW_TRIGGER_CLASS,
+          "bg-foreground/[0.08] dark:bg-foreground/12",
+        )}
+        style={rowStyle}
+        role="treeitem"
+      >
+        {EXPLORER_ROW_LEADING_SPACER}
+        <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+        <input
+          ref={inputRef}
+          type="text"
+          className="min-w-0 flex-1 rounded border border-border/60 bg-background px-1 py-0 text-xs outline-none focus:border-ring"
+          value={value}
+          aria-invalid={error ? true : undefined}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onValueChange(event.target.value)}
+          onBlur={() => {
+            if (skipBlurCommitRef.current) {
+              skipBlurCommitRef.current = false;
+              return;
+            }
+            onCommit();
+          }}
+          onKeyDown={handleKeyDown}
+        />
+      </div>
+      {error ? (
+        <p className="py-0.5 pl-1 text-destructive/90" style={{ paddingLeft: `${depth * 12 + 4}px` }}>
+          {error}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
 export function WorkspaceFilesPanel({
   workspaceRoot,
   plan,
@@ -406,6 +495,7 @@ export function WorkspaceFilesPanel({
   const [treeHasFocus, setTreeHasFocus] = useState(false);
   const [creatingEntry, setCreatingEntry] = useState<CreatingEntryState | null>(null);
   const renameCommitInFlightRef = useRef(false);
+  const createCommitInFlightRef = useRef(false);
   const treeFocusContainerRef = useRef<HTMLDivElement>(null);
   const prevGitRevisionRef = useRef<number | undefined>(undefined);
   const cacheRef = useRef(cache);
@@ -625,6 +715,46 @@ export function WorkspaceFilesPanel({
     setRenameError("");
   }, []);
 
+  const handleCreateCancel = useCallback(() => {
+    setCreatingEntry(null);
+  }, []);
+
+  const handleCreateCommit = useCallback(async () => {
+    if (createCommitInFlightRef.current) {
+      return;
+    }
+    if (!creatingEntry || !api) {
+      handleCreateCancel();
+      return;
+    }
+    const trimmed = creatingEntry.value.trim();
+    if (!trimmed) {
+      handleCreateCancel();
+      return;
+    }
+    createCommitInFlightRef.current = true;
+    try {
+      const result = await api.createWorkspaceEntry(
+        creatingEntry.parentRel,
+        trimmed,
+        creatingEntry.kind,
+      );
+      const parentRel = creatingEntry.parentRel;
+      const createdKind = creatingEntry.kind;
+      handleCreateCancel();
+      invalidateDir(parentRel);
+      if (createdKind === "file") {
+        onOpenFile?.(result.relativePath);
+      }
+    } catch (error) {
+      setCreatingEntry((current) =>
+        current ? { ...current, error: describeError(error) } : null,
+      );
+    } finally {
+      createCommitInFlightRef.current = false;
+    }
+  }, [api, creatingEntry, handleCreateCancel, invalidateDir, onOpenFile]);
+
   const handleRenameCommit = useCallback(async () => {
     if (renameCommitInFlightRef.current) {
       return;
@@ -830,9 +960,9 @@ export function WorkspaceFilesPanel({
         return;
       }
       clearFocusedDirectory();
-      setCreatingEntry(null);
+      handleCreateCancel();
     },
-    [clearFocusedDirectory],
+    [clearFocusedDirectory, handleCreateCancel],
   );
 
   const fileRowSelected = useCallback(
@@ -952,6 +1082,9 @@ export function WorkspaceFilesPanel({
     if (state.status === "error") {
       return <p className="py-1 pl-1 text-destructive/90">{state.message}</p>;
     }
+    const firstFileIndex = state.entries.findIndex((entry) => entry.kind === "file");
+    const creatingHere =
+      creatingEntry !== null && creatingEntry.parentRel === rel ? creatingEntry : null;
     return (
       <div
         onDragOver={(event) => {
@@ -983,9 +1116,44 @@ export function WorkspaceFilesPanel({
         }}
       >
         <ul className="list-none space-y-0.5 p-0">
-        {state.entries.map((entry) => {
+        {creatingEntry?.parentRel === rel && creatingEntry.kind === "dir" ? (
+          <ExplorerCreateRow
+            depth={depth}
+            kind="dir"
+            value={creatingEntry.value}
+            error={creatingEntry.error}
+            onValueChange={(value) => {
+              setCreatingEntry((current) =>
+                current ? { ...current, value, error: "" } : null,
+              );
+            }}
+            onCommit={() => void handleCreateCommit()}
+            onCancel={handleCreateCancel}
+          />
+        ) : null}
+        {state.entries.map((entry, index) => {
           const childRel = joinExplorerRel(rel, entry.name);
           const isDir = entry.kind === "dir";
+          const showFileCreateBefore =
+            creatingHere?.kind === "file"
+            && entry.kind === "file"
+            && index === firstFileIndex;
+          const fileCreateRow = showFileCreateBefore ? (
+            <ExplorerCreateRow
+              key="__creating-file__"
+              depth={depth}
+              kind="file"
+              value={creatingHere.value}
+              error={creatingHere.error}
+              onValueChange={(value) => {
+                setCreatingEntry((current) =>
+                  current ? { ...current, value, error: "" } : null,
+                );
+              }}
+              onCommit={() => void handleCreateCommit()}
+              onCancel={handleCreateCancel}
+            />
+          ) : null;
           if (isDir) {
             for (const prefetchRel of collectWorkspaceExplorerDirCollapsePrefetchRels(
               childRel,
@@ -1016,8 +1184,10 @@ export function WorkspaceFilesPanel({
           if (!isDir) {
             const selected = fileRowSelected(childRel);
             return (
-              <ExplorerRow
-                key={childRel}
+              <>
+                {fileCreateRow}
+                <ExplorerRow
+                  key={childRel}
                 target={target}
                 workspaceRoot={workspaceRoot}
                 depth={depth}
@@ -1043,12 +1213,15 @@ export function WorkspaceFilesPanel({
                 draggable
                 onDragStart={(event) => handleDragStart(event, target)}
               />
+              </>
             );
           }
 
           return (
-            <ExplorerRow
-              key={dirRel}
+            <>
+              {fileCreateRow}
+              <ExplorerRow
+                key={dirRel}
               target={target}
               workspaceRoot={workspaceRoot}
               depth={depth}
@@ -1091,8 +1264,24 @@ export function WorkspaceFilesPanel({
             >
               {open ? <div className="min-w-0">{renderDirBody(dirRel, depth + 1)}</div> : null}
             </ExplorerRow>
+            </>
           );
         })}
+        {creatingHere?.kind === "file" && firstFileIndex === -1 ? (
+          <ExplorerCreateRow
+            depth={depth}
+            kind="file"
+            value={creatingHere.value}
+            error={creatingHere.error}
+            onValueChange={(value) => {
+              setCreatingEntry((current) =>
+                current ? { ...current, value, error: "" } : null,
+              );
+            }}
+            onCommit={() => void handleCreateCommit()}
+            onCancel={handleCreateCancel}
+          />
+        ) : null}
         </ul>
       </div>
     );
