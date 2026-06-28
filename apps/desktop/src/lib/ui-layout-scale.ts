@@ -126,6 +126,14 @@ export function viewportRectToScaleRootLocal(rect: ViewportBox): ViewportBox {
   };
 }
 
+/** 同一缩放根内 getBoundingClientRect 差值 / 边长 → 本地 CSS 长度（shell 分割线定位用）。 */
+export function viewportLengthToScaleRootLocal(length: number): number {
+  if (!isUiLayoutScaleTransformActive()) {
+    return length;
+  }
+  return length / getCurrentUiLayoutScale();
+}
+
 function syncWin32ChromeClass(root: HTMLElement): void {
   root.classList.toggle("spirit-desktop-win32", shouldApplyWin32TitleBarCounterZoom());
 }

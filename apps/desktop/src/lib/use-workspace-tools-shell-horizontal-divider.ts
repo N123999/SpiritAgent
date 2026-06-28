@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import {
   getWorkspaceToolsShellDividerLeftPx,
   getWorkspaceToolsShellSplit,
+  shellLocalLengthFromViewportDelta,
 } from "@/lib/workspace-tools-panel-edge";
 
 type ShellHorizontalDividerEdge = "top" | "bottom";
@@ -61,8 +62,8 @@ export function useWorkspaceToolsShellHorizontalDivider(
       const leftPx = getWorkspaceToolsShellDividerLeftPx(shellSplit);
       const topPx =
         edge === "bottom"
-          ? anchorRect.bottom - shellRect.top - 1
-          : anchorRect.top - shellRect.top;
+          ? shellLocalLengthFromViewportDelta(anchorRect.bottom - shellRect.top - 1)
+          : shellLocalLengthFromViewportDelta(anchorRect.top - shellRect.top);
 
       shellDivider!.style.display = "block";
       shellDivider!.style.left = `${leftPx}px`;

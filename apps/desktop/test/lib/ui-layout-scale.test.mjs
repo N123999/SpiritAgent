@@ -103,3 +103,16 @@ test("viewportRectToScaleRootLocal converts viewport box under layout scale", ()
     },
   );
 });
+
+test("viewportLengthToScaleRootLocal converts viewport delta under layout scale", () => {
+  function viewportLengthToScaleRootLocal(length, scale, isScaled) {
+    if (!isScaled) {
+      return length;
+    }
+    return length / scale;
+  }
+
+  assert.ok(Math.abs(viewportLengthToScaleRootLocal(110, 1.1, true) - 100) < 1e-9);
+  assert.ok(Math.abs(viewportLengthToScaleRootLocal(90, 0.9, true) - 100) < 1e-9);
+  assert.equal(viewportLengthToScaleRootLocal(100, 1.1, false), 100);
+});

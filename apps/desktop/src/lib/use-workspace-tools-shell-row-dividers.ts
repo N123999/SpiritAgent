@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import {
   getWorkspaceToolsShellDividerLeftPx,
   getWorkspaceToolsShellSplit,
+  shellLocalLengthFromViewportDelta,
   WORKSPACE_TOOLS_SHELL_LIST_DIVIDER_HOST_ATTR,
 } from "@/lib/workspace-tools-panel-edge";
 
@@ -68,11 +69,13 @@ export function useWorkspaceToolsShellRowDividers(
           }
           return;
         }
-        leftPx = Math.max(
-          0,
-          (dividerAnchorEdge === "right"
-            ? anchor.getBoundingClientRect().right
-            : anchor.getBoundingClientRect().left) - shellRect.left,
+        leftPx = shellLocalLengthFromViewportDelta(
+          Math.max(
+            0,
+            (dividerAnchorEdge === "right"
+              ? anchor.getBoundingClientRect().right
+              : anchor.getBoundingClientRect().left) - shellRect.left,
+          ),
         );
       } else {
         leftPx = getWorkspaceToolsShellDividerLeftPx(shellSplit);
@@ -83,8 +86,8 @@ export function useWorkspaceToolsShellRowDividers(
       clipHost!.style.display = "block";
       clipHost!.style.left = "0";
       clipHost!.style.right = "0";
-      clipHost!.style.top = `${clipRect.top - shellRect.top}px`;
-      clipHost!.style.height = `${clipRect.height}px`;
+      clipHost!.style.top = `${shellLocalLengthFromViewportDelta(clipRect.top - shellRect.top)}px`;
+      clipHost!.style.height = `${shellLocalLengthFromViewportDelta(clipRect.height)}px`;
 
       const rows = Array.from(root.children).filter(
         (child): child is HTMLElement => child instanceof HTMLElement,
@@ -107,7 +110,7 @@ export function useWorkspaceToolsShellRowDividers(
         divider.style.display = "block";
         divider.style.left = `${leftPx}px`;
         divider.style.right = "0";
-        divider.style.top = `${rowRect.bottom - clipRect.top - 1}px`;
+        divider.style.top = `${shellLocalLengthFromViewportDelta(rowRect.bottom - clipRect.top - 1)}px`;
       }
 
       for (let index = dividerCount; index < dividers.length; index += 1) {
