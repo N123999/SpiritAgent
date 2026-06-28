@@ -29,6 +29,12 @@ function shellHorizontalDividerSelector(dividerAttr: string, dividerKey?: string
   return `[${dividerAttr}="${CSS.escape(dividerKey)}"]`;
 }
 
+function shellHorizontalDividerOwnerKey(dividerAttr: string, dividerKey?: string): string {
+  return dividerKey === undefined ? dividerAttr : `${dividerAttr}\0${dividerKey}`;
+}
+
+const shellHorizontalDividerRefCounts = new Map<string, number>();
+
 export function useWorkspaceToolsShellHorizontalDivider(
   anchorRef: RefObject<HTMLElement | null>,
   {
@@ -68,10 +74,20 @@ export function useWorkspaceToolsShellHorizontalDivider(
       shellSplit.appendChild(shellDivider);
     }
 
+    const ownerKey = shellHorizontalDividerOwnerKey(dividerAttr, dividerKey);
+    shellHorizontalDividerRefCounts.set(
+      ownerKey,
+      (shellHorizontalDividerRefCounts.get(ownerKey) ?? 0) + 1,
+    );
+
     const sync = () => {
       const anchor = anchorRef.current;
       if (!anchor) {
         shellDivider!.style.display = "none";
+        return;
+      }
+
+      if (anchor.getClientRects().length === 0) {
         return;
       }
 
@@ -132,7 +148,13 @@ export function useWorkspaceToolsShellHorizontalDivider(
       resizeObserver.disconnect();
       window.removeEventListener("resize", onWindowResize);
       scrollViewport?.removeEventListener("scroll", onScroll);
-      shellDivider!.style.display = "none";
+      const ownerCount = (shellHorizontalDividerRefCounts.get(ownerKey) ?? 1) - 1;
+      if (ownerCount <= 0) {
+        shellHorizontalDividerRefCounts.delete(ownerKey);
+        shellDivider!.style.display = "none";
+      } else {
+        shellHorizontalDividerRefCounts.set(ownerKey, ownerCount);
+      }
     };
   }, [anchorRef, dividerAnchorEdge, dividerAnchorRef, dividerAttr, dividerKey, edge, enabled]);
 
