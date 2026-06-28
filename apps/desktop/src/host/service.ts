@@ -358,6 +358,7 @@ import {
   resolveApiKeyForConfigModel,
   createDesktopExtensionStateStore,
   saveConfig,
+  removeModelApiKey,
   spiritAgentDataDir,
   type DesktopConfigFile,
   type DesktopWebHostConfigFile,
@@ -1109,13 +1110,21 @@ class DesktopHostService {
             return;
           }
           const summary = await refreshConfiguredModelCatalogsOnStartup(state.config);
-          if (summary.merged > 0 || summary.synced > 0) {
+          if (summary.merged > 0 || summary.synced > 0 || summary.pruned > 0) {
             await saveConfig(state.config);
+            for (const name of summary.prunedModelNames) {
+              await removeModelApiKey(name);
+            }
             if (this.runtime?.isBusy() !== true) {
               await this.refreshRuntime();
             }
           }
-          if (summary.refreshed > 0 || summary.merged > 0 || summary.synced > 0) {
+          if (
+            summary.refreshed > 0
+            || summary.merged > 0
+            || summary.synced > 0
+            || summary.pruned > 0
+          ) {
             this.emitLiveSnapshotUpdate();
           }
         });

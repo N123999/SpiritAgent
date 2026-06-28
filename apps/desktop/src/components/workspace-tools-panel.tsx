@@ -21,6 +21,7 @@ import {
   Terminal,
   X,
 } from "lucide-react";
+import { NewToolTabShortcutKbd } from "@/components/layout/desktop-shortcut-kbds";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -64,7 +65,11 @@ import {
 } from "@/lib/layout-prefs";
 import type { PullRequestChipStatus } from "@/lib/pr-diff-attachment";
 import { cn } from "@/lib/utils";
-import { useWorkspaceToolsChromeOpen } from "@/contexts/workspace-tools-chrome-context";
+import {
+  registerWorkspaceNewToolTabShortcut,
+  unregisterWorkspaceNewToolTabShortcut,
+} from "@/lib/workspace-new-tool-tab-shortcut-bridge";
+import { useWorkspaceToolsChromeActions, useWorkspaceToolsChromeOpen } from "@/contexts/workspace-tools-chrome-context";
 import { useGitHubAuthConnected } from "@/hooks/use-github-auth-connected";
 import type {
   EditorFileTarget,
@@ -508,6 +513,10 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   isResizing,
 }: WorkspaceToolsDockContentProps) {
   const { t } = useTranslation();
+  const { openTools } = useWorkspaceToolsChromeActions();
+  const workspaceToolsOpen = useWorkspaceToolsChromeOpen();
+  const workspaceToolsOpenRef = useRef(workspaceToolsOpen);
+  workspaceToolsOpenRef.current = workspaceToolsOpen;
   const gitHubAuthConnected = useGitHubAuthConnected(getGitHubAuthStatus, prTabEnabled);
   const prMenuBlocked =
     prTabEnabled && (gitHubAuthConnected === null || gitHubAuthConnected === false);
@@ -517,6 +526,20 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
   );
   const [pendingCloseTabId, setPendingCloseTabId] = useState<string | null>(null);
   const [addToolTabMenuOpen, setAddToolTabMenuOpen] = useState(false);
+
+  useEffect(() => {
+    registerWorkspaceNewToolTabShortcut({
+      open() {
+        if (!workspaceToolsOpenRef.current) {
+          openTools();
+        }
+        setAddToolTabMenuOpen(true);
+      },
+    });
+    return () => {
+      unregisterWorkspaceNewToolTabShortcut();
+    };
+  }, [openTools]);
 
   const activeTab = useMemo(
     () => tabs.find((tab) => tab.id === activeTabId),
@@ -746,7 +769,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               })}
               </div>
             </ScrollArea>
-            <DropdownMenu modal onOpenChange={setAddToolTabMenuOpen}>
+            <DropdownMenu modal open={addToolTabMenuOpen} onOpenChange={setAddToolTabMenuOpen}>
               <Tooltip delayDuration={300} disableHoverableContent>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
@@ -754,6 +777,7 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                       type="button"
                       variant="ghost"
                       size="icon"
+                      data-workspace-new-tool-tab=""
                       aria-label={t('workspace.newToolTab')}
                       className={cn(
                         'mb-1 size-7 shrink-0 rounded-full p-0 text-muted-foreground shadow-none hover:bg-muted/50 hover:text-foreground',
@@ -766,7 +790,8 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" sideOffset={4}>
-                  {t('common.new')}
+                  {t('common.new')}{" "}
+                  <NewToolTabShortcutKbd />
                 </TooltipContent>
               </Tooltip>
               <DropdownMenuContent

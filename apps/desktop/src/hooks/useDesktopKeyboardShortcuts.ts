@@ -12,9 +12,11 @@ import {
 import {
   resolveModCommaSettingsShortcutAction,
   resolveModPShortcutAction,
+  resolveModTNewToolTabShortcutAction,
   shouldTriggerConversationAbortShortcut,
   shouldTriggerSettingsEscapeShortcut,
 } from "@/lib/desktop-keyboard-shortcut-eligibility";
+import { triggerWorkspaceNewToolTabShortcut } from "@/lib/workspace-new-tool-tab-shortcut-bridge";
 import { resolveUiLayoutZoomShortcutAction } from "@/lib/ui-layout-scale";
 import type { AppSurface } from "@/hooks/useAppSurfaceNavigation";
 
@@ -109,6 +111,30 @@ export function useDesktopKeyboardShortcuts({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeSurfaceRef, setWorkspaceToolsOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = resolveModTNewToolTabShortcutAction(
+        {
+          defaultPrevented: event.defaultPrevented,
+          key: event.key,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+          modPressed: isModShortcutPressed(event),
+        },
+        { activeSurface: activeSurfaceRef.current },
+      );
+      if (!action) {
+        return;
+      }
+      if (!triggerWorkspaceNewToolTabShortcut()) {
+        return;
+      }
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeSurfaceRef]);
 
   // Physical Ctrl+C — abort the in-flight turn; composer may still have draft text.
   useEffect(() => {

@@ -8,6 +8,7 @@ import type {
   DesktopProviderConnectSiteId,
   DesktopTransportKind,
   ModelProfileSnapshot,
+  PreviewModelCatalogEntry,
 } from '../types.js';
 import {
   providerSupportsModelCatalogListing,
@@ -26,9 +27,12 @@ import {
   hasGoogleVertexRuntimeCredentials,
   modelExistsInProviderScope,
   modelProviderKeyScope,
+  applyModelsRemovalToConfig,
 } from './provider-api-key.js';
 import {
   DEFAULT_API_BASE,
+  normalizeModelCapabilities,
+  normalizeSupportedReasoningEfforts,
   readBedrockProviderCredentialsFromKeyring,
   readGoogleVertexProviderCredentialsFromKeyring,
   resolveApiKeyForConfigModel,
@@ -259,8 +263,83 @@ function modelMatchesCatalogRefreshScope(
   return normalizeOpenAiApiBase(modelBase) === normalizeOpenAiApiBase(apiBase);
 }
 
-/** 将目录中新标注的 image/video 能力补写到仅存 chat 的已入库模型（如 MiniMax-M3）。 */
-export function syncExistingModelCapabilitiesFromCatalog(
+function normalizedCapabilitiesEqual(
+  left: readonly DesktopModelCapability[] | undefined,
+  right: readonly DesktopModelCapability[] | undefined,
+): boolean {
+  const normalizedLeft = normalizeModelCapabilities(left);
+  const normalizedRight = normalizeModelCapabilities(right);
+  if (normalizedLeft === undefined && normalizedRight === undefined) {
+    return true;
+  }
+  if (!normalizedLeft || !normalizedRight || normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+  return normalizedLeft.every((capability, index) => capability === normalizedRight[index]);
+}
+
+function normalizedReasoningEffortsEqual(
+  left: readonly DesktopModelReasoningEffort[] | undefined,
+  right: readonly DesktopModelReasoningEffort[] | undefined,
+): boolean {
+  const normalizedLeft = normalizeSupportedReasoningEfforts(left);
+  const normalizedRight = normalizeSupportedReasoningEfforts(right);
+  if (normalizedLeft === undefined && normalizedRight === undefined) {
+    return true;
+  }
+  if (!normalizedLeft || !normalizedRight || normalizedLeft.length !== normalizedRight.length) {
+    return false;
+  }
+  return normalizedLeft.every((effort, index) => effort === normalizedRight[index]);
+}
+
+function parseCatalogContextLength(value: number | undefined): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.trunc(value);
+}
+
+/** Apply catalog-derived profile fields; returns whether the stored model changed. */
+export function applyCatalogEntryToStoredModel(
+  model: ModelProfileSnapshot,
+  catalogEntry: PreviewModelCatalogEntry,
+): boolean {
+  let changed = false;
+
+  if (catalogEntry.capabilities?.length) {
+    const nextCapabilities = normalizeModelCapabilities(catalogEntry.capabilities);
+    if (nextCapabilities && !normalizedCapabilitiesEqual(model.capabilities, nextCapabilities)) {
+      model.capabilities = nextCapabilities;
+      changed = true;
+    }
+  }
+
+  if (catalogEntry.supportedReasoningEfforts !== undefined) {
+    const nextReasoningEfforts = normalizeSupportedReasoningEfforts(catalogEntry.supportedReasoningEfforts);
+    if (!normalizedReasoningEffortsEqual(model.supportedReasoningEfforts, nextReasoningEfforts)) {
+      if (nextReasoningEfforts && nextReasoningEfforts.length > 0) {
+        model.supportedReasoningEfforts = nextReasoningEfforts;
+      } else {
+        delete model.supportedReasoningEfforts;
+      }
+      changed = true;
+    }
+  }
+
+  if (model.contextLength === undefined) {
+    const nextContextLength = parseCatalogContextLength(catalogEntry.contextLength);
+    if (nextContextLength !== undefined) {
+      model.contextLength = nextContextLength;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/** 将目录 catalog 条目回写到同作用域内已入库模型（capabilities / supportedReasoningEfforts 等）。 */
+export function syncExistingModelsFromCatalog(
   config: DesktopConfigFile,
   profile: ModelProfileSnapshot,
   result: LoadedPreviewModelsResult,
@@ -287,31 +366,68 @@ export function syncExistingModelCapabilitiesFromCatalog(
       continue;
     }
     const catalogEntry = catalogEntries.get(model.name);
-    if (!catalogEntry?.capabilities?.length) {
+    if (!catalogEntry) {
       continue;
     }
-    const stored = model.capabilities;
-    const onlyChat = stored?.length === 1 && stored[0] === 'chat';
-    const catalogHasMultimodalInput = catalogEntry.capabilities.some(
-      (capability) => capability === 'image' || capability === 'video',
-    );
-    if (!onlyChat || !catalogHasMultimodalInput) {
-      continue;
+    if (applyCatalogEntryToStoredModel(model, catalogEntry)) {
+      updated += 1;
     }
-    model.capabilities = catalogEntry.capabilities;
-    updated += 1;
   }
   return updated;
 }
 
+/** 移除同作用域内已不在上游目录中的已入库模型。 */
+export function removeDelistedModelsFromCatalog(
+  config: DesktopConfigFile,
+  profile: ModelProfileSnapshot,
+  result: LoadedPreviewModelsResult,
+): readonly string[] {
+  const provider = profile.provider;
+  if (!provider) {
+    return [];
+  }
+  const catalogIds = new Set(
+    result.modelIds.map((id) => id.trim()).filter((id) => id.length > 0),
+  );
+  if (catalogIds.size === 0) {
+    return [];
+  }
+
+  const transportKind = resolveDesktopTransportKind(profile);
+  const apiBase = profile.apiBase.trim() || DEFAULT_API_BASE;
+  const targetsToRemove: Array<{ name: string; provider?: typeof provider }> = [];
+  for (const model of config.models) {
+    if (!modelMatchesCatalogRefreshScope(model, provider, transportKind, apiBase)) {
+      continue;
+    }
+    if (!catalogIds.has(model.name)) {
+      targetsToRemove.push({ name: model.name, provider: model.provider });
+    }
+  }
+  if (targetsToRemove.length === 0) {
+    return [];
+  }
+  applyModelsRemovalToConfig(config, targetsToRemove);
+  return targetsToRemove.map((target) => target.name);
+}
+
 export async function refreshConfiguredModelCatalogsOnStartup(
   config: DesktopConfigFile,
-): Promise<{ attempted: number; refreshed: number; skipped: number; merged: number; synced: number }> {
+): Promise<{
+  attempted: number;
+  refreshed: number;
+  skipped: number;
+  merged: number;
+  synced: number;
+  pruned: number;
+  prunedModelNames: readonly string[];
+}> {
   const targets = collectModelCatalogRefreshTargets(config.models);
   let refreshed = 0;
   let skipped = 0;
   let merged = 0;
   let synced = 0;
+  const prunedModelNames: string[] = [];
 
   for (const profile of targets) {
     try {
@@ -319,7 +435,8 @@ export async function refreshConfiguredModelCatalogsOnStartup(
       if (result) {
         refreshed += 1;
         merged += mergeNewCatalogModelsIntoConfig(config, profile, result);
-        synced += syncExistingModelCapabilitiesFromCatalog(config, profile, result);
+        prunedModelNames.push(...removeDelistedModelsFromCatalog(config, profile, result));
+        synced += syncExistingModelsFromCatalog(config, profile, result);
       } else {
         skipped += 1;
       }
@@ -328,5 +445,13 @@ export async function refreshConfiguredModelCatalogsOnStartup(
     }
   }
 
-  return { attempted: targets.length, refreshed, skipped, merged, synced };
+  return {
+    attempted: targets.length,
+    refreshed,
+    skipped,
+    merged,
+    synced,
+    pruned: prunedModelNames.length,
+    prunedModelNames,
+  };
 }

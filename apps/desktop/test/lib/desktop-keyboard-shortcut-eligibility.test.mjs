@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   resolveModCommaSettingsShortcutAction,
   resolveModPShortcutAction,
+  resolveModTNewToolTabShortcutAction,
   shouldTriggerConversationAbortShortcut,
   shouldTriggerSettingsEscapeShortcut,
 } from '../../src/lib/desktop-keyboard-shortcut-eligibility.ts';
@@ -281,4 +282,65 @@ test('shouldTriggerSettingsEscapeShortcut rejects when a Radix dialog is open', 
   } finally {
     globalThis.document = previousDocument;
   }
+});
+
+test('resolveModTNewToolTabShortcutAction returns open-new-tool-tab on conversation surface', () => {
+  assert.equal(
+    resolveModTNewToolTabShortcutAction(
+      {
+        defaultPrevented: false,
+        key: 't',
+        shiftKey: false,
+        altKey: false,
+        modPressed: true,
+      },
+      { activeSurface: 'conversation' },
+    ),
+    'open-new-tool-tab',
+  );
+});
+
+test('resolveModTNewToolTabShortcutAction returns null outside conversation surface', () => {
+  assert.equal(
+    resolveModTNewToolTabShortcutAction(
+      {
+        defaultPrevented: false,
+        key: 't',
+        shiftKey: false,
+        altKey: false,
+        modPressed: true,
+      },
+      { activeSurface: 'settings' },
+    ),
+    null,
+  );
+});
+
+test('resolveModTNewToolTabShortcutAction ignores shift and alt modifiers', () => {
+  assert.equal(
+    resolveModTNewToolTabShortcutAction(
+      {
+        defaultPrevented: false,
+        key: 't',
+        shiftKey: true,
+        altKey: false,
+        modPressed: true,
+      },
+      { activeSurface: 'conversation' },
+    ),
+    null,
+  );
+  assert.equal(
+    resolveModTNewToolTabShortcutAction(
+      {
+        defaultPrevented: false,
+        key: 't',
+        shiftKey: false,
+        altKey: true,
+        modPressed: true,
+      },
+      { activeSurface: 'conversation' },
+    ),
+    null,
+  );
 });

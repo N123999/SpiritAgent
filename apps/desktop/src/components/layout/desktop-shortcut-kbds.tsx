@@ -42,6 +42,24 @@ export function NewSessionShortcutKbd() {
   );
 }
 
+export function NewToolTabShortcutKbd() {
+  const keys = modLetterShortcutKbdKeys("T");
+
+  return (
+    <KbdGroup>
+      {isMacDesktopPlatform() ? (
+        keys.map((key) => <Kbd key={key}>{key}</Kbd>)
+      ) : (
+        <>
+          <Kbd>Ctrl</Kbd>
+          <span>+</span>
+          <Kbd>T</Kbd>
+        </>
+      )}
+    </KbdGroup>
+  );
+}
+
 export function WorkspaceToolsShortcutKbd() {
   const keys = modAltLetterShortcutKbdKeys("B");
 

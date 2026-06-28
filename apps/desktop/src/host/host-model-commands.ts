@@ -22,12 +22,14 @@ import type {
   DesktopProviderConnectSiteId,
   DesktopSnapshot,
   DesktopTransportKind,
+  ModelProfileSnapshot,
   PreviewModelsRequest,
   PreviewModelsResponse,
   RemoveModelRequest,
   RemoveProviderModelsRequest,
   UpdateConfigRequest,
 } from '../types.js';
+import { syncExistingModelsFromCatalog, removeDelistedModelsFromCatalog } from './model-catalog-startup-refresh.js';
 import {
   defaultApiBaseForTransport,
   findCatalogEntryForModel,
@@ -48,7 +50,11 @@ import {
 import { providerConnectSiteRequiresWorkspaceId } from './provider-presets.js';
 import { bedrockMantleApiBaseFromRegion, isBedrockMantleOpenAiModel } from '@spirit-agent/host-internal/bedrock-mantle';
 import { modelSupportsChat } from './lightweight-chat-model.js';
-import { modelExistsInProviderScope, resolveActiveModelAfterRemoval } from './provider-api-key.js';
+import {
+  modelExistsInProviderScope,
+  applyModelsRemovalToConfig,
+  type ModelRemovalTarget,
+} from './provider-api-key.js';
 import {
   loadHostMetadata,
   modelProviderKeyScope,
@@ -664,7 +670,41 @@ export async function addProviderModelsCommand(
       toAdd.push(profile);
     }
 
-    if (toAdd.length === 0) {
+    const scopeProfile: ModelProfileSnapshot = {
+      name: uniqueIds[0] ?? '',
+      apiBase,
+      provider,
+      reasoningEffort: defaultModelReasoningEffort({
+        ...(reasoningProviderForTransport(provider, transportKind)
+          ? { provider: reasoningProviderForTransport(provider, transportKind) }
+          : {}),
+        model: uniqueIds[0] ?? '',
+      }),
+      ...(transportKind === 'anthropic' || transportKind === 'open-responses' || transportKind === 'bedrock'
+        ? { transportKind }
+        : {}),
+      ...(provider === 'amazon-bedrock' && awsRegion ? { awsRegion } : {}),
+      ...(providerSite ? { providerSite } : {}),
+      ...(provider === 'alibaba' && alibabaWorkspaceId ? { alibabaWorkspaceId } : {}),
+      ...(provider === 'google-vertex-ai' && vertexProject ? { vertexProject } : {}),
+      ...(provider === 'google-vertex-ai' && vertexLocation ? { vertexLocation } : {}),
+    };
+    const catalogRefreshResult = {
+      modelIds: uniqueIds,
+      fromCache: false,
+      modelCatalog: request.modelCatalog,
+    };
+    const configPreview = structuredClone(state.config);
+    const prunedPreview = removeDelistedModelsFromCatalog(
+      configPreview,
+      scopeProfile,
+      catalogRefreshResult,
+    );
+    const syncedPreview = request.modelCatalog?.length
+      ? syncExistingModelsFromCatalog(configPreview, scopeProfile, catalogRefreshResult)
+      : 0;
+
+    if (toAdd.length === 0 && syncedPreview === 0 && prunedPreview.length === 0) {
       throw new Error(i18n.t('error.modelsAlreadyExist'));
     }
 
@@ -696,6 +736,11 @@ export async function addProviderModelsCommand(
       throw err;
     }
 
+    const pruned = removeDelistedModelsFromCatalog(state.config, scopeProfile, catalogRefreshResult);
+    if (request.modelCatalog?.length) {
+      syncExistingModelsFromCatalog(state.config, scopeProfile, catalogRefreshResult);
+    }
+
     const firstNew = toAdd[0]?.name;
     for (const profile of toAdd) {
       state.config.models.push(profile);
@@ -713,6 +758,9 @@ export async function addProviderModelsCommand(
       if (videoGenerationProfile) {
         state.config.videoGenerationModel = videoGenerationProfile.name;
       }
+    }
+    for (const name of pruned) {
+      await removeModelApiKey(name);
     }
     await saveConfig(state.config);
     await ctx.refreshRuntime();
@@ -915,13 +963,14 @@ export async function removeModelCommand(
     if (!name) {
       throw new Error(i18n.t('error.modelNameRequired'));
     }
-    const before = state.config.models.length;
-    state.config.models = state.config.models.filter((model) => model.name !== name);
-    if (state.config.models.length === before) {
+    const targetsToRemove: ModelRemovalTarget[] = state.config.models
+      .filter((model) => model.name === name)
+      .map((model) => ({ name: model.name, provider: model.provider }));
+    if (targetsToRemove.length === 0) {
       throw new Error(i18n.t('error.modelNotFound', { name }));
     }
 
-    return finalizeModelRemoval(ctx, state, [name], { removeLegacyModelKeys: true });
+    return finalizeModelRemoval(ctx, state, targetsToRemove, { removeLegacyModelKeys: true });
   });
 }
 
@@ -938,47 +987,36 @@ export async function removeProviderModelsCommand(
       throw new Error(i18n.t('error.providerDeleteOnly'));
     }
 
-    const { matched: targets, unmatched } = partitionModelsByProvider(state.config.models, provider);
+    const { matched: targets } = partitionModelsByProvider(state.config.models, provider);
     if (targets.length === 0) {
       throw new Error(i18n.t('error.noModelsInProvider'));
     }
 
-    const namesToRemove = targets.map((model) => model.name);
-    state.config.models = unmatched;
-    return finalizeModelRemoval(ctx, state, namesToRemove, { removeProviderKey: provider });
+    const targetsToRemove: ModelRemovalTarget[] = targets.map((model) => ({
+      name: model.name,
+      provider: model.provider,
+    }));
+    return finalizeModelRemoval(ctx, state, targetsToRemove, { removeProviderKey: provider });
   });
 }
 
 async function finalizeModelRemoval(
   ctx: HostModelCommandContext,
   state: HostModelState,
-  namesToRemove: readonly string[],
+  targetsToRemove: readonly ModelRemovalTarget[],
   options?: {
     removeProviderKey?: DesktopModelProvider;
     removeLegacyModelKeys?: boolean;
   },
 ): Promise<DesktopSnapshot> {
-  state.config.activeModel = resolveActiveModelAfterRemoval(
-    state.config.activeModel,
-    state.config.models,
-    namesToRemove,
-  );
-  if (state.config.imageGenerationModel && namesToRemove.includes(state.config.imageGenerationModel)) {
-    delete state.config.imageGenerationModel;
-  }
-  if (state.config.videoGenerationModel && namesToRemove.includes(state.config.videoGenerationModel)) {
-    delete state.config.videoGenerationModel;
-  }
-  if (state.config.lightweightChatModel && namesToRemove.includes(state.config.lightweightChatModel)) {
-    delete state.config.lightweightChatModel;
-  }
+  applyModelsRemovalToConfig(state.config, targetsToRemove);
   await saveConfig(state.config);
   if (options?.removeProviderKey) {
     await removeProviderApiKey(options.removeProviderKey);
   }
   if (options?.removeLegacyModelKeys) {
-    for (const name of namesToRemove) {
-      await removeModelApiKey(name);
+    for (const target of targetsToRemove) {
+      await removeModelApiKey(target.name);
     }
   }
   await ctx.refreshModelKeyPresence();

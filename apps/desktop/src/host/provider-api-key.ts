@@ -107,6 +107,65 @@ export function resolveActiveModelAfterRemoval(
   return remainingModels[0]?.name ?? '';
 }
 
+type ModelRemovalConfigTarget = {
+  models: Array<{ name: string; provider?: DesktopModelProvider }>;
+  activeModel: string;
+  imageGenerationModel?: string;
+  videoGenerationModel?: string;
+  lightweightChatModel?: string;
+};
+
+export type ModelRemovalTarget = {
+  name: string;
+  provider?: DesktopModelProvider;
+};
+
+function modelMatchesRemovalTarget(
+  model: { name: string; provider?: DesktopModelProvider },
+  target: ModelRemovalTarget,
+): boolean {
+  if (model.name !== target.name) {
+    return false;
+  }
+  if (target.provider === undefined) {
+    return true;
+  }
+  return modelProviderKeyScope(model.provider) === modelProviderKeyScope(target.provider);
+}
+
+function clearDefaultSlotIfNoRemainingModel(
+  config: ModelRemovalConfigTarget,
+  slot: 'imageGenerationModel' | 'videoGenerationModel' | 'lightweightChatModel',
+): void {
+  const value = config[slot];
+  if (value && !config.models.some((model) => model.name === value)) {
+    delete config[slot];
+  }
+}
+
+/** Remove models from config and clear dependent default slots (same semantics as settings delete). */
+export function applyModelsRemovalToConfig(
+  config: ModelRemovalConfigTarget,
+  targetsToRemove: readonly ModelRemovalTarget[],
+): number {
+  if (targetsToRemove.length === 0) {
+    return 0;
+  }
+  const before = config.models.length;
+  config.models = config.models.filter(
+    (model) => !targetsToRemove.some((target) => modelMatchesRemovalTarget(model, target)),
+  );
+  const removed = before - config.models.length;
+
+  if (!config.models.some((model) => model.name === config.activeModel)) {
+    config.activeModel = config.models[0]?.name ?? '';
+  }
+  clearDefaultSlotIfNoRemainingModel(config, 'imageGenerationModel');
+  clearDefaultSlotIfNoRemainingModel(config, 'videoGenerationModel');
+  clearDefaultSlotIfNoRemainingModel(config, 'lightweightChatModel');
+  return removed;
+}
+
 /** Model ids from `modelIds` that are not already present under the target provider scope. */
 export function filterNewProviderModelIds(
   existingModels: readonly ExistingModelForProviderAdd[],

@@ -111,6 +111,25 @@ export function resolveModCommaSettingsShortcutAction(
   return "open-settings";
 }
 
+/** Mod+T opens the workspace new tool tab menu on the conversation surface. */
+export function resolveModTNewToolTabShortcutAction(
+  event: Pick<KeyboardEventLike, "defaultPrevented" | "key" | "shiftKey" | "altKey"> & {
+    modPressed: boolean;
+  },
+  context: SettingsShortcutSurfaceContext,
+): "open-new-tool-tab" | null {
+  if (event.defaultPrevented || !event.modPressed || event.shiftKey || event.altKey) {
+    return null;
+  }
+  if (event.key.toLowerCase() !== "t") {
+    return null;
+  }
+  if (context.activeSurface !== "conversation") {
+    return null;
+  }
+  return "open-new-tool-tab";
+}
+
 /** Escape returns from settings when no modal is open and focus is not in an editable field. */
 export function shouldTriggerSettingsEscapeShortcut(
   event: KeyboardEventLike,

@@ -3,11 +3,21 @@ import test from 'node:test';
 
 import { providerSupportsModelCatalogListing } from '../../dist-electron/src/host/model-catalog-metadata.js';
 import {
+  applyCatalogEntryToStoredModel,
   collectModelCatalogRefreshTargets,
   mergeNewCatalogModelsIntoConfig,
   modelCatalogScopeKey,
-  syncExistingModelCapabilitiesFromCatalog,
+  removeDelistedModelsFromCatalog,
+  syncExistingModelsFromCatalog,
 } from '../../dist-electron/src/host/model-catalog-startup-refresh.js';
+
+const gatewayScopeProfile = {
+  name: 'anthropic/claude-sonnet-4',
+  apiBase: 'https://ai-gateway.vercel.sh/v1',
+  provider: 'vercel-ai-gateway',
+  transportKind: 'open-responses',
+  reasoningEffort: 'default',
+};
 
 test('providerSupportsModelCatalogListing includes OpenAI and excludes Azure', () => {
   assert.equal(
@@ -99,7 +109,7 @@ test('mergeNewCatalogModelsIntoConfig appends only new provider-scoped models', 
   assert.equal(config.activeModel, 'zai/glm-5.1');
 });
 
-test('syncExistingModelCapabilitiesFromCatalog upgrades chat-only profiles from catalog', () => {
+test('syncExistingModelsFromCatalog upgrades chat-only profiles from catalog', () => {
   const config = {
     models: [
       {
@@ -120,7 +130,7 @@ test('syncExistingModelCapabilitiesFromCatalog upgrades chat-only profiles from 
     activeModel: 'MiniMax-M3',
   };
 
-  const synced = syncExistingModelCapabilitiesFromCatalog(
+  const synced = syncExistingModelsFromCatalog(
     config,
     config.models[0],
     {
@@ -136,4 +146,277 @@ test('syncExistingModelCapabilitiesFromCatalog upgrades chat-only profiles from 
   assert.equal(synced, 1);
   assert.deepEqual(config.models[0].capabilities, ['chat', 'image', 'video']);
   assert.deepEqual(config.models[1].capabilities, ['chat']);
+});
+
+test('syncExistingModelsFromCatalog writes videoGeneration when capabilities are missing', () => {
+  const config = {
+    models: [
+      {
+        name: 'alibaba/wan-v2.6-t2v',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+      },
+    ],
+  };
+
+  const synced = syncExistingModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: ['alibaba/wan-v2.6-t2v'],
+    fromCache: false,
+    modelCatalog: [{ id: 'alibaba/wan-v2.6-t2v', capabilities: ['videoGeneration'] }],
+  });
+
+  assert.equal(synced, 1);
+  assert.deepEqual(config.models[0].capabilities, ['videoGeneration']);
+});
+
+test('syncExistingModelsFromCatalog corrects stale video input to videoGeneration', () => {
+  const config = {
+    models: [
+      {
+        name: 'alibaba/wan-v2.6-t2v',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+        capabilities: ['chat', 'video'],
+      },
+    ],
+  };
+
+  const synced = syncExistingModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: ['alibaba/wan-v2.6-t2v'],
+    fromCache: false,
+    modelCatalog: [{ id: 'alibaba/wan-v2.6-t2v', capabilities: ['videoGeneration'] }],
+  });
+
+  assert.equal(synced, 1);
+  assert.deepEqual(config.models[0].capabilities, ['videoGeneration']);
+});
+
+test('syncExistingModelsFromCatalog syncs supportedReasoningEfforts from catalog', () => {
+  const config = {
+    models: [
+      {
+        name: 'anthropic/claude-sonnet-4',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+        capabilities: ['chat'],
+      },
+    ],
+  };
+
+  const synced = syncExistingModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: ['anthropic/claude-sonnet-4'],
+    fromCache: false,
+    modelCatalog: [
+      {
+        id: 'anthropic/claude-sonnet-4',
+        capabilities: ['chat'],
+        supportedReasoningEfforts: ['low', 'high'],
+      },
+    ],
+  });
+
+  assert.equal(synced, 1);
+  assert.deepEqual(config.models[0].supportedReasoningEfforts, ['low', 'high']);
+});
+
+test('syncExistingModelsFromCatalog returns zero when catalog matches stored profile', () => {
+  const config = {
+    models: [
+      {
+        name: 'openai/gpt-4.1',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+        capabilities: ['chat'],
+        supportedReasoningEfforts: ['low', 'high'],
+        contextLength: 128000,
+      },
+    ],
+  };
+
+  const synced = syncExistingModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: ['openai/gpt-4.1'],
+    fromCache: false,
+    modelCatalog: [
+      {
+        id: 'openai/gpt-4.1',
+        capabilities: ['chat'],
+        supportedReasoningEfforts: ['low', 'high'],
+        contextLength: 256000,
+      },
+    ],
+  });
+
+  assert.equal(synced, 0);
+  assert.equal(config.models[0].contextLength, 128000);
+});
+
+test('applyCatalogEntryToStoredModel backfills contextLength only when unset', () => {
+  const model = {
+    name: 'openai/gpt-4.1',
+    apiBase: 'https://ai-gateway.vercel.sh/v1',
+    reasoningEffort: 'default',
+  };
+
+  assert.equal(
+    applyCatalogEntryToStoredModel(model, {
+      id: 'openai/gpt-4.1',
+      contextLength: 128000,
+    }),
+    true,
+  );
+  assert.equal(model.contextLength, 128000);
+
+  assert.equal(
+    applyCatalogEntryToStoredModel(model, {
+      id: 'openai/gpt-4.1',
+      contextLength: 256000,
+    }),
+    false,
+  );
+  assert.equal(model.contextLength, 128000);
+});
+
+test('removeDelistedModelsFromCatalog drops scope models missing from upstream ids', () => {
+  const config = {
+    models: [
+      {
+        name: 'alibaba/wan-v2.6-t2v',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+        capabilities: ['videoGeneration'],
+      },
+      {
+        name: 'openai/gpt-4.1',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+        capabilities: ['chat'],
+      },
+      {
+        name: 'legacy-local',
+        apiBase: 'http://127.0.0.1:8080/v1',
+        provider: 'custom',
+        reasoningEffort: 'default',
+      },
+    ],
+    activeModel: 'alibaba/wan-v2.6-t2v',
+    videoGenerationModel: 'alibaba/wan-v2.6-t2v',
+  };
+
+  const pruned = removeDelistedModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: ['openai/gpt-4.1'],
+    fromCache: false,
+    modelCatalog: [{ id: 'openai/gpt-4.1', capabilities: ['chat'] }],
+  });
+
+  assert.deepEqual(pruned, ['alibaba/wan-v2.6-t2v']);
+  assert.deepEqual(
+    config.models.map((model) => model.name),
+    ['openai/gpt-4.1', 'legacy-local'],
+  );
+  assert.equal(config.activeModel, 'openai/gpt-4.1');
+  assert.equal(config.videoGenerationModel, undefined);
+});
+
+test('removeDelistedModelsFromCatalog clears activeModel when last scope model is removed', () => {
+  const config = {
+    models: [
+      {
+        name: 'alibaba/wan-v2.6-t2v',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+      },
+    ],
+    activeModel: 'alibaba/wan-v2.6-t2v',
+  };
+
+  const pruned = removeDelistedModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: [],
+    fromCache: false,
+    modelCatalog: [],
+  });
+
+  assert.deepEqual(pruned, []);
+  assert.deepEqual(config.models.map((model) => model.name), ['alibaba/wan-v2.6-t2v']);
+  assert.equal(config.activeModel, 'alibaba/wan-v2.6-t2v');
+});
+
+test('removeDelistedModelsFromCatalog keeps same-named models in other provider scopes', () => {
+  const config = {
+    models: [
+      {
+        name: 'shared-id',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+      },
+      {
+        name: 'shared-id',
+        apiBase: 'https://api.openai.com/v1',
+        provider: 'openai',
+        reasoningEffort: 'default',
+      },
+    ],
+    activeModel: 'shared-id',
+  };
+
+  const pruned = removeDelistedModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: [],
+    fromCache: false,
+    modelCatalog: [],
+  });
+
+  assert.deepEqual(pruned, []);
+  assert.deepEqual(
+    config.models.map((model) => model.provider),
+    ['vercel-ai-gateway', 'openai'],
+  );
+});
+
+test('removeDelistedModelsFromCatalog prunes delisted gateway model but keeps openai same name', () => {
+  const config = {
+    models: [
+      {
+        name: 'shared-id',
+        apiBase: 'https://ai-gateway.vercel.sh/v1',
+        provider: 'vercel-ai-gateway',
+        transportKind: 'open-responses',
+        reasoningEffort: 'default',
+      },
+      {
+        name: 'shared-id',
+        apiBase: 'https://api.openai.com/v1',
+        provider: 'openai',
+        reasoningEffort: 'default',
+      },
+    ],
+    activeModel: 'shared-id',
+  };
+
+  const pruned = removeDelistedModelsFromCatalog(config, gatewayScopeProfile, {
+    modelIds: ['openai/gpt-4.1'],
+    fromCache: false,
+    modelCatalog: [{ id: 'openai/gpt-4.1', capabilities: ['chat'] }],
+  });
+
+  assert.deepEqual(pruned, ['shared-id']);
+  assert.deepEqual(
+    config.models.map((model) => model.provider),
+    ['openai'],
+  );
+  assert.equal(config.activeModel, 'shared-id');
 });
