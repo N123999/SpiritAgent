@@ -138,7 +138,7 @@ export function FontSelect({
   };
 
   return (
-    <div className="w-full space-y-1.5">
+    <div className="w-full space-y-1.5 sm:w-auto">
       <FilteredOverlayMenu
         open={open}
         onOpenChange={(nextOpen) => {
