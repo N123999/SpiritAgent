@@ -1349,13 +1349,8 @@ export function WorkspaceFilesPanel({
                 <span className="min-w-0 truncate">{rootLabel}</span>
               </button>
             </WorkspaceFileContextMenu>
-            {isElectron ? (
-              <div
-                className={cn(
-                  "pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0 opacity-0 transition-opacity",
-                  treeHovered && "pointer-events-auto opacity-100",
-                )}
-              >
+            {isElectron && treeHovered ? (
+              <div className="absolute inset-y-0 right-0.5 flex items-center gap-0">
                 <button
                   type="button"
                   className={EXPLORER_ROOT_CREATE_BUTTON_CLASS}
