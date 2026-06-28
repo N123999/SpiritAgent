@@ -68,6 +68,7 @@ export function ModelCatalogDetailPanel({
     [catalogEntry?.pricing, contextLength, t],
   );
   const hasDetailFields = detailFields.length > 0;
+  const hasContentBelowHeader = Boolean(description || children || hasDetailFields);
   const hasFollowingSection = Boolean(children || hasDetailFields);
   const controlsIsLast = !hasDetailFields;
   const sectionPadding = isList ? 'px-2 py-1.5' : 'px-3 py-2.5';
@@ -78,8 +79,8 @@ export function ModelCatalogDetailPanel({
     <div className={cn(isList ? 'flex flex-col' : '-mx-3 flex flex-col')}>
       <div
         className={cn(
-          'border-b border-border/60',
-          isList ? 'border-border/40 px-2 py-1.5' : 'px-3 pb-3',
+          hasContentBelowHeader && (isList ? 'border-b border-border/40' : 'border-b border-border/60'),
+          isList ? 'px-2 py-1.5' : hasContentBelowHeader ? 'px-3 pb-3' : 'px-3',
         )}
       >
         <p
