@@ -29,6 +29,15 @@ test('responsesUsesStoredState is true for openai and azure providers', () => {
     responsesUsesStoredState({
       transportKind: 'open-responses',
       apiKey: 'k',
+      model: 'qwen3-max',
+      llmVendor: 'alibaba',
+    }),
+    true,
+  );
+  assert.equal(
+    responsesUsesStoredState({
+      transportKind: 'open-responses',
+      apiKey: 'k',
       model: 'grok-3',
       responsesProvider: 'xai',
       llmVendor: 'xai',

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import type { JsonValue } from '../ports.js';
 import { cloneJsonValue, isJsonObject } from '../tool-agent.js';
 import {
@@ -17,10 +19,46 @@ export interface ResponsesRoundInput {
   mode: ResponsesRoundInputMode;
 }
 
-/** OpenAI / Azure 官方 SDK 路径支持 store + previous_response_id。 */
+const storedStateRequestStore = new AsyncLocalStorage<{ previousResponseId?: string }>();
+
+/** 官方 OpenAI/Azure SDK，以及百炼 Responses（经 fetch 注入 store / previous_response_id）。 */
 export function responsesUsesStoredState(config: OpenResponsesTransportConfig): boolean {
+  if (config.llmVendor === 'alibaba') {
+    return true;
+  }
+
   const provider = resolveOpenResponsesSdkProvider(config);
   return provider === 'openai' || provider === 'azure';
+}
+
+let roundStoredStatePreviousResponseId: string | undefined;
+
+export function beginResponsesStoredStateRound(previousResponseId?: string): void {
+  roundStoredStatePreviousResponseId = previousResponseId;
+}
+
+export function endResponsesStoredStateRound(): void {
+  roundStoredStatePreviousResponseId = undefined;
+}
+
+/** 供 Alibaba fetch 等 compatible 路径读取本轮 previous_response_id。 */
+export function readResponsesStoredStateRequestPreviousResponseId(): string | undefined {
+  return storedStateRequestStore.getStore()?.previousResponseId ?? roundStoredStatePreviousResponseId;
+}
+
+export async function runWithResponsesStoredStateRequestContext<T>(
+  previousResponseId: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const store = previousResponseId !== undefined ? { previousResponseId } : {};
+  return storedStateRequestStore.run(store, async () => {
+    beginResponsesStoredStateRound(previousResponseId);
+    try {
+      return await fn();
+    } finally {
+      endResponsesStoredStateRound();
+    }
+  });
 }
 
 export function buildResponsesRoundInput(

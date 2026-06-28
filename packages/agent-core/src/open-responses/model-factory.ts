@@ -381,6 +381,12 @@ export function buildResponsesProviderOptions(
 
     if (config.llmVendor === 'alibaba') {
       providerOptions.enable_thinking = !isCodeCompletionTransportProfile(config);
+      if (responsesUsesStoredState(config)) {
+        providerOptions.store = config.store ?? true;
+        if (previousResponseId) {
+          providerOptions.previousResponseId = previousResponseId;
+        }
+      }
     }
 
     if (Object.keys(providerOptions).length === 0) {

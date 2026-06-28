@@ -69,7 +69,12 @@ import {
   attachResponseIdToAssistantMessage,
   extractResponseIdFromGenerateTextResult,
 } from './provider-state.js';
-import { buildResponsesRoundInput } from './responses-incremental-input.js';
+import {
+  beginResponsesStoredStateRound,
+  buildResponsesRoundInput,
+  endResponsesStoredStateRound,
+  runWithResponsesStoredStateRequestContext,
+} from './responses-incremental-input.js';
 import {
   buildOpenResponsesRequestTrace,
   buildOpenResponsesTraceExtras,
@@ -202,7 +207,9 @@ export class AiSdkOpenResponsesTransport
     }
 
     try {
-      return await runWithApplyPatchBridgeContext(async () => {
+      return await runWithResponsesStoredStateRequestContext(
+        roundInput.previousResponseId,
+        () => runWithApplyPatchBridgeContext(async () => {
         const generateTools = buildResponsesGenerateTools(config, normalizedTools);
         const hasGenerateTools = Object.keys(generateTools).length > 0;
         const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
@@ -284,7 +291,8 @@ export class AiSdkOpenResponsesTransport
             ...(usage ? { usage } : {}),
           },
         } as ToolAgentRoundCompletion<ToolAgentState>;
-      });
+      }),
+      );
     } catch (error) {
       return {
         kind: 'failure',
@@ -333,6 +341,7 @@ export class AiSdkOpenResponsesTransport
 
     try {
       beginApplyPatchBridgeRound();
+      beginResponsesStoredStateRound(roundInput.previousResponseId);
       const generateTools = buildResponsesGenerateTools(config, normalizedTools);
       const hasGenerateTools = Object.keys(generateTools).length > 0;
       const providerOptions = buildResponsesProviderOptions(config, roundInput.previousResponseId);
@@ -355,7 +364,10 @@ export class AiSdkOpenResponsesTransport
         abortSignal: abortController.signal,
       });
       const completion = createDeferred<ToolAgentRoundCompletion<ToolAgentState>>();
-      void completion.promise.finally(endApplyPatchBridgeRound);
+      void completion.promise.finally(() => {
+        endResponsesStoredStateRound();
+        endApplyPatchBridgeRound();
+      });
 
       return {
         eventStream: responsesEventStreamToRuntimeEvents(
