@@ -90,15 +90,19 @@ import {
   buildShellToolResult,
   serializeShellToolResult,
 } from '@spirit-agent/core';
+import {
+  convertFetchedPageToToolText,
+  WEB_FETCH_ACCEPT_HEADER,
+  WEB_FETCH_TIMEOUT_MS,
+  WEB_FETCH_USER_AGENT,
+} from './web-fetch/index.js';
+import { normalizeMimeType } from './web-fetch/resolve-url.js';
 
 const PERMISSIONS_FILE = 'tool-permissions.json';
 const MAX_READ_LINES_DEFAULT = 200;
-const WEB_FETCH_TIMEOUT_MS = 20_000;
 const WEB_FETCH_IMAGE_CACHE_DIR = 'tool-web-fetch-images';
 const WEB_FETCH_IMAGE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const WEB_FETCH_IMAGE_CACHE_MAX_FILES = 128;
-const BROWSER_USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
 
 const SEARCH_IGNORE_DIR_NAMES = new Set(['.git', 'target', 'node_modules']);
 
@@ -1762,9 +1766,8 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
         redirect: 'follow',
         signal: controller.signal,
         headers: {
-          'User-Agent': BROWSER_USER_AGENT,
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5',
+          'User-Agent': WEB_FETCH_USER_AGENT,
+          Accept: WEB_FETCH_ACCEPT_HEADER,
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         },
       });
@@ -1801,11 +1804,14 @@ export class NodeHostToolService<QuestionSpec = HostAskQuestionsQuestionSpec>
       }
 
       const raw = await response.text();
-      const extracted = extractWebText(raw, contentType);
-      const normalized = normalizeWebText(extracted);
-      const totalChars = [...normalized].length;
       return createHostToolTextOutput(
-        `[web]\nurl: ${parsedUrl}\nfinal_url: ${finalUrl}\nstatus: ${status}\ncontent_type: ${contentType}\nuser_agent: ${BROWSER_USER_AGENT}\ncontent_chars: ${totalChars}\n\ncontent\n${normalized}`,
+        convertFetchedPageToToolText({
+          url: parsedUrl,
+          finalUrl,
+          status,
+          contentType,
+          raw,
+        }),
       );
     } finally {
       clearTimeout(timeout);
@@ -2400,10 +2406,6 @@ function parseWebFetchUrl(url: string): string {
   return parsed.toString();
 }
 
-function normalizeMimeType(contentType: string): string {
-  return contentType.split(';', 1)[0]?.trim().toLowerCase() ?? '';
-}
-
 function inferSupportedImageExtensionFromWebResponse(
   finalUrl: string,
   contentType: string,
@@ -2460,56 +2462,6 @@ function buildExtensionQuestionsAuthorization<QuestionSpec>(
       ],
     },
   };
-}
-
-function looksLikeHtml(raw: string): boolean {
-  const prefix = raw.slice(0, 512).toLowerCase();
-  return (
-    prefix.includes('<html') ||
-    prefix.includes('<!doctype html') ||
-    prefix.includes('<body') ||
-    prefix.includes('<head')
-  );
-}
-
-function extractWebText(raw: string, contentType: string): string {
-  const ct = contentType.toLowerCase();
-  if (ct.includes('html') || looksLikeHtml(raw)) {
-    return stripHtmlToApproximateText(raw);
-  }
-  return raw;
-}
-
-function stripHtmlToApproximateText(html: string): string {
-  const noScript = html.replace(/<script[\s\S]*?<\/script>/giu, ' ');
-  const noStyle = noScript.replace(/<style[\s\S]*?<\/style>/giu, ' ');
-  const noTags = noStyle.replace(/<[^>]+>/gu, ' ');
-  return noTags
-    .replace(/&nbsp;/giu, ' ')
-    .replace(/&lt;/giu, '<')
-    .replace(/&gt;/giu, '>')
-    .replace(/&amp;/giu, '&')
-    .replace(/&quot;/giu, '"');
-}
-
-function normalizeWebText(text: string): string {
-  const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const out: string[] = [];
-  let blankRun = 0;
-  for (const line of normalized.split('\n')) {
-    const trimmed = line.replace(/\s+$/u, '');
-    if (trimmed.trim().length === 0) {
-      blankRun += 1;
-      if (blankRun <= 1) {
-        out.push('');
-      }
-      continue;
-    }
-    blankRun = 0;
-    out.push(trimmed.replace(/^\uFEFF/u, ''));
-  }
-  const result = out.join('\n').trim();
-  return result.length === 0 ? '（网页内容为空）' : result;
 }
 
 function normalizeLineEndings(text: string): string {
