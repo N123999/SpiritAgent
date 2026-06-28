@@ -163,10 +163,10 @@ export const DESKTOP_OVERLAY_LIST_DROPDOWN_ITEM =
 /** Select 下拉项：与 DropdownMenuItem 同密度 + 右侧 ItemIndicator 留白 */
 export const DESKTOP_SELECT_ITEM = cn(DESKTOP_OVERLAY_LIST_DROPDOWN_ITEM, "pr-8");
 
-/** Select 下拉面板：与 Dropdown 同壳 */
+/** Select 下拉面板：与 Dropdown 同壳；滚动由 Radix Viewport 承担，外层保持 overflow-hidden */
 export const DESKTOP_SELECT_CONTENT = cn(
   DESKTOP_OVERLAY_LIST_DROPDOWN_SURFACE,
-  "spirit-scroll z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] overflow-y-auto overflow-x-hidden",
+  "relative z-50 max-h-[min(24rem,var(--radix-select-content-available-height))] overflow-hidden",
 );
 
 /** 独立边框 Select 触发器（设置页等） */
