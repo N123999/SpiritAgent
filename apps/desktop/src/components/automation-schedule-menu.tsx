@@ -206,7 +206,7 @@ function WeeklyScheduleSub({
                 });
               }}
             >
-              <SelectTrigger className="h-8">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="z-[140]">
@@ -250,7 +250,7 @@ function ScheduleTimeFields({
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{t("automations.schedule.hour")}</p>
         <Select value={String(hour)} onValueChange={(value) => onHourChange(Number(value))}>
-          <SelectTrigger className="h-8">
+          <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="z-[150]">
@@ -265,7 +265,7 @@ function ScheduleTimeFields({
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">{t("automations.schedule.minute")}</p>
         <Select value={String(minute)} onValueChange={(value) => onMinuteChange(Number(value))}>
-          <SelectTrigger className="h-8">
+          <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent className="z-[150]">
