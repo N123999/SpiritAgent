@@ -267,7 +267,7 @@ export function buildModelCatalogDetailFields(input: {
 
 export function formatModelCatalogPricingLines(
   pricing: PreviewModelCatalogPricing | undefined,
-  t: (key: PricingLabelKey, options?: { value: string }) => string,
+  t: (key: PricingLabelKey, options?: { value?: string; resolution?: string }) => string,
 ): string[] {
   if (!pricing) {
     return [];
@@ -303,7 +303,7 @@ export function formatModelCatalogPricingLines(
 
 function videoDurationPricingRowLabel(
   tier: PreviewModelCatalogVideoDurationPricing,
-  t: (key: PricingLabelKey | ModelCatalogDetailFieldValueKey, options?: { value?: string; resolution?: string }) => string,
+  t: (key: 'settings.modelDetailPricingVideoResolutionWithAudio', options?: { resolution?: string }) => string,
 ): string {
   if (tier.audio === true) {
     return t('settings.modelDetailPricingVideoResolutionWithAudio', { resolution: tier.resolution });
