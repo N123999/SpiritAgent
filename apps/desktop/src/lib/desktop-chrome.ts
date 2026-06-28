@@ -134,7 +134,7 @@ export const DESKTOP_FORM_TEXTAREA_INNER =
 
 /** 置于 DESKTOP_FORM_INPUT_SHELL 内的 Select / 自定义触发器 */
 export const DESKTOP_FORM_FIELD_TRIGGER_INNER =
-  "h-8 min-h-8 w-full rounded-none border-0 bg-transparent px-2.5 text-xs shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
+  "h-8 min-h-8 w-full rounded-none border-0 bg-transparent px-2.5 shadow-none focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent";
 
 /** Root 与 viewport 同步 max-h：仅约束 viewport 时 Root 会随内容撑高，滚动条轨道 h-full 失真 */
 export const DESKTOP_OVERLAY_LIST_SCROLL_AREA =
@@ -171,7 +171,7 @@ export const DESKTOP_SELECT_CONTENT = cn(
 
 /** 独立边框 Select 触发器（设置页等） */
 export const DESKTOP_SELECT_TRIGGER = cn(
-  "flex h-8 min-h-8 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 py-1 text-xs shadow-xs outline-none",
+  "flex h-8 min-h-8 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 py-1 text-sm shadow-xs outline-none",
   "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
   "disabled:cursor-not-allowed disabled:opacity-50",
   "data-placeholder:text-muted-foreground [&>span]:line-clamp-1",

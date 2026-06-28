@@ -16,7 +16,7 @@ import { changeLanguage, VALID_LANGUAGES } from "@/lib/i18n";
 import { isNativeBackdropBlurSupported } from "@/lib/desktop-shell";
 import type { ThemePreference } from "@/lib/theme";
 
-const appearanceSelectTriggerClassName = "w-full sm:w-auto sm:min-w-[8.5rem]";
+const appearanceSelectTriggerClassName = "w-full sm:w-fit sm:max-w-full";
 
 export function AppearanceSettingsPanel({
   theme,
