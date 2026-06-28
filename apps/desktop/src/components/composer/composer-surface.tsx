@@ -279,7 +279,7 @@ export function ComposerSurface({
               <Button
                 type="button"
                 className={cn(
-                  "size-8 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3.5",
+                  "size-7 shrink-0 rounded-full p-0 shadow-none [&_svg]:size-3",
                   instantHoverMotionClass,
                   sendDisabled &&
                     "disabled:pointer-events-auto disabled:cursor-default disabled:active:translate-y-0",
@@ -289,11 +289,11 @@ export function ComposerSurface({
                 aria-label={actionAriaLabel}
               >
                 {showAbortButton ? (
-                  <Square className="size-3.5" strokeWidth={2.4} aria-hidden />
+                  <Square className="size-3" strokeWidth={2.4} aria-hidden />
                 ) : busy ? (
-                  <LoaderCircle className="size-3.5 animate-spin" />
+                  <LoaderCircle className="size-3 animate-spin" />
                 ) : (
-                  <ArrowUp className="size-3.5" strokeWidth={2.25} aria-hidden />
+                  <ArrowUp className="size-3" strokeWidth={2.25} aria-hidden />
                 )}
               </Button>
             );
