@@ -10,6 +10,10 @@ const SIDE_SLIDE_IN =
 const OPEN_CLOSE =
   "duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 
+/** Select Content 仍用 data-state，与 Dialog/Dropdown 的 data-open 不同 */
+const SELECT_OPEN_CLOSE =
+  "duration-100 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95";
+
 export type RadixAnchoredOverlayKind =
   | "popover"
   | "dropdown-menu"
@@ -32,7 +36,7 @@ const MOTION_BY_KIND: Record<RadixAnchoredOverlayKind, string> = {
   select: cn(
     "origin-(--radix-select-content-transform-origin)",
     SIDE_SLIDE_IN,
-    OPEN_CLOSE,
+    SELECT_OPEN_CLOSE,
   ),
   "hover-card": cn(
     "origin-(--radix-hover-card-content-transform-origin)",
