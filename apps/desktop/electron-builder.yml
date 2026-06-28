@@ -12,10 +12,11 @@ files:
   - dist-electron/**/*
   - node_modules/**/*
   - '!**/target/**/*'
-  - from: ../../node_modules/@vscode/ripgrep
-    to: node_modules/@vscode/ripgrep
+  - from: node_modules/@vscode
+    to: node_modules/@vscode
     filter:
-      - '**/*'
+      - ripgrep/**
+      - ripgrep-*/**
   - ../../packages/agent-core/dist/**/*
   - ../../packages/agent-core/package.json
   - ../../packages/host-internal/dist/**/*
@@ -27,6 +28,7 @@ asarUnpack:
   - node_modules/koffi/**/*
   - node_modules/@napi-rs/keyring/**/*
   - node_modules/@vscode/ripgrep/**/*
+  - node_modules/@vscode/ripgrep-*/**/*
 npmRebuild: true
 buildDependenciesFromSource: false
 publish: null
