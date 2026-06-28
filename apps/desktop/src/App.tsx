@@ -22,6 +22,7 @@ import { useAppSurfaceNavigation } from "@/hooks/useAppSurfaceNavigation";
 import { useClickablePointerCursor } from "@/hooks/useClickablePointerCursor";
 import { useCompactionUiDemo } from "@/hooks/useCompactionUiDemo";
 import { useComposerController } from "@/hooks/useComposerController";
+import { useConversationSessionFocusComposer } from "@/hooks/useConversationSessionFocusComposer";
 import { useConversationViewState } from "@/hooks/useConversationViewState";
 import { useUiLayoutScale } from "@/hooks/useUiLayoutScale";
 import { useDesktopKeyboardShortcuts } from "@/hooks/useDesktopKeyboardShortcuts";
@@ -162,6 +163,17 @@ export default function App() {
       focusComposer: composer.focusComposer,
     };
   }, [composer.focusComposer, composer.setSlashSelectedIndex]);
+
+  useConversationSessionFocusComposer({
+    composerSessionKey: conversation.composerSessionKey,
+    focusComposer: composer.focusComposer,
+    enabled:
+      snapshot != null
+      && surfaceNav.activeSurface === "conversation"
+      && !surfaceNav.settingsMode
+      && !sessionNavigationBusy
+      && !newSessionBusy,
+  });
 
   const messageRewind = useMessageRewind({
     runtime,
