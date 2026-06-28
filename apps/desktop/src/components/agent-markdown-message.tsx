@@ -1,5 +1,6 @@
 import {
   createContext,
+  memo,
   useContext,
   useLayoutEffect,
   useMemo,
@@ -108,7 +109,7 @@ export type AgentMarkdownMessageProps = Pick<
   streaming?: boolean;
 };
 
-export function AgentMarkdownMessage({
+function AgentMarkdownMessageImpl({
   content,
   streaming = false,
   className,
@@ -169,5 +170,11 @@ export function AgentMarkdownMessage({
     </StreamBlockAnimateContext.Provider>
   );
 }
+
+/**
+ * Markdown 渲染是 props 的纯函数（content 字符串 + 稳定回调）；多轮流式期间每次轮询会重渲
+ * 整个会话列表，未变消息若重跑 streamdown + shiki 高亮成本极高。按 props 浅比较跳过即可。
+ */
+export const AgentMarkdownMessage = memo(AgentMarkdownMessageImpl);
 
 export type { MarkdownTone };
