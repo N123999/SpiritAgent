@@ -468,25 +468,25 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium leading-snug text-foreground">{row.commit.subject}</p>
-      <p className="text-[11px] text-muted-foreground">
-        <span className="text-foreground/80">{row.commit.author}</span>
+      <p className="text-sm font-medium leading-snug">{row.commit.subject}</p>
+      <p className="text-[11px]">
+        <span className="font-medium">{row.commit.author}</span>
         {" "}
-        <span>{row.commit.authoredAt}</span>
+        <span className="text-muted-foreground">{row.commit.authoredAt}</span>
       </p>
       {row.commit.refs.length > 0 ? (
         <div className="flex flex-wrap gap-1">
           {row.commit.refs.map((ref) => (
             <span
               key={`${row.commit.oid}:${ref}`}
-              className="rounded bg-primary/15 px-1 py-0 text-[10px] text-primary"
+              className="rounded bg-primary/15 px-1 py-0 text-[10px]"
             >
               {ref}
             </span>
           ))}
         </div>
       ) : null}
-      <div className="group inline-flex w-fit cursor-default items-center gap-2 text-[11px] text-muted-foreground hover:cursor-pointer">
+      <div className="group inline-flex w-fit cursor-default items-center gap-2 text-[11px] hover:cursor-pointer">
         <button
           type="button"
           className="truncate border-0 bg-transparent p-0 text-left text-[11px] text-muted-foreground"
@@ -501,9 +501,9 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
           className={cn(
             "inline-flex shrink-0 border-0 bg-transparent p-0",
             "text-muted-foreground/55 transition-all duration-150",
-            "hover:text-foreground focus-visible:text-foreground",
+            "hover:text-inherit focus-visible:text-inherit",
             copied
-              ? "opacity-100 text-foreground"
+              ? "opacity-100 text-inherit"
               : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
           )}
           onClick={() => void copySha()}
