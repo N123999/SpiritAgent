@@ -70,9 +70,9 @@ import {
   extractResponseIdFromGenerateTextResult,
 } from './provider-state.js';
 import {
-  beginResponsesStoredStateRound,
   buildResponsesRoundInput,
-  endResponsesStoredStateRound,
+  bindResponsesStoredStateRequestContextAsyncIterable,
+  runInResponsesStoredStateRequestContextSync,
   runWithResponsesStoredStateRequestContext,
 } from './responses-incremental-input.js';
 import {
@@ -341,38 +341,42 @@ export class AiSdkOpenResponsesTransport
 
     try {
       beginApplyPatchBridgeRound();
-      beginResponsesStoredStateRound(roundInput.previousResponseId);
       const generateTools = buildResponsesGenerateTools(config, normalizedTools);
       const hasGenerateTools = Object.keys(generateTools).length > 0;
       const providerOptions = buildResponsesProviderOptions(config, roundInput.previousResponseId);
       const sdkMessages = openAiMessagesToResponsesAiSdkMessages(roundInput.apiMessages, config);
       const sdkWebSearchStopWhen = buildSdkProviderWebSearchStopWhen(config);
-      const result: { stream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = streamText({
-        model: createResponsesLanguageModel(config) as any,
-        messages: sdkMessages as any,
-        allowSystemInMessages: true,
-        ...(hasGenerateTools
-          ? {
-              tools: generateTools as any,
-              toolChoice: 'auto' as const,
-            }
-          : {}),
-        ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
-        providerOptions,
-        include: { rawChunks: true },
-        maxRetries: 0,
-        abortSignal: abortController.signal,
-      });
+      const result: { stream: AsyncIterable<unknown> } & Parameters<typeof readAiSdkUsage>[0] = runInResponsesStoredStateRequestContextSync(
+        roundInput.previousResponseId,
+        () => streamText({
+          model: createResponsesLanguageModel(config) as any,
+          messages: sdkMessages as any,
+          allowSystemInMessages: true,
+          ...(hasGenerateTools
+            ? {
+                tools: generateTools as any,
+                toolChoice: 'auto' as const,
+              }
+            : {}),
+          ...(sdkWebSearchStopWhen ? { stopWhen: sdkWebSearchStopWhen } : {}),
+          providerOptions,
+          include: { rawChunks: true },
+          maxRetries: 0,
+          abortSignal: abortController.signal,
+        }),
+      );
       const completion = createDeferred<ToolAgentRoundCompletion<ToolAgentState>>();
       void completion.promise.finally(() => {
-        endResponsesStoredStateRound();
         endApplyPatchBridgeRound();
       });
 
       return {
         eventStream: responsesEventStreamToRuntimeEvents(
           config,
-          result.stream as any,
+          bindResponsesStoredStateRequestContextAsyncIterable(
+            roundInput.previousResponseId,
+            result.stream as any,
+          ),
           result,
           nextState,
           requestTrace,

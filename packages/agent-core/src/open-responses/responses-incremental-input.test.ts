@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildResponsesRoundInput, responsesUsesStoredState } from './responses-incremental-input.js';
+import {
+  buildResponsesRoundInput,
+  responsesUsesStoredState,
+} from './responses-incremental-input.js';
+import {
+  readResponsesStoredStateRequestPreviousResponseId,
+  runWithResponsesStoredStateRequestContext,
+} from './responses-incremental-input.js';
 
 test('responsesUsesStoredState is true for openai and azure providers', () => {
   assert.equal(
@@ -199,4 +206,20 @@ test('buildResponsesRoundInput reads top-level openAiResponses from history spre
 
   assert.equal(result.mode, 'incremental');
   assert.equal(result.previousResponseId, 'resp_spread');
+});
+
+test('stored state request context is isolated across concurrent rounds', async () => {
+  const [first, second] = await Promise.all([
+    runWithResponsesStoredStateRequestContext('resp_a', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return readResponsesStoredStateRequestPreviousResponseId();
+    }),
+    runWithResponsesStoredStateRequestContext('resp_b', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return readResponsesStoredStateRequestPreviousResponseId();
+    }),
+  ]);
+
+  assert.equal(first, 'resp_a');
+  assert.equal(second, 'resp_b');
 });
