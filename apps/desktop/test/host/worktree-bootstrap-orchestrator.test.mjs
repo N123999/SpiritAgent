@@ -63,6 +63,7 @@ test('startWorktreeBootstrapTurnCommand inserts user message and running worktre
       clearAssistantContinuationMarkers: () => {},
       resolveTodoSessionKeyForBundle: () => 'todo-key',
       ensureActiveSession: () => {},
+      prepareSessionTitleForFirstUserTurn: () => {},
       reconcileTodoScopeAfterSessionPathChange: async () => {},
       maybeRefreshRuntimeAfterTodoScopeChange: async () => {},
       buildRewindCheckpointSnapshot: async () => ({
