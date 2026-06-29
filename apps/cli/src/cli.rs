@@ -619,7 +619,9 @@ fn parse_model_reasoning_effort(
             Some(ModelProvider::Deepseek) if is_deepseek_v4_reasoning_model(model_name) => {
                 &["default", "high", "max"]
             }
-            Some(ModelProvider::Moonshot) => &["default", "minimal", "low", "medium", "high"],
+            Some(ModelProvider::Moonshot | ModelProvider::KimiCode) => {
+                &["default", "minimal", "low", "medium", "high"]
+            }
             _ => &["default", "none", "low", "medium", "high", "xhigh"],
         },
     };
@@ -1156,4 +1158,21 @@ pub fn load_or_default_config() -> AppConfig {
     JsonConfigStore
         .load()
         .unwrap_or_else(|_| AppConfig::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_model_reasoning_effort, ModelProvider, ModelTransportKind};
+
+    #[test]
+    fn parse_model_reasoning_effort_accepts_moonshot_style_for_kimi_code() {
+        let effort = parse_model_reasoning_effort(
+            "kimi-for-coding",
+            Some("minimal".to_string()),
+            Some(ModelProvider::KimiCode),
+            ModelTransportKind::OpenAiCompatible,
+        )
+        .expect("parse reasoning effort");
+        assert_eq!(effort, Some("minimal".to_string()));
+    }
 }
