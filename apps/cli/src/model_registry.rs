@@ -259,6 +259,16 @@ impl ModelProfile {
             .map(ToOwned::to_owned)
     }
 
+    pub fn alibaba_billing_mode(&self) -> Option<String> {
+        self.extra
+            .get("alibabaBillingMode")
+            .or_else(|| self.extra.get("alibaba_billing_mode"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
     pub fn aws_region(&self) -> Option<String> {
         self.extra
             .get("awsRegion")
@@ -1189,6 +1199,26 @@ mod tests {
         assert_eq!(model.provider, Some(super::ModelProvider::Alibaba));
         assert_eq!(model.provider_site().as_deref(), Some("ap-southeast-1"));
         assert_eq!(model.alibaba_workspace_id().as_deref(), Some("ws123"));
+    }
+
+    #[test]
+    fn deserializes_alibaba_token_plan_billing_mode_from_desktop_config() {
+        let raw = r#"{
+          "models": [{
+            "name": "qwen3.6-plus",
+            "apiBase": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+            "provider": "alibaba",
+            "alibabaBillingMode": "token-plan",
+            "transportKind": "openai-compatible"
+          }],
+          "activeModel": "qwen3.6-plus"
+        }"#;
+        let cfg: super::AppConfig = serde_json::from_str(raw).expect("parse config");
+        let model = cfg.models.first().expect("model");
+        assert_eq!(model.provider, Some(super::ModelProvider::Alibaba));
+        assert_eq!(model.alibaba_billing_mode().as_deref(), Some("token-plan"));
+        assert!(model.provider_site().is_none());
+        assert!(model.alibaba_workspace_id().is_none());
     }
 }
 

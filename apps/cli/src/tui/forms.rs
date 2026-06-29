@@ -547,6 +547,12 @@ impl TuiShell {
             if let Some(workspace_id) = parsed.alibaba_workspace_id.as_deref() {
                 extra.insert("alibabaWorkspaceId".to_string(), serde_json::json!(workspace_id));
             }
+            if parsed.alibaba_billing_mode.as_deref() == Some("token-plan") {
+                extra.insert(
+                    "alibabaBillingMode".to_string(),
+                    serde_json::json!("token-plan"),
+                );
+            }
             config.add_model(ModelProfile {
                 name: id.clone(),
                 api_base: parsed.api_base.clone(),

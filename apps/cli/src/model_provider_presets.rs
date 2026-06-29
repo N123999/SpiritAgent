@@ -215,6 +215,24 @@ pub(crate) fn model_add_alibaba_site_requires_workspace_id(site: &str) -> bool {
     )
 }
 
+/// 与 `model-provider-presets.json` 中 `alibabaTokenPlan.compatibleApiBase` 对齐。
+const ALIBABA_TOKEN_PLAN_COMPATIBLE_API_BASE: &str =
+    "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+
+pub(crate) fn model_add_alibaba_token_plan_api_base(
+    transport_kind: ModelTransportKind,
+) -> Option<String> {
+    match transport_kind {
+        ModelTransportKind::Anthropic => {
+            model_add_alibaba_anthropic_site_api_base(ALIBABA_TOKEN_PLAN_COMPATIBLE_API_BASE)
+        }
+        ModelTransportKind::OpenAiCompatible | ModelTransportKind::OpenResponses => {
+            Some(ALIBABA_TOKEN_PLAN_COMPATIBLE_API_BASE.to_string())
+        }
+        _ => None,
+    }
+}
+
 fn model_add_alibaba_compatible_site_api_base(site: &str, workspace_id: &str) -> Option<String> {
     match site.trim() {
         "cn-beijing" => {
@@ -334,6 +352,14 @@ pub(crate) fn resolve_profile_api_base(profile: &crate::model_registry::ModelPro
             return trimmed.to_string();
         }
         return azure_api_base_from_resource_name("");
+    }
+
+    if profile.provider == Some(ModelProvider::Alibaba) {
+        if profile.alibaba_billing_mode().as_deref() == Some("token-plan") {
+            if let Some(base) = model_add_alibaba_token_plan_api_base(profile.transport_kind()) {
+                return base;
+            }
+        }
     }
 
     if let Some(provider) = profile.provider {
@@ -603,6 +629,24 @@ mod tests {
                 ModelTransportKind::OpenAiCompatible,
             )
             .is_none()
+        );
+    }
+
+    #[test]
+    fn alibaba_token_plan_api_base_resolves_transports() {
+        assert_eq!(
+            super::model_add_alibaba_token_plan_api_base(ModelTransportKind::OpenAiCompatible)
+                .as_deref(),
+            Some("https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
+        );
+        assert_eq!(
+            super::model_add_alibaba_token_plan_api_base(ModelTransportKind::Anthropic).as_deref(),
+            Some("https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic")
+        );
+        assert_eq!(
+            super::model_add_alibaba_token_plan_api_base(ModelTransportKind::OpenResponses)
+                .as_deref(),
+            Some("https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1")
         );
     }
 
