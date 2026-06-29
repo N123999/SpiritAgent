@@ -56,6 +56,7 @@ import {
   hasGoogleVertexServiceAccountCredentials,
 } from "@/host/provider-api-key";
 import {
+  ALIBABA_TOKEN_PLAN_DOC_URL,
   PROVIDER_PICKER_ROWS,
   defaultProviderConnectSite,
   listProviderConnectSiteOptions,
@@ -147,6 +148,9 @@ export function ModelsSettingsPanel({
     "openai-compatible",
   );
   const [connectProviderSite, setConnectProviderSite] = useState("");
+  const [connectAlibabaBillingMode, setConnectAlibabaBillingMode] = useState<
+    "standard" | "token-plan"
+  >("standard");
   const [connectAlibabaWorkspaceId, setConnectAlibabaWorkspaceId] = useState("");
   const [customConnectMode, setCustomConnectMode] = useState<"single" | "bulk">(
     "single",
@@ -251,6 +255,7 @@ export function ModelsSettingsPanel({
     setConnectContextLength("");
     setConnectTransportKind("openai-compatible");
     setConnectProviderSite("");
+    setConnectAlibabaBillingMode("standard");
     setConnectAlibabaWorkspaceId("");
     setCustomConnectMode("single");
     setBedrockConnectMode("bearer");
@@ -285,6 +290,7 @@ export function ModelsSettingsPanel({
     setConnectApiBase("");
     setConnectCapabilities(defaultCustomModelCapabilities);
     resetConnectTransportKindForProvider(id);
+    setConnectAlibabaBillingMode("standard");
     setCustomConnectMode("single");
     setBedrockConnectMode("bearer");
     setVertexConnectMode("adc");
@@ -502,10 +508,20 @@ export function ModelsSettingsPanel({
     connectTransportKind,
   );
 
-  const connectProviderSiteForRequest = connectProviderSite.trim() || undefined;
-  const connectAlibabaWorkspaceIdForRequest = connectAlibabaWorkspaceId.trim() || undefined;
+  const connectAlibabaIsTokenPlan =
+    selectedProvider === "alibaba" && connectAlibabaBillingMode === "token-plan";
+  const connectAlibabaBillingModeForRequest = connectAlibabaIsTokenPlan
+    ? ("token-plan" as const)
+    : undefined;
+  const connectProviderSiteForRequest = connectAlibabaIsTokenPlan
+    ? undefined
+    : connectProviderSite.trim() || undefined;
+  const connectAlibabaWorkspaceIdForRequest = connectAlibabaIsTokenPlan
+    ? undefined
+    : connectAlibabaWorkspaceId.trim() || undefined;
   const connectAlibabaWorkspaceRequired =
     selectedProvider === "alibaba"
+    && !connectAlibabaIsTokenPlan
     && connectProviderSiteForRequest !== undefined
     && providerConnectSiteRequiresWorkspaceId("alibaba", connectProviderSiteForRequest);
   const connectProviderSiteForApiBase =
@@ -532,6 +548,9 @@ export function ModelsSettingsPanel({
               selectedProvider,
               connectTransportKindForRequest,
               {
+                ...(connectAlibabaBillingModeForRequest
+                  ? { billingMode: connectAlibabaBillingModeForRequest }
+                  : {}),
                 ...(connectProviderSiteForApiBase ? { site: connectProviderSiteForApiBase } : {}),
                 ...(connectAlibabaWorkspaceIdForRequest
                   ? { workspaceId: connectAlibabaWorkspaceIdForRequest }
@@ -605,6 +624,9 @@ export function ModelsSettingsPanel({
       ...(connectAlibabaWorkspaceIdForRequest
         ? { alibabaWorkspaceId: connectAlibabaWorkspaceIdForRequest }
         : {}),
+      ...(connectAlibabaBillingModeForRequest
+        ? { alibabaBillingMode: connectAlibabaBillingModeForRequest }
+        : {}),
       forceRefresh,
     });
     if (res.modelIds.length === 0) {
@@ -630,6 +652,9 @@ export function ModelsSettingsPanel({
       ...(connectProviderSiteForRequest ? { providerSite: connectProviderSiteForRequest } : {}),
       ...(connectAlibabaWorkspaceIdForRequest
         ? { alibabaWorkspaceId: connectAlibabaWorkspaceIdForRequest }
+        : {}),
+      ...(connectAlibabaBillingModeForRequest
+        ? { alibabaBillingMode: connectAlibabaBillingModeForRequest }
         : {}),
     };
     await onAddProviderModels(bulk);
@@ -1447,7 +1472,48 @@ export function ModelsSettingsPanel({
           </DialogHeader>
 
           <div className="grid gap-3 py-1">
-            {selectedProvider && providerSupportsSiteSelection(selectedProvider) ? (
+            {selectedProvider === "alibaba" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="connect-alibaba-billing-mode">{t('settings.alibabaBillingMode')}</Label>
+                <div className={DESKTOP_FORM_INPUT_SHELL}>
+                  <Select
+                    value={connectAlibabaBillingMode}
+                    onValueChange={(value) =>
+                      setConnectAlibabaBillingMode(value as "standard" | "token-plan")
+                    }
+                  >
+                    <SelectTrigger
+                      id="connect-alibaba-billing-mode"
+                      className={DESKTOP_FORM_FIELD_TRIGGER_INNER}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="standard">
+                        {t('settings.alibabaBillingModeStandard')}
+                      </SelectItem>
+                      <SelectItem value="token-plan">
+                        {t('settings.alibabaBillingModeTokenPlan')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {connectAlibabaBillingMode === "token-plan" ? (
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {t('settings.alibabaBillingModeTokenPlanHelp')}{" "}
+                    <a
+                      href={ALIBABA_TOKEN_PLAN_DOC_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2"
+                    >
+                      {t('settings.alibabaBillingModeTokenPlanDocLink')}
+                    </a>
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {selectedProvider && providerSupportsSiteSelection(selectedProvider) && !connectAlibabaIsTokenPlan ? (
               <div className="grid gap-2">
                 <Label htmlFor="connect-provider-site">{t('settings.site')}</Label>
                 <div className={DESKTOP_FORM_INPUT_SHELL}>
