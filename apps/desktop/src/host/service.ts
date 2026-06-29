@@ -326,6 +326,7 @@ import {
   removeEphemeralSessionRecord,
 } from './sessions.js';
 import { generateSessionTitleFromModelTask } from './session-title-generation.js';
+import { prepareSessionTitleForFirstUserTurn as resetSessionTitleForFirstUserTurn } from './session-title-first-turn.js';
 import { applyGeneratedSessionTitle } from './session-title-service.js';
 import {
   abortCodeCompletionCommand,
@@ -559,6 +560,7 @@ class DesktopHostService {
   private readonly automationUpdateListeners = new Set<(snapshot: DesktopSnapshot) => void>();
   private readonly sessionListUpdateListeners = new Set<() => void>();
   private readonly sessionTitleGenerationInFlight = new Set<string>();
+  private readonly sessionTitleGenerationEpoch = new Map<string, number>();
   private subagentViewerTargetToolCallId: string | null = null;
   private gitRefreshInFlight: Promise<void> | null = null;
   private contextUsageCatalogRefreshInFlight: Promise<void> | null = null;
@@ -723,6 +725,8 @@ class DesktopHostService {
       clearAssistantContinuationMarkers: () => this.clearAssistantContinuationMarkers(),
       resolveTodoSessionKeyForBundle: (bundle) => this.resolveTodoSessionKeyForBundle(bundle),
       ensureActiveSession: (displayText) => this.ensureActiveSession(displayText),
+      prepareSessionTitleForFirstUserTurn: (displayText) =>
+        this.prepareSessionTitleForFirstUserTurn(displayText),
       reconcileTodoScopeAfterSessionPathChange: (bundle, previousSessionKey) =>
         this.reconcileTodoScopeAfterSessionPathChange(bundle, previousSessionKey),
       maybeRefreshRuntimeAfterTodoScopeChange: (bundle, previousSessionKey) =>
@@ -2699,6 +2703,26 @@ class DesktopHostService {
     }
   }
 
+  private prepareSessionTitleForFirstUserTurn(displayText: string): void {
+    const bundle = this.activeBundle();
+    if (!resetSessionTitleForFirstUserTurn(bundle, displayText)) {
+      return;
+    }
+    const filePath = bundle.activeSession?.filePath;
+    if (filePath) {
+      this.invalidateSessionTitleGeneration(filePath);
+    }
+  }
+
+  private invalidateSessionTitleGeneration(sessionPath: string): void {
+    const filePath = path.resolve(sessionPath);
+    this.sessionTitleGenerationEpoch.set(
+      filePath,
+      (this.sessionTitleGenerationEpoch.get(filePath) ?? 0) + 1,
+    );
+    this.sessionTitleGenerationInFlight.delete(filePath);
+  }
+
   private scheduleSessionTitleGenerationIfNeeded(seedText: string): void {
     const bundle = this.activeBundle();
     const activeSession = bundle.activeSession;
@@ -2726,8 +2750,9 @@ class DesktopHostService {
       return;
     }
 
+    const epoch = this.sessionTitleGenerationEpoch.get(filePath) ?? 0;
     this.sessionTitleGenerationInFlight.add(filePath);
-    void this.generateAndApplySessionTitle(bundle, seedText, filePath)
+    void this.generateAndApplySessionTitle(bundle, seedText, filePath, epoch)
       .catch((error) => {
         console.debug(
           '[session-title] generation failed:',
@@ -2743,6 +2768,7 @@ class DesktopHostService {
     bundle: SessionBundle,
     seedText: string,
     filePath: string,
+    epoch: number,
   ): Promise<void> {
     const state = this.requireState();
     const fallbackSeed = bundle.activeSession?.displayName ?? deriveDisplayNameFromSeed(seedText);
@@ -2752,6 +2778,9 @@ class DesktopHostService {
       firstUserMessage: seedText,
       fallbackSeedTitle: fallbackSeed,
     });
+    if ((this.sessionTitleGenerationEpoch.get(filePath) ?? 0) !== epoch) {
+      return;
+    }
     await applyGeneratedSessionTitle({
       sessionPath: filePath,
       title: result.title,

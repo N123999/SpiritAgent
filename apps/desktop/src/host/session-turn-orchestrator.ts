@@ -96,6 +96,7 @@ export interface SessionTurnOrchestratorContext {
   clearAssistantContinuationMarkers(): void;
   resolveTodoSessionKeyForBundle(bundle: SessionBundle): string;
   ensureActiveSession(displayText: string): void;
+  prepareSessionTitleForFirstUserTurn(displayText: string): void;
   reconcileTodoScopeAfterSessionPathChange(bundle: SessionBundle, previousSessionKey: string): Promise<void>;
   maybeRefreshRuntimeAfterTodoScopeChange(bundle: SessionBundle, previousSessionKey: string): Promise<void>;
   buildRewindCheckpointSnapshot(): Promise<unknown>;
@@ -158,6 +159,7 @@ export async function submitUserTurnAfterInitializedCommand(
   ctx.clearAssistantContinuationMarkers();
   const todoSessionKeyBeforeEnsure = ctx.resolveTodoSessionKeyForBundle(bundle);
   ctx.ensureActiveSession(displayText);
+  ctx.prepareSessionTitleForFirstUserTurn(displayText);
   await ctx.reconcileTodoScopeAfterSessionPathChange(bundle, todoSessionKeyBeforeEnsure);
   await ctx.maybeRefreshRuntimeAfterTodoScopeChange(bundle, todoSessionKeyBeforeEnsure);
   const beforeUserCheckpoint = await ctx.buildRewindCheckpointSnapshot();

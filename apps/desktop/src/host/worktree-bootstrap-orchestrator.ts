@@ -107,6 +107,7 @@ export async function startWorktreeBootstrapTurnCommand(
   ctx.clearAssistantContinuationMarkers();
   const todoSessionKeyBeforeEnsure = ctx.resolveTodoSessionKeyForBundle(bundle);
   ctx.ensureActiveSession(displayText);
+  ctx.prepareSessionTitleForFirstUserTurn(displayText);
   await ctx.reconcileTodoScopeAfterSessionPathChange(bundle, todoSessionKeyBeforeEnsure);
   await ctx.maybeRefreshRuntimeAfterTodoScopeChange(bundle, todoSessionKeyBeforeEnsure);
   const beforeUserCheckpoint = await ctx.buildRewindCheckpointSnapshot() as DesktopRewindCheckpointSnapshot;
