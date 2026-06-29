@@ -9,6 +9,7 @@ const MODELS_DEV_LOGO_ORIGIN = 'https://models.dev';
 const MODELS_DEV_LOGO_ID_ALIASES: Partial<Record<DesktopModelProvider, string>> = {
   'vercel-ai-gateway': 'vercel',
   'moonshot-ai': 'moonshotai',
+  'kimi-code': 'moonshotai',
   'z-ai': 'zai',
   'zhipu-ai': 'zhipuai',
   'google-vertex-ai': 'google-vertex',
