@@ -13,7 +13,12 @@ import type {
   PreviewModelCatalogVideoDurationPricing,
 } from '@/types';
 
-const METADATA_PROVIDERS = new Set<DesktopModelProvider>(['vercel-ai-gateway', 'openrouter']);
+const METADATA_PROVIDERS = new Set<DesktopModelProvider>([
+  'vercel-ai-gateway',
+  'openrouter',
+  'moonshot-ai',
+  'kimi-code',
+]);
 
 export function providerSupportsModelCatalogDetail(
   provider: DesktopModelProvider | undefined,
@@ -113,7 +118,7 @@ export function buildModelCatalogDetailMap(
   return detailByModelName;
 }
 
-/** Gateway/OpenRouter：上游 `name` → catalog `displayName`；其余或未命中时回退 model.name（id）。 */
+/** Gateway/OpenRouter/Moonshot/Kimi Code：catalog 展示名与详情；其余或未命中时回退 model.name（id）或格式化 id。 */
 export function buildModelCatalogDisplayTitleMap(
   models: readonly ModelProfileSnapshot[],
   hints: readonly DesktopModelCatalogHint[] | undefined,

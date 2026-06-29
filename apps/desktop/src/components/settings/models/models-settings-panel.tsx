@@ -1434,7 +1434,9 @@ export function ModelsSettingsPanel({
                     ? t('settings.siliconflowConnectionDescription')
                     : selectedProvider === "moonshot-ai"
                       ? t('settings.moonshotConnectionDescription')
-                      : selectedProvider === "minimax"
+                      : selectedProvider === "kimi-code"
+                        ? t('settings.kimiCodeConnectionDescription')
+                        : selectedProvider === "minimax"
                         ? t('settings.minimaxConnectionDescription')
                         : selectedProvider === "alibaba"
                           ? t('settings.alibabaConnectionDescription')

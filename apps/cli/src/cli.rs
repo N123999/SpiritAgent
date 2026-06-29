@@ -8,7 +8,7 @@ use crate::{
         example_github_mcp_config, load_mcp_config, save_mcp_config, set_server_enabled,
         user_mcp_config_path, workspace_mcp_config_path,
     },
-    model_provider_presets::{azure_api_base_from_resource_name, model_add_alibaba_site_api_base, model_add_alibaba_site_requires_workspace_id, model_add_default_custom_api_base, model_add_minimax_site_api_base, model_add_moonshot_site_api_base, model_add_preset_api_base_by_provider, model_add_siliconflow_site_api_base, validate_azure_resource_name},
+    model_provider_presets::{azure_api_base_from_resource_name, model_add_alibaba_site_api_base, model_add_alibaba_site_requires_workspace_id, model_add_default_custom_api_base, model_add_kimi_code_api_base, model_add_minimax_site_api_base, model_add_moonshot_site_api_base, model_add_preset_api_base_by_provider, model_add_siliconflow_site_api_base, validate_azure_resource_name},
     model_registry::{
         AppConfig, DEFAULT_API_BASE, ModelProfile, ModelProvider, ModelTransportKind,
     },
@@ -236,6 +236,11 @@ pub fn handle_model_cli(action: ModelCommand) -> Result<()> {
                             if let Some(base) = model_add_moonshot_site_api_base(site) {
                                 return base;
                             }
+                        }
+                    }
+                    if provider == Some(ModelProvider::KimiCode) {
+                        if let Some(base) = model_add_kimi_code_api_base(transport_kind) {
+                            return base;
                         }
                     }
                     if provider == Some(ModelProvider::Minimax) {
@@ -560,10 +565,10 @@ fn parse_model_transport_kind(
             Err(anyhow!("provider=anthropic 时 transport-kind 不能是 openai-compatible 或 open-responses"))
         }
         (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::ZhipuAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba), ModelTransportKind::Anthropic) => {
-            Err(anyhow!("只有 provider=custom、siliconflow 或 anthropic 时可以选择 anthropic transport-kind"))
+            Err(anyhow!("只有 provider=custom、siliconflow、kimi-code 或 anthropic 时可以选择 anthropic transport-kind"))
         }
-        (Some(ModelProvider::Siliconflow), ModelTransportKind::OpenResponses | ModelTransportKind::Bedrock) => {
-            Err(anyhow!("provider=siliconflow 仅支持 openai-compatible 或 anthropic transport-kind"))
+        (Some(ModelProvider::Siliconflow | ModelProvider::KimiCode), ModelTransportKind::OpenResponses | ModelTransportKind::Bedrock) => {
+            Err(anyhow!("provider=siliconflow 与 provider=kimi-code 仅支持 openai-compatible 或 anthropic transport-kind"))
         }
         (Some(ModelProvider::Deepseek | ModelProvider::Moonshot | ModelProvider::ZAi | ModelProvider::ZhipuAi | ModelProvider::Minimax | ModelProvider::Xiaomi | ModelProvider::Alibaba), ModelTransportKind::OpenResponses) => {
             Err(anyhow!("只有 provider=openai 或 custom 时可以选择 open-responses transport-kind"))
@@ -614,7 +619,9 @@ fn parse_model_reasoning_effort(
             Some(ModelProvider::Deepseek) if is_deepseek_v4_reasoning_model(model_name) => {
                 &["default", "high", "max"]
             }
-            Some(ModelProvider::Moonshot) => &["default", "minimal", "low", "medium", "high"],
+            Some(ModelProvider::Moonshot | ModelProvider::KimiCode) => {
+                &["default", "minimal", "low", "medium", "high"]
+            }
             _ => &["default", "none", "low", "medium", "high", "xhigh"],
         },
     };
@@ -1151,4 +1158,21 @@ pub fn load_or_default_config() -> AppConfig {
     JsonConfigStore
         .load()
         .unwrap_or_else(|_| AppConfig::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_model_reasoning_effort, ModelProvider, ModelTransportKind};
+
+    #[test]
+    fn parse_model_reasoning_effort_accepts_moonshot_style_for_kimi_code() {
+        let effort = parse_model_reasoning_effort(
+            "kimi-for-coding",
+            Some("minimal".to_string()),
+            Some(ModelProvider::KimiCode),
+            ModelTransportKind::OpenAiCompatible,
+        )
+        .expect("parse reasoning effort");
+        assert_eq!(effort, Some("minimal".to_string()));
+    }
 }

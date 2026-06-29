@@ -5,6 +5,7 @@ export type ModelProviderId =
   | 'deepseek'
   | 'xai'
   | 'moonshot-ai'
+  | 'kimi-code'
   | 'z-ai'
   | 'zhipu-ai'
   | 'minimax'
@@ -46,6 +47,7 @@ const CANONICAL_PICKER_ORDER: readonly ModelProviderId[] = [
   'deepseek',
   'openrouter',
   'moonshot-ai',
+  'kimi-code',
   'z-ai',
   'zhipu-ai',
   'alibaba',
@@ -74,7 +76,7 @@ function assertCanonicalPickerOrder(order: readonly string[]): asserts order is 
     order.some((id, index) => id !== CANONICAL_PICKER_ORDER[index])
   ) {
     throw new Error(
-      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","z-ai","zhipu-ai","alibaba","minimax","xiaomi","siliconflow","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
+      'model-provider-presets.json: pickerOrder must be exactly ["openai","anthropic","google","xai","vercel-ai-gateway","deepseek","openrouter","moonshot-ai","kimi-code","z-ai","zhipu-ai","alibaba","minimax","xiaomi","siliconflow","volcengine","azure","amazon-bedrock","google-vertex-ai","custom"]',
     );
   }
 }
@@ -130,6 +132,7 @@ interface ParsedModelProviderPresets {
     | 'deepseek'
     | 'xai'
     | 'moonshot-ai'
+    | 'kimi-code'
     | 'z-ai'
     | 'zhipu-ai'
     | 'minimax'
@@ -297,6 +300,7 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
     deepseek: requireStringField(presetRaw, 'deepseek'),
     xai: requireStringField(presetRaw, 'xai'),
     'moonshot-ai': requireStringField(presetRaw, 'moonshot-ai'),
+    'kimi-code': requireStringField(presetRaw, 'kimi-code'),
     'z-ai': requireStringField(presetRaw, 'z-ai'),
     'zhipu-ai': requireStringField(presetRaw, 'zhipu-ai'),
     minimax: requireStringField(presetRaw, 'minimax'),
@@ -351,6 +355,7 @@ export const DEFAULT_CUSTOM_API_BASE: string = raw.defaultCustomApiBase;
 const deepseekBase = raw.presetApiBaseByProvider.deepseek;
 const xaiBase = raw.presetApiBaseByProvider.xai;
 const moonshotAiBase = raw.presetApiBaseByProvider['moonshot-ai'];
+const kimiCodeBase = raw.presetApiBaseByProvider['kimi-code'];
 const zAiBase = raw.presetApiBaseByProvider['z-ai'];
 const zhipuAiBase = raw.presetApiBaseByProvider['zhipu-ai'];
 const minimaxBase = raw.presetApiBaseByProvider.minimax;
@@ -371,6 +376,7 @@ export const PROVIDER_PRESET_API_BASE = {
   deepseek: deepseekBase,
   xai: xaiBase,
   'moonshot-ai': moonshotAiBase,
+  'kimi-code': kimiCodeBase,
   'z-ai': zAiBase,
   'zhipu-ai': zhipuAiBase,
   minimax: minimaxBase,
@@ -583,6 +589,8 @@ export function resolveConnectApiBase(
       return PROVIDER_PRESET_API_BASE.xai;
     case 'moonshot-ai':
       return PROVIDER_PRESET_API_BASE['moonshot-ai'];
+    case 'kimi-code':
+      return PROVIDER_PRESET_API_BASE['kimi-code'];
     case 'z-ai':
       return PROVIDER_PRESET_API_BASE['z-ai'];
     case 'zhipu-ai':

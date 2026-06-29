@@ -21,6 +21,8 @@ pub enum ModelProvider {
     Xai,
     #[serde(rename = "moonshot-ai")]
     Moonshot,
+    #[serde(rename = "kimi-code")]
+    KimiCode,
     #[serde(rename = "z-ai")]
     ZAi,
     #[serde(rename = "zhipu-ai")]
@@ -50,6 +52,7 @@ impl ModelProvider {
             Self::Deepseek => "deepseek",
             Self::Xai => "xai",
             Self::Moonshot => "moonshot-ai",
+            Self::KimiCode => "kimi-code",
             Self::ZAi => "z-ai",
             Self::ZhipuAi => "zhipu-ai",
             Self::Minimax => "minimax",
@@ -78,6 +81,7 @@ impl FromStr for ModelProvider {
             "deepseek" => Ok(Self::Deepseek),
             "xai" => Ok(Self::Xai),
             "moonshot-ai" => Ok(Self::Moonshot),
+            "kimi-code" => Ok(Self::KimiCode),
             "z-ai" => Ok(Self::ZAi),
             "zhipu-ai" => Ok(Self::ZhipuAi),
             "minimax" => Ok(Self::Minimax),
@@ -181,6 +185,7 @@ impl ModelProfile {
         match self.provider {
             Some(ModelProvider::Deepseek) => false,
             Some(ModelProvider::Moonshot) => false,
+            Some(ModelProvider::KimiCode) => false,
             Some(ModelProvider::Xiaomi) => false,
             Some(ModelProvider::Siliconflow) => false,
             Some(ModelProvider::Xai)
@@ -553,7 +558,7 @@ pub(crate) fn normalize_reasoning_effort_value(
                     _ => "default".to_string(),
                 }
             }
-            Some(ModelProvider::Moonshot) => match normalized.as_str() {
+            Some(ModelProvider::Moonshot | ModelProvider::KimiCode) => match normalized.as_str() {
                 "default" | "minimal" | "low" | "medium" | "high" => normalized,
                 "none" => "default".to_string(),
                 "xhigh" | "max" => "high".to_string(),
@@ -625,9 +630,31 @@ fn is_deepseek_v4_reasoning_model(model: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{deserialize_config, serialize_config};
+    use super::{deserialize_config, normalize_reasoning_effort_value, serialize_config, ModelProvider, ModelTransportKind};
     use serde_json::Value;
     use std::path::Path;
+
+    #[test]
+    fn normalize_reasoning_effort_preserves_moonshot_style_for_kimi_code() {
+        assert_eq!(
+            normalize_reasoning_effort_value(
+                Some("minimal".to_string()),
+                Some(ModelProvider::KimiCode),
+                ModelTransportKind::OpenAiCompatible,
+                "kimi-for-coding",
+            ),
+            Some("minimal".to_string()),
+        );
+        assert_eq!(
+            normalize_reasoning_effort_value(
+                Some("max".to_string()),
+                Some(ModelProvider::KimiCode),
+                ModelTransportKind::OpenAiCompatible,
+                "kimi-for-coding",
+            ),
+            Some("high".to_string()),
+        );
+    }
 
     #[test]
     fn preserves_unknown_top_level_and_model_fields() {

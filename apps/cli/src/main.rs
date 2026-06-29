@@ -103,7 +103,7 @@ enum ModelAction {
         name: String,
         #[arg(long)]
         api_base: Option<String>,
-        #[arg(long, value_parser = ["deepseek", "xai", "moonshot-ai", "z-ai", "zhipu-ai", "minimax", "xiaomi", "siliconflow", "alibaba", "anthropic", "vercel-ai-gateway", "openrouter", "openai", "google", "volcengine", "azure", "amazon-bedrock", "custom"])]
+        #[arg(long, value_parser = ["deepseek", "xai", "moonshot-ai", "kimi-code", "z-ai", "zhipu-ai", "minimax", "xiaomi", "siliconflow", "alibaba", "anthropic", "vercel-ai-gateway", "openrouter", "openai", "google", "volcengine", "azure", "amazon-bedrock", "custom"])]
         provider: Option<String>,
         #[arg(long, value_parser = ["openai-compatible", "open-responses", "anthropic", "bedrock"])]
         transport_kind: Option<String>,

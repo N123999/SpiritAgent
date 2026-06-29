@@ -87,6 +87,7 @@ test('moonshot-ai provider consumes Moonshot model catalog metadata', () => {
         supportsImageInput: true,
         supportsVideoInput: false,
         supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+        contextLength: 256000,
       },
       {
         id: 'kimi-k2-turbo-preview',
@@ -103,6 +104,7 @@ test('moonshot-ai provider consumes Moonshot model catalog metadata', () => {
       displayName: 'Kimi K2.5',
       capabilities: ['chat', 'image'],
       supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+      contextLength: 256000,
     },
     {
       id: 'kimi-k2-turbo-preview',
@@ -506,6 +508,36 @@ test('openrouter provider passes contextLength through catalog metadata', () => 
       capabilities: ['chat'],
       contextLength: 200000,
       supportedReasoningEfforts: ['low', 'medium', 'high'],
+    },
+  ]);
+});
+
+test('kimi-code provider maps catalog traits including displayName and supportsThinkingType', () => {
+  const preview = previewModelCatalogForTransport({
+    provider: 'kimi-code',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'kimi-for-coding',
+        displayName: 'K2.7 Code',
+        supportsImageInput: true,
+        supportsVideoInput: true,
+        supportsReasoning: true,
+        supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+        contextLength: 262144,
+        supportsThinkingType: 'only',
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'kimi-for-coding',
+      displayName: 'K2.7 Code',
+      capabilities: ['chat', 'image', 'video'],
+      supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+      contextLength: 262144,
+      supportsThinkingType: 'only',
     },
   ]);
 });

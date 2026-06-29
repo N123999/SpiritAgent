@@ -4,6 +4,7 @@
     "deepseek": "https://api.deepseek.com/v1",
     "xai": "https://api.x.ai/v1",
     "moonshot-ai": "https://api.moonshot.ai/v1",
+    "kimi-code": "https://api.kimi.com/coding/v1",
     "z-ai": "https://api.z.ai/api/paas/v4",
     "zhipu-ai": "https://open.bigmodel.cn/api/paas/v4",
     "minimax": "https://api.minimax.io/v1",
@@ -28,6 +29,10 @@
     "deepseek": {
       "openai-compatible": "https://api.deepseek.com/v1",
       "anthropic": "https://api.deepseek.com/anthropic"
+    },
+    "kimi-code": {
+      "openai-compatible": "https://api.kimi.com/coding/v1",
+      "anthropic": "https://api.kimi.com/coding"
     },
     "xiaomi": {
       "openai-compatible": "https://api.xiaomimimo.com/v1",
@@ -121,7 +126,7 @@
       }
     }
   },
-  "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "z-ai", "zhipu-ai", "alibaba", "minimax", "xiaomi", "siliconflow", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
+  "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "kimi-code", "z-ai", "zhipu-ai", "alibaba", "minimax", "xiaomi", "siliconflow", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
   "pickerLabels": {
     "deepseek": {
       "labelKey": "providers.deepseek",
@@ -134,6 +139,10 @@
     "moonshot-ai": {
       "labelKey": "providers.moonshotAi",
       "fallbackLabel": "Moonshot AI"
+    },
+    "kimi-code": {
+      "labelKey": "providers.kimiCode",
+      "fallbackLabel": "Kimi Code"
     },
     "z-ai": {
       "labelKey": "providers.zAi",

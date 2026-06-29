@@ -24,6 +24,8 @@ export {
 const CONTEXT_USAGE_PROVIDERS = new Set<DesktopModelProvider>([
   'openrouter',
   'vercel-ai-gateway',
+  'moonshot-ai',
+  'kimi-code',
 ]);
 
 export function supportsContextUsageProvider(provider: DesktopModelProvider | undefined): boolean {

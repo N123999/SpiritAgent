@@ -57,6 +57,7 @@ pub(crate) fn model_provider_vendor(provider: ModelProvider) -> &'static str {
         ModelProvider::Deepseek => "deepseek",
         ModelProvider::Xai => "xai",
         ModelProvider::Moonshot => "moonshot-ai",
+        ModelProvider::KimiCode => "kimi-code",
         ModelProvider::ZAi => "z-ai",
         ModelProvider::ZhipuAi => "zhipu-ai",
         ModelProvider::Minimax => "minimax",

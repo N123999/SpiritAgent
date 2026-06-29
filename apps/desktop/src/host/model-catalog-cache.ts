@@ -383,5 +383,8 @@ function clonePreviewModelCatalog(
       ? { supportedReasoningEfforts: [...entry.supportedReasoningEfforts] }
       : {}),
     ...(entry.contextLength !== undefined ? { contextLength: entry.contextLength } : {}),
+    ...(entry.supportsThinkingType !== undefined
+      ? { supportsThinkingType: entry.supportsThinkingType }
+      : {}),
   }));
 }

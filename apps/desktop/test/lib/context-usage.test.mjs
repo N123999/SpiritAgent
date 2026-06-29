@@ -58,6 +58,27 @@ test('resolveModelContextLength uses catalog for gateway when profile has no ove
   assert.equal(resolveModelContextLength(activeModel, catalogHints), 128000);
 });
 
+test('resolveModelContextLength uses catalog for moonshot-ai when profile has no override', () => {
+  const activeModel = {
+    name: 'kimi-k2.5',
+    apiBase: 'https://api.moonshot.cn/v1',
+    provider: 'moonshot-ai',
+    transportKind: 'openai-compatible',
+  };
+  const catalogHints = [
+    {
+      provider: 'moonshot-ai',
+      transportKind: 'openai-compatible',
+      apiBase: 'https://api.moonshot.cn/v1',
+      modelIds: ['kimi-k2.5'],
+      modelCatalog: [{ id: 'kimi-k2.5', contextLength: 256000 }],
+      fetchedAtUnixMs: 1,
+    },
+  ];
+
+  assert.equal(resolveModelContextLength(activeModel, catalogHints), 256000);
+});
+
 test('resolveModelContextLength returns undefined for custom without profile override', () => {
   const activeModel = {
     name: 'my-model',

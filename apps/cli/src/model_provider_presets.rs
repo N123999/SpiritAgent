@@ -45,6 +45,19 @@ pub(crate) fn model_add_preset_api_base_by_provider(provider: crate::model_regis
         .cloned()
 }
 
+/// 与 `model-provider-presets.json` 中 `presetApiBaseByTransport.kimi-code` 对齐。
+pub(crate) fn model_add_kimi_code_api_base(
+    transport_kind: ModelTransportKind,
+) -> Option<String> {
+    match transport_kind {
+        ModelTransportKind::OpenAiCompatible => {
+            Some("https://api.kimi.com/coding/v1".to_string())
+        }
+        ModelTransportKind::Anthropic => Some("https://api.kimi.com/coding".to_string()),
+        _ => None,
+    }
+}
+
 pub(crate) fn model_add_default_custom_api_base(
     transport_kind: ModelTransportKind,
 ) -> String {
@@ -352,6 +365,11 @@ fn default_api_base_for_transport(
     site: Option<&str>,
     workspace_id: &str,
 ) -> String {
+    if provider == crate::model_registry::ModelProvider::KimiCode {
+        if let Some(base) = model_add_kimi_code_api_base(transport_kind) {
+            return base;
+        }
+    }
     if let Some(site) = site {
         if let Some(base) = resolve_site_api_base(provider, transport_kind, site, workspace_id) {
             return base;
@@ -424,45 +442,62 @@ mod tests {
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(8).as_deref(),
-            Some("https://api.z.ai/api/paas/v4")
+            Some("https://api.kimi.com/coding/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(9).as_deref(),
-            Some("https://open.bigmodel.cn/api/paas/v4")
+            Some("https://api.z.ai/api/paas/v4")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(10).as_deref(),
-            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
+            Some("https://open.bigmodel.cn/api/paas/v4")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(11).as_deref(),
-            Some("https://api.minimax.io/v1")
+            Some("https://dashscope.aliyuncs.com/compatible-mode/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(12).as_deref(),
-            Some("https://api.xiaomimimo.com/v1")
+            Some("https://api.minimax.io/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(13).as_deref(),
-            Some("https://api.siliconflow.com/v1")
+            Some("https://api.xiaomimimo.com/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(14).as_deref(),
-            Some("https://ark.cn-beijing.volces.com/api/v3")
+            Some("https://api.siliconflow.com/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(15).as_deref(),
-            Some("https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1")
+            Some("https://ark.cn-beijing.volces.com/api/v3")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(16).as_deref(),
-            Some("https://bedrock.us-east-1.amazonaws.com")
+            Some("https://YOUR_RESOURCE_NAME.openai.azure.com/openai/v1")
         );
         assert_eq!(
             model_add_preset_api_base_by_choice_index(17).as_deref(),
+            Some("https://bedrock.us-east-1.amazonaws.com")
+        );
+        assert_eq!(
+            model_add_preset_api_base_by_choice_index(18).as_deref(),
             Some("https://us-central1-aiplatform.googleapis.com/v1/projects/YOUR_PROJECT_ID/locations/us-central1")
         );
-        assert!(model_add_preset_api_base_by_choice_index(18).is_none());
+        assert!(model_add_preset_api_base_by_choice_index(19).is_none());
+    }
+
+    #[test]
+    fn kimi_code_api_base_resolves_openai_and_anthropic_transports() {
+        assert_eq!(
+            super::model_add_kimi_code_api_base(ModelTransportKind::OpenAiCompatible).as_deref(),
+            Some("https://api.kimi.com/coding/v1")
+        );
+        assert_eq!(
+            super::model_add_kimi_code_api_base(ModelTransportKind::Anthropic).as_deref(),
+            Some("https://api.kimi.com/coding")
+        );
+        assert!(super::model_add_kimi_code_api_base(ModelTransportKind::OpenResponses).is_none());
     }
 
     #[test]

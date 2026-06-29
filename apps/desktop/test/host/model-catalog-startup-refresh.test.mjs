@@ -284,6 +284,24 @@ test('applyCatalogEntryToStoredModel backfills contextLength only when unset', (
   assert.equal(model.contextLength, 128000);
 });
 
+test('applyCatalogEntryToStoredModel syncs supportsThinkingType', () => {
+  const model = {
+    name: 'kimi-for-coding',
+    apiBase: 'https://api.kimi.com/coding/v1',
+    reasoningEffort: 'default',
+    provider: 'kimi-code',
+  };
+
+  assert.equal(
+    applyCatalogEntryToStoredModel(model, {
+      id: 'kimi-for-coding',
+      supportsThinkingType: 'only',
+    }),
+    true,
+  );
+  assert.equal(model.supportsThinkingType, 'only');
+});
+
 test('removeDelistedModelsFromCatalog drops scope models missing from upstream ids', () => {
   const config = {
     models: [

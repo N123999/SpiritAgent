@@ -13,6 +13,7 @@ export type OpenAiLlmVendor =
   | 'deepseek'
   | 'xai'
   | 'moonshot-ai'
+  | 'kimi-code'
   | 'z-ai'
   | 'zhipu-ai'
   | 'minimax'

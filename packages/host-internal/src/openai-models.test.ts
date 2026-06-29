@@ -7,6 +7,7 @@ import {
   parseGoogleModelEntriesPayload,
   parseOpenAiCompatibleModelEntriesPayload,
   parseMoonshotModelEntriesPayload,
+  parseKimiCodeModelEntriesPayload,
   parseOpenRouterModelEntriesPayload,
   parseSiliconFlowModelEntriesPayload,
   parseVercelAiGatewayModelEntriesPayload,
@@ -102,6 +103,58 @@ test('parseMoonshotModelEntriesPayload maps Moonshot model trait fields', () => 
       supportsVideoInput: false,
       supportsReasoning: false,
       supportedReasoningEfforts: [],
+    },
+  ]);
+});
+
+test('parseKimiCodeModelEntriesPayload maps Kimi Code model trait fields', () => {
+  const entries = parseKimiCodeModelEntriesPayload({
+    object: 'list',
+    data: [
+      {
+        id: 'kimi-for-coding',
+        display_name: 'K2.7 Code',
+        context_length: 262144,
+        supports_reasoning: true,
+        supports_image_in: true,
+        supports_video_in: true,
+        supports_thinking_type: 'only',
+      },
+    ],
+  });
+
+  assert.deepEqual(entries, [
+    {
+      id: 'kimi-for-coding',
+      displayName: 'K2.7 Code',
+      supportsImageInput: true,
+      supportsVideoInput: true,
+      supportsReasoning: true,
+      supportedReasoningEfforts: moonshotSupportedReasoningEfforts(true),
+      contextLength: 262144,
+      supportsThinkingType: 'only',
+    },
+  ]);
+});
+
+test('parseOpenAiCompatibleModelEntriesPayload routes kimi-code to Kimi parser', () => {
+  const entries = parseOpenAiCompatibleModelEntriesPayload({
+    data: [
+      {
+        id: 'kimi-for-coding',
+        display_name: 'K2.7 Code',
+        supports_image_in: true,
+        supports_thinking_type: 'only',
+      },
+    ],
+  }, 'kimi-code');
+
+  assert.deepEqual(entries, [
+    {
+      id: 'kimi-for-coding',
+      displayName: 'K2.7 Code',
+      supportsImageInput: true,
+      supportsThinkingType: 'only',
     },
   ]);
 });

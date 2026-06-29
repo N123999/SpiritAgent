@@ -63,6 +63,7 @@ export function usesProviderListedModelCatalogMetadata(input: {
   if (
     input.provider === 'openai'
     || input.provider === 'deepseek'
+    || input.provider === 'kimi-code'
     || input.provider === 'xai'
     || input.provider === 'z-ai'
     || input.provider === 'zhipu-ai'
@@ -97,6 +98,9 @@ export function previewModelCatalogForTransport(input: {
     ...(entry.pricing !== undefined ? { pricing: { ...entry.pricing } } : {}),
     ...resolvePreviewSupportedReasoningEffortsForEntry(input.provider, entry),
     ...(entry.contextLength !== undefined ? { contextLength: entry.contextLength } : {}),
+    ...(entry.supportsThinkingType !== undefined
+      ? { supportsThinkingType: entry.supportsThinkingType }
+      : {}),
   }));
 }
 
@@ -130,6 +134,9 @@ export function previewCatalogMapForTransport(input: {
           ? { supportedReasoningEfforts: normalizePreviewSupportedReasoningEfforts(entry.supportedReasoningEfforts) }
           : {}),
         ...(entry.contextLength !== undefined ? { contextLength: entry.contextLength } : {}),
+        ...(entry.supportsThinkingType !== undefined
+          ? { supportsThinkingType: entry.supportsThinkingType }
+          : {}),
       },
     ]);
   }
