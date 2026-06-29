@@ -10,9 +10,8 @@ function pendingQuestions(overrides = {}) {
       questions: [
         {
           id: 'question-1',
-          kind: 'text',
           title: 'What should happen next?',
-          required: true,
+          allowMultiple: false,
           options: [],
         },
       ],
@@ -35,10 +34,8 @@ test('buildSingleTextQuestionNotificationReplyResult maps matching text reply', 
       answers: [
         {
           questionId: 'question-1',
-          title: 'What should happen next?',
-          kind: 'text',
-          answered: true,
-          text: 'Proceed carefully',
+          selectedOptionIds: [],
+          customText: 'Proceed carefully',
         },
       ],
     },
@@ -58,7 +55,7 @@ test('buildSingleTextQuestionNotificationReplyResult ignores stale tool call', (
   );
 });
 
-test('buildSingleTextQuestionNotificationReplyResult ignores non-text or multi-question prompts', () => {
+test('buildSingleTextQuestionNotificationReplyResult ignores multi-question prompts', () => {
   assert.equal(
     buildSingleTextQuestionNotificationReplyResult(
       pendingQuestions({
@@ -66,16 +63,14 @@ test('buildSingleTextQuestionNotificationReplyResult ignores non-text or multi-q
           questions: [
             {
               id: 'question-1',
-              kind: 'text',
               title: 'First?',
-              required: true,
+              allowMultiple: false,
               options: [],
             },
             {
               id: 'question-2',
-              kind: 'text',
               title: 'Second?',
-              required: true,
+              allowMultiple: false,
               options: [],
             },
           ],

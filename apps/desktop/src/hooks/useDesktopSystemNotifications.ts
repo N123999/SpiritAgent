@@ -15,10 +15,38 @@ type AttentionFlags = {
   needsApproval: boolean;
   needsQuestions: boolean;
   needsTaskComplete: boolean;
+  attentionBlockKey?: string;
 };
 
 function attentionFlagsKey(flags: AttentionFlags): string {
-  return `${flags.needsApproval}:${flags.needsQuestions}:${flags.needsTaskComplete}`;
+  return `${flags.needsApproval}:${flags.needsQuestions}:${flags.needsTaskComplete}:${flags.attentionBlockKey ?? ''}`;
+}
+
+function resolveAttentionBlockKey(
+  approval: PendingToolApprovalSnapshot | undefined,
+  questions: PendingQuestionsSnapshot | undefined,
+): string | undefined {
+  if (approval) {
+    return `approval:${approval.toolName}:${approval.prompt}`;
+  }
+  if (questions) {
+    return `questions:${questions.toolCallId}`;
+  }
+  return undefined;
+}
+
+function buildAttentionFlags(
+  snapshot: DesktopSnapshot | null | undefined,
+  needsTaskComplete: boolean,
+): AttentionFlags {
+  const approval = snapshot?.conversation.pendingToolApproval;
+  const questions = snapshot?.conversation.pendingQuestions;
+  return {
+    needsApproval: Boolean(approval),
+    needsQuestions: Boolean(questions),
+    needsTaskComplete,
+    attentionBlockKey: resolveAttentionBlockKey(approval, questions),
+  };
 }
 
 function sessionDisplayName(snapshot: DesktopSnapshot | null | undefined): string {
@@ -79,29 +107,27 @@ function askQuestionsNotificationPayload(
       ? i18n.t('notification.askQuestions.nQuestions', { count: questionCount })
       : i18n.t('notification.askQuestions.fallback'));
 
-  const singleTextQuestion =
-    pending.request.questions.length === 1 && pending.request.questions[0]?.kind === 'text'
-      ? pending.request.questions[0]
-      : undefined;
+  const singleQuestion =
+    pending.request.questions.length === 1 ? pending.request.questions[0] : undefined;
 
   return {
     kind: 'ask-questions',
     tag: `spirit-ask-${pending.toolCallId}`,
     title: formatSessionPrefixedTitle(sessionName, i18n.t('notification.askQuestions.title')),
     body: detail,
-    ...(singleTextQuestion && window.spiritDesktop?.platform === 'darwin'
+    ...(singleQuestion && window.spiritDesktop?.platform === 'darwin'
       ? {
           actions: [
             {
               type: 'text' as const,
               text: i18n.t('notification.askQuestions.reply'),
-              placeholder: singleTextQuestion.title,
+              placeholder: singleQuestion.title,
               action: 'reply' as const,
             },
           ],
           context: {
             questionToolCallId: pending.toolCallId,
-            questionId: singleTextQuestion.id,
+            questionId: singleQuestion.id,
           },
         }
       : {}),
@@ -145,12 +171,7 @@ export function useDesktopSystemNotifications(options: {
 
   const markTaskCompleteAttention = (bridge: NotificationBridge) => {
     taskCompleteAttentionRef.current = true;
-    const current = snapshotRef.current;
-    syncAttentionPending(bridge, {
-      needsApproval: Boolean(current?.conversation.pendingToolApproval),
-      needsQuestions: Boolean(current?.conversation.pendingQuestions),
-      needsTaskComplete: true,
-    });
+    syncAttentionPending(bridge, buildAttentionFlags(snapshotRef.current, true));
   };
 
   useEffect(() => {
@@ -196,12 +217,7 @@ export function useDesktopSystemNotifications(options: {
         return;
       }
       taskCompleteAttentionRef.current = false;
-      const current = snapshotRef.current;
-      syncAttentionPending(bridge, {
-        needsApproval: Boolean(current?.conversation.pendingToolApproval),
-        needsQuestions: Boolean(current?.conversation.pendingQuestions),
-        needsTaskComplete: false,
-      });
+      syncAttentionPending(bridge, buildAttentionFlags(snapshotRef.current, false));
     });
   }, [apiKind, enabled]);
 
@@ -216,11 +232,10 @@ export function useDesktopSystemNotifications(options: {
     const questions = snapshot?.conversation.pendingQuestions;
     const isBusy = snapshot?.conversation.isBusy === true;
 
-    syncAttentionPending(bridge, {
-      needsApproval: Boolean(approval),
-      needsQuestions: Boolean(questions),
-      needsTaskComplete: taskCompleteAttentionRef.current,
-    });
+    syncAttentionPending(
+      bridge,
+      buildAttentionFlags(snapshot, taskCompleteAttentionRef.current),
+    );
 
     if (isBusy && prevBusyRef.current !== true) {
       busyCycleRef.current += 1;

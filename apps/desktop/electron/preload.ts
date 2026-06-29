@@ -651,6 +651,7 @@ contextBridge.exposeInMainWorld('spiritDesktop', {
     needsApproval: boolean;
     needsQuestions: boolean;
     needsTaskComplete: boolean;
+    attentionBlockKey?: string;
   }) {
     return ipcRenderer.invoke('desktop:sync-attention-pending', flags) as Promise<void>;
   },

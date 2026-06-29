@@ -310,6 +310,7 @@ declare global {
       needsApproval: boolean;
       needsQuestions: boolean;
       needsTaskComplete: boolean;
+      attentionBlockKey?: string;
     }): Promise<void>;
     getWindowFullScreen(): Promise<boolean>;
     subscribeWindowFullScreen(callback: (fullScreen: boolean) => void): () => void;

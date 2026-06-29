@@ -192,6 +192,7 @@ export interface HostOperatingSystemInfo {
 }
 
 export interface HostAskQuestionsOptionSpec {
+  id: string;
   label: string;
   summary?: string;
 }
@@ -199,12 +200,8 @@ export interface HostAskQuestionsOptionSpec {
 export interface HostAskQuestionsQuestionSpec {
   id: string;
   title: string;
-  kind: 'single_select' | 'multi_select' | 'text';
-  required: boolean;
+  allowMultiple: boolean;
   options: HostAskQuestionsOptionSpec[];
-  allowCustomInput: boolean;
-  customInputPlaceholder?: string;
-  customInputLabel?: string;
 }
 
 export interface HostAskQuestionsRequest<QuestionSpec = HostAskQuestionsQuestionSpec> {
@@ -2306,11 +2303,6 @@ function parseQuestion(value: HostJsonValue, index: number): HostAskQuestionsQue
     throw new Error(`questions[${index}] 必须是对象。`);
   }
 
-  const kind = requiredString(value, 'kind');
-  if (kind !== 'single_select' && kind !== 'multi_select' && kind !== 'text') {
-    throw new Error(`questions[${index}].kind 非法: ${kind}`);
-  }
-
   const optionsValue = value.options;
   const options = Array.isArray(optionsValue)
     ? optionsValue.map((option, optionIndex) => {
@@ -2319,6 +2311,7 @@ function parseQuestion(value: HostJsonValue, index: number): HostAskQuestionsQue
         }
         const summary = optionalString(option, 'summary');
         const parsedOption: HostAskQuestionsOptionSpec = {
+          id: requiredString(option, 'id'),
           label: requiredString(option, 'label'),
         };
         if (summary) {
@@ -2328,18 +2321,11 @@ function parseQuestion(value: HostJsonValue, index: number): HostAskQuestionsQue
       })
     : [];
 
-  const customInputPlaceholder = optionalString(value, 'customInputPlaceholder');
-  const customInputLabel = optionalString(value, 'customInputLabel');
-
   return {
     id: requiredString(value, 'id'),
     title: requiredString(value, 'title'),
-    kind,
-    required: optionalBoolean(value, 'required') ?? false,
+    allowMultiple: optionalBoolean(value, 'allowMultiple') ?? false,
     options,
-    allowCustomInput: optionalBoolean(value, 'allowCustomInput') ?? false,
-    ...(customInputPlaceholder ? { customInputPlaceholder } : {}),
-    ...(customInputLabel ? { customInputLabel } : {}),
   };
 }
 
@@ -2358,17 +2344,16 @@ function validateQuestions(questions: HostAskQuestionsQuestionSpec[]): void {
       throw new Error(`ask_questions 问题标题不能为空: ${id}`);
     }
 
-    if (question.kind === 'text') {
-      if (question.options.length > 0) {
-        throw new Error(`ask_questions 文本题不能包含 options: ${id}`);
-      }
-      continue;
-    }
-
-    if (question.options.length === 0 && !question.allowCustomInput) {
-      throw new Error(`ask_questions 选择题至少需要一个预设选项或开启自定义输入: ${id}`);
-    }
+    const seenOptionIds = new Set<string>();
     for (const option of question.options) {
+      const optionId = option.id.trim();
+      if (!optionId) {
+        throw new Error(`ask_questions 选项 id 不能为空: ${id}`);
+      }
+      if (seenOptionIds.has(optionId)) {
+        throw new Error(`ask_questions 选项 id 不能重复: ${id}/${optionId}`);
+      }
+      seenOptionIds.add(optionId);
       if (!option.label.trim()) {
         throw new Error(`ask_questions 选项文本不能为空: ${id}`);
       }
@@ -2452,12 +2437,8 @@ function buildExtensionQuestionsAuthorization<QuestionSpec>(
         {
           id: 'execution_note',
           title: '补充执行说明',
-          kind: 'text',
-          required: true,
+          allowMultiple: false,
           options: [],
-          allowCustomInput: true,
-          customInputLabel: '说明',
-          customInputPlaceholder: '补充这次扩展工具调用需要携带的执行说明。',
         } as QuestionSpec,
       ],
     },

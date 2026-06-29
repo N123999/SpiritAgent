@@ -335,19 +335,12 @@ export function mapPendingQuestions(
       questions: pending.questions.questions.map((question) => ({
         id: question.id,
         title: question.title,
-        kind: question.kind,
-        required: question.required === true,
+        allowMultiple: question.allowMultiple === true,
         options: (question.options ?? []).map((option) => ({
+          id: option.id,
           label: option.label,
           ...(option.summary ? { summary: option.summary } : {}),
         })),
-        allowCustomInput: question.allowCustomInput === true,
-        ...(question.customInputPlaceholder
-          ? { customInputPlaceholder: question.customInputPlaceholder }
-          : {}),
-        ...(question.customInputLabel
-          ? { customInputLabel: question.customInputLabel }
-          : {}),
       })),
     },
   };

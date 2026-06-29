@@ -328,7 +328,7 @@ export function buildBuiltinHostToolDefinitions(
     ),
     functionTool(
       'ask_questions',
-      'Ask the user a structured follow-up questionnaire when their request is underspecified. The host UI will present the questionnaire, collect answers, and return a JSON tool result. Use this only when targeted structured questions are needed to continue.',
+      'Ask structured follow-up questions when a user decision is required to continue. The host always shows a custom text field per question.',
       {
         type: 'object',
         properties: {
@@ -338,8 +338,7 @@ export function buildBuiltinHostToolDefinitions(
           },
           questions: {
             type: 'array',
-            description:
-              'Ordered list of questions to ask. Keep it concise and only include the fields you need.',
+            description: 'Ordered list of questions to ask.',
             items: {
               type: 'object',
               properties: {
@@ -351,22 +350,22 @@ export function buildBuiltinHostToolDefinitions(
                   type: 'string',
                   description: 'Question title shown to the user.',
                 },
-                kind: {
-                  type: 'string',
-                  enum: ['single_select', 'multi_select', 'text'],
-                  description:
-                    'single_select confirms one answer, multi_select allows multiple answers, text asks for freeform text.',
-                },
-                required: {
+                allowMultiple: {
                   type: 'boolean',
-                  description: 'Whether the question must be answered before submission.',
+                  description:
+                    'When true, the user may select multiple preset options. Defaults to false.',
                 },
                 options: {
                   type: 'array',
-                  description: 'Preset options for single_select or multi_select questions.',
+                  description:
+                    'Preset options for this question. Omit or use an empty array for a custom-text-only question.',
                   items: {
                     type: 'object',
                     properties: {
+                      id: {
+                        type: 'string',
+                        description: 'Stable machine-readable option id used in the returned JSON.',
+                      },
                       label: {
                         type: 'string',
                         description: 'Visible option label.',
@@ -374,27 +373,15 @@ export function buildBuiltinHostToolDefinitions(
                       summary: {
                         type: 'string',
                         description:
-                          'Optional short gray summary shown under single_select options.',
+                          'Optional short gray summary shown under the option label.',
                       },
                     },
-                    required: ['label'],
+                    required: ['id', 'label'],
                     additionalProperties: false,
                   },
                 },
-                allowCustomInput: {
-                  type: 'boolean',
-                  description: 'Whether to show an additional custom input field for this question.',
-                },
-                customInputPlaceholder: {
-                  type: 'string',
-                  description: 'Optional placeholder for the custom input field.',
-                },
-                customInputLabel: {
-                  type: 'string',
-                  description: 'Optional label for the custom input field.',
-                },
               },
-              required: ['id', 'title', 'kind'],
+              required: ['id', 'title'],
               additionalProperties: false,
             },
           },

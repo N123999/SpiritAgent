@@ -685,6 +685,7 @@
     "answer": "回答",
     "enterAnswer": "请输入回答",
     "customInput": "自定义输入",
+    "customAnswerPlaceholder": "补充说明或未列出的选项",
     "supplementOption": "补充一个未列出的选项"
   },
   "workspace": {

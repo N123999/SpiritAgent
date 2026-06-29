@@ -16,13 +16,12 @@ export function buildSingleTextQuestionNotificationReplyResult(
   }
 
   const question = current.request.questions[0];
-  const text = payload.text.trim();
+  const customText = payload.text.trim();
   if (
     current.request.questions.length !== 1 ||
     !question ||
-    question.kind !== 'text' ||
     payload.context?.questionId !== question.id ||
-    !text
+    !customText
   ) {
     return undefined;
   }
@@ -32,10 +31,8 @@ export function buildSingleTextQuestionNotificationReplyResult(
     answers: [
       {
         questionId: question.id,
-        title: question.title,
-        kind: question.kind,
-        answered: true,
-        text,
+        selectedOptionIds: [],
+        customText,
       },
     ],
   };

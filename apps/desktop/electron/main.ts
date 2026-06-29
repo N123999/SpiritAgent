@@ -1249,12 +1249,19 @@ if (gotSpiritSingleInstanceLock) {
     'desktop:sync-attention-pending',
     (
       _event,
-      payload: { needsApproval?: boolean; needsQuestions?: boolean; needsTaskComplete?: boolean },
+      payload: {
+        needsApproval?: boolean;
+        needsQuestions?: boolean;
+        needsTaskComplete?: boolean;
+        attentionBlockKey?: string;
+      },
     ) => {
       setDesktopAttentionPending({
         needsApproval: payload?.needsApproval === true,
         needsQuestions: payload?.needsQuestions === true,
         needsTaskComplete: payload?.needsTaskComplete === true,
+        attentionBlockKey:
+          typeof payload?.attentionBlockKey === 'string' ? payload.attentionBlockKey : undefined,
       });
       refreshDesktopAttention(getAppAwayFromUser());
     },

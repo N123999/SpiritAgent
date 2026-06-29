@@ -320,7 +320,7 @@ test('resumePendingQuestions syncs native ask_questions answers into historyStor
   const request = { name: 'ask_questions' };
   const answersResult = {
     status: 'answered' as const,
-    answers: [{ questionId: 'q1', title: 'Q1', kind: 'text' as const, answered: true, text: 'alpha' }],
+    answers: [{ questionId: 'q1', selectedOptionIds: [], customText: 'alpha' }],
   };
   const historyStore = [
     {

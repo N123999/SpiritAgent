@@ -1,9 +1,7 @@
 use rust_i18n::t;
 
 use crate::{
-    ask_questions::{
-        AskQuestionsAnswer, AskQuestionsQuestionKind, AskQuestionsRequest, AskQuestionsResult,
-    },
+    ask_questions::{AskQuestionsAnswer, AskQuestionsRequest, AskQuestionsResult},
     view::{
         AskQuestionsInputFieldView, AskQuestionsOptionView, AskQuestionsQuestionView,
         BottomFormFieldEditorView, BottomFormFieldView, BottomFormKind, BottomFormView,
@@ -34,53 +32,25 @@ pub(crate) fn new_form(
             editor: BottomFormFieldEditorView::AskQuestion {
                 question: AskQuestionsQuestionView {
                     id: question.id.clone(),
-                    kind: question.kind,
-                    required: question.required,
+                    allow_multiple: question.allow_multiple,
                     options: question
                         .options
                         .iter()
                         .map(|option| AskQuestionsOptionView {
+                            id: option.id.clone(),
                             label: option.label.clone(),
                             summary: option.summary.clone(),
                             selected: false,
                         })
                         .collect(),
                     selected_row: 0,
-                    custom_input: (question.allow_custom_input
-                        || matches!(question.kind, AskQuestionsQuestionKind::Text))
-                    .then(|| AskQuestionsInputFieldView {
-                        label: question.custom_input_label.clone().unwrap_or_else(|| {
-                            if matches!(question.kind, AskQuestionsQuestionKind::Text) {
-                                t!("form.ask_questions.text_input.label").into_owned()
-                            } else {
-                                t!("form.ask_questions.custom_input.label").into_owned()
-                            }
-                        }),
-                        placeholder: question.custom_input_placeholder.clone().unwrap_or_else(
-                            || {
-                                if matches!(question.kind, AskQuestionsQuestionKind::Text) {
-                                    t!("form.ask_questions.text_input.placeholder").into_owned()
-                                } else {
-                                    t!("form.ask_questions.custom_input.placeholder").into_owned()
-                                }
-                            },
-                        ),
+                    custom_input: AskQuestionsInputFieldView {
+                        label: t!("form.ask_questions.custom_input.label").into_owned(),
+                        placeholder: t!("form.ask_questions.custom_input.placeholder")
+                            .into_owned(),
                         value: String::new(),
                         cursor: 0,
-                    })
-                    .filter(|_| !matches!(question.kind, AskQuestionsQuestionKind::Text)),
-                    text_input: matches!(question.kind, AskQuestionsQuestionKind::Text).then(
-                        || AskQuestionsInputFieldView {
-                            label: question.custom_input_label.clone().unwrap_or_else(|| {
-                                t!("form.ask_questions.text_input.label").into_owned()
-                            }),
-                            placeholder: question.custom_input_placeholder.clone().unwrap_or_else(
-                                || t!("form.ask_questions.text_input.placeholder").into_owned(),
-                            ),
-                            value: String::new(),
-                            cursor: 0,
-                        },
-                    ),
+                    },
                 },
             },
         })
@@ -208,8 +178,8 @@ pub(crate) fn move_home(form: &mut BottomFormView) {
         form.scroll_offset = 0;
         return;
     }
-    if let Some(input) = active_input_mut(form) {
-        input.cursor = 0;
+    if is_custom_input_row(form) {
+        question_mut(form).custom_input.cursor = 0;
     } else if let Some(question) = current_question_mut(form) {
         question.selected_row = 0;
     }
@@ -220,8 +190,9 @@ pub(crate) fn move_end(form: &mut BottomFormView) {
     if submit_selected(form) {
         return;
     }
-    if let Some(input) = active_input_mut(form) {
-        input.cursor = input.value.chars().count();
+    if is_custom_input_row(form) {
+        let question = question_mut(form);
+        question.custom_input.cursor = question.custom_input.value.chars().count();
     } else if let Some(question) = current_question_mut(form) {
         question.selected_row = question_row_count(question).saturating_sub(1);
     }
@@ -232,17 +203,14 @@ pub(crate) fn insert_char(form: &mut BottomFormView, ch: char) {
         return;
     }
     clear_validation(form);
-    let Some(question) = current_question_mut(form) else {
+    if !is_custom_input_row(form) {
         return;
-    };
-    if matches!(question.kind, AskQuestionsQuestionKind::SingleSelect)
-        && question.selected_row >= question.options.len()
-    {
+    }
+    let question = question_mut(form);
+    if !question.allow_multiple {
         clear_option_selections(question);
     }
-    let Some(input) = active_input_for_question_mut(question) else {
-        return;
-    };
+    let input = &mut question.custom_input;
     let index = char_cursor_to_byte_index(&input.value, input.cursor);
     input.value.insert(index, ch);
     input.cursor += 1;
@@ -254,17 +222,14 @@ pub(crate) fn insert_text(form: &mut BottomFormView, text: &str) {
         return;
     }
     clear_validation(form);
-    let Some(question) = current_question_mut(form) else {
+    if !is_custom_input_row(form) {
         return;
-    };
-    if matches!(question.kind, AskQuestionsQuestionKind::SingleSelect)
-        && question.selected_row >= question.options.len()
-    {
+    }
+    let question = question_mut(form);
+    if !question.allow_multiple {
         clear_option_selections(question);
     }
-    let Some(input) = active_input_for_question_mut(question) else {
-        return;
-    };
+    let input = &mut question.custom_input;
     let index = char_cursor_to_byte_index(&input.value, input.cursor);
     input.value.insert_str(index, normalized.as_str());
     input.cursor += normalized.chars().count();
@@ -272,9 +237,10 @@ pub(crate) fn insert_text(form: &mut BottomFormView, text: &str) {
 
 pub(crate) fn backspace(form: &mut BottomFormView) {
     clear_validation(form);
-    let Some(input) = active_input_mut(form) else {
+    if !is_custom_input_row(form) {
         return;
-    };
+    }
+    let input = &mut question_mut(form).custom_input;
     if input.cursor == 0 {
         return;
     }
@@ -286,9 +252,10 @@ pub(crate) fn backspace(form: &mut BottomFormView) {
 
 pub(crate) fn delete(form: &mut BottomFormView) {
     clear_validation(form);
-    let Some(input) = active_input_mut(form) else {
+    if !is_custom_input_row(form) {
         return;
-    };
+    }
+    let input = &mut question_mut(form).custom_input;
     if input.cursor >= input.value.chars().count() {
         return;
     }
@@ -314,65 +281,30 @@ pub(crate) fn activate(form: &mut BottomFormView) -> Result<AskQuestionsActivate
     };
 
     let mut should_advance = false;
-    let mut validation: Option<String> = None;
 
     {
         let Some(question) = question_by_index_mut(form, selected_question_index) else {
             return Ok(AskQuestionsActivateOutcome::None);
         };
 
-        match question.kind {
-            AskQuestionsQuestionKind::SingleSelect => {
-                let row = question.selected_row;
-                if row < question.options.len() {
-                    clear_option_selections(question);
-                    if let Some(option) = question.options.get_mut(row) {
-                        option.selected = true;
-                    }
-                    if let Some(input) = question.custom_input.as_mut() {
-                        input.value.clear();
-                        input.cursor = 0;
-                    }
-                } else if let Some(input) = question.custom_input.as_mut() {
-                    if input.value.trim().is_empty() {
-                        validation =
-                            Some(t!("form.ask_questions.validation.custom_required").into_owned());
-                    } else {
-                        clear_option_selections(question);
-                        should_advance = true;
-                    }
-                } else {
-                    should_advance = true;
+        let row = question.selected_row;
+        if row < question.options.len() {
+            if question.allow_multiple {
+                if let Some(option) = question.options.get_mut(row) {
+                    option.selected = !option.selected;
                 }
-                if row < question.options.len() {
-                    should_advance = true;
+            } else {
+                clear_option_selections(question);
+                if let Some(option) = question.options.get_mut(row) {
+                    option.selected = true;
                 }
+                question.custom_input.value.clear();
+                question.custom_input.cursor = 0;
+                should_advance = true;
             }
-            AskQuestionsQuestionKind::MultiSelect => {
-                let row = question.selected_row;
-                if row < question.options.len() {
-                    if let Some(option) = question.options.get_mut(row) {
-                        option.selected = !option.selected;
-                    }
-                }
-            }
-            AskQuestionsQuestionKind::Text => {
-                let Some(input) = question.text_input.as_ref() else {
-                    return Ok(AskQuestionsActivateOutcome::None);
-                };
-                if question.required && input.value.trim().is_empty() {
-                    validation =
-                        Some(t!("form.ask_questions.validation.text_required").into_owned());
-                } else {
-                    should_advance = true;
-                }
-            }
+        } else {
+            should_advance = true;
         }
-    }
-
-    if let Some(message) = validation {
-        set_validation(form, message);
-        return Ok(AskQuestionsActivateOutcome::None);
     }
 
     if should_advance {
@@ -383,90 +315,35 @@ pub(crate) fn activate(form: &mut BottomFormView) -> Result<AskQuestionsActivate
 }
 
 pub(crate) fn question_answered(question: &AskQuestionsQuestionView) -> bool {
-    match question.kind {
-        AskQuestionsQuestionKind::SingleSelect => {
-            question.options.iter().any(|option| option.selected)
-                || question
-                    .custom_input
-                    .as_ref()
-                    .is_some_and(|input| !input.value.trim().is_empty())
-        }
-        AskQuestionsQuestionKind::MultiSelect => {
-            question.options.iter().any(|option| option.selected)
-                || question
-                    .custom_input
-                    .as_ref()
-                    .is_some_and(|input| !input.value.trim().is_empty())
-        }
-        AskQuestionsQuestionKind::Text => question
-            .text_input
-            .as_ref()
-            .is_some_and(|input| !input.value.trim().is_empty()),
-    }
+    question.options.iter().any(|option| option.selected)
+        || !question.custom_input.value.trim().is_empty()
 }
 
 pub(crate) fn question_row_count(question: &AskQuestionsQuestionView) -> usize {
-    match question.kind {
-        AskQuestionsQuestionKind::Text => usize::from(question.text_input.is_some()),
-        AskQuestionsQuestionKind::SingleSelect | AskQuestionsQuestionKind::MultiSelect => {
-            question.options.len() + usize::from(question.custom_input.is_some())
-        }
-    }
+    question.options.len() + 1
 }
 
 fn build_answered_result(form: &mut BottomFormView) -> Result<AskQuestionsResult, String> {
-    let mut first_missing: Option<(usize, String)> = None;
-    for index in 0..form.fields.len() {
-        let Some(field) = form.fields.get(index) else {
-            continue;
-        };
-        let BottomFormFieldEditorView::AskQuestion { question } = &field.editor else {
-            continue;
-        };
-        if question.required && !question_answered(question) {
-            first_missing = Some((index, field.label.clone()));
-            break;
-        }
-    }
-
-    if let Some((index, title)) = first_missing {
-        form.selected_field = index;
-        form.scroll_offset = 0;
-        set_submit_selected(form, false);
-        return Err(t!("form.ask_questions.validation.required", title = title).into_owned());
-    }
-
     let answers = form
         .fields
         .iter()
         .filter_map(|field| match &field.editor {
             BottomFormFieldEditorView::AskQuestion { question } => Some(AskQuestionsAnswer {
                 question_id: question.id.clone(),
-                title: field.label.clone(),
-                kind: question.kind,
-                answered: question_answered(question),
-                selected_option_indexes: question
-                    .options
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(index, option)| option.selected.then_some(index))
-                    .collect(),
-                selected_option_labels: question
+                selected_option_ids: question
                     .options
                     .iter()
                     .filter(|option| option.selected)
-                    .map(|option| option.label.clone())
+                    .map(|option| option.id.clone())
                     .collect(),
-                custom_input: question
-                    .custom_input
-                    .as_ref()
-                    .map(|input| input.value.trim().to_string())
-                    .filter(|value| !value.is_empty()),
-                text: question
-                    .text_input
-                    .as_ref()
-                    .map(|input| input.value.trim().to_string())
-                    .filter(|value| !value.is_empty()),
+                custom_text: {
+                    let value = question.custom_input.value.trim().to_string();
+                    if value.is_empty() {
+                        None
+                    } else {
+                        Some(value)
+                    }
+                },
             }),
             _ => None,
         })
@@ -494,28 +371,13 @@ fn clear_option_selections(question: &mut AskQuestionsQuestionView) {
     }
 }
 
-fn active_input_mut(form: &mut BottomFormView) -> Option<&mut AskQuestionsInputFieldView> {
-    if submit_selected(form) {
-        return None;
-    }
-
-    let question = current_question_mut(form)?;
-    active_input_for_question_mut(question)
+fn is_custom_input_row(form: &BottomFormView) -> bool {
+    current_question(form)
+        .is_some_and(|question| question.selected_row >= question.options.len())
 }
 
-fn active_input_for_question_mut(
-    question: &mut AskQuestionsQuestionView,
-) -> Option<&mut AskQuestionsInputFieldView> {
-    match question.kind {
-        AskQuestionsQuestionKind::Text => question.text_input.as_mut(),
-        AskQuestionsQuestionKind::SingleSelect | AskQuestionsQuestionKind::MultiSelect => {
-            if question.selected_row >= question.options.len() {
-                question.custom_input.as_mut()
-            } else {
-                None
-            }
-        }
-    }
+fn question_mut(form: &mut BottomFormView) -> &mut AskQuestionsQuestionView {
+    current_question_mut(form).expect("ask question field must exist")
 }
 
 fn current_question_mut(form: &mut BottomFormView) -> Option<&mut AskQuestionsQuestionView> {
@@ -584,9 +446,7 @@ fn char_cursor_to_byte_index(text: &str, cursor_chars: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ask_questions::{
-        AskQuestionsOptionSpec, AskQuestionsQuestionSpec, AskQuestionsStatus,
-    };
+    use crate::ask_questions::{AskQuestionsOptionSpec, AskQuestionsQuestionSpec, AskQuestionsStatus};
 
     fn build_form(questions: Vec<AskQuestionsQuestionSpec>) -> BottomFormView {
         new_form(
@@ -603,21 +463,19 @@ mod tests {
         AskQuestionsQuestionSpec {
             id: id.to_string(),
             title: title.to_string(),
-            kind: AskQuestionsQuestionKind::SingleSelect,
-            required: true,
+            allow_multiple: false,
             options: vec![
                 AskQuestionsOptionSpec {
+                    id: "a".to_string(),
                     label: "A".to_string(),
                     summary: Some("Option A".to_string()),
                 },
                 AskQuestionsOptionSpec {
+                    id: "b".to_string(),
                     label: "B".to_string(),
                     summary: Some("Option B".to_string()),
                 },
             ],
-            allow_custom_input: false,
-            custom_input_placeholder: None,
-            custom_input_label: None,
         }
     }
 
@@ -641,17 +499,20 @@ mod tests {
     }
 
     #[test]
-    fn submit_requires_required_answers() {
+    fn submit_without_selection_is_allowed() {
         let mut form = build_form(vec![single_select_question("q1", "First")]);
 
         move_right(&mut form);
         assert!(submit_selected(&form));
 
-        let outcome = activate(&mut form).expect("submit should stay in form when invalid");
-        assert!(matches!(outcome, AskQuestionsActivateOutcome::None));
-        assert!(!submit_selected(&form));
-        assert_eq!(form.selected_field, 0);
-        assert!(validation_message(&form).is_some());
+        let outcome = activate(&mut form).expect("submit should succeed without answers");
+        let AskQuestionsActivateOutcome::Submit(result) = outcome else {
+            panic!("expected submit outcome");
+        };
+        assert_eq!(result.status, AskQuestionsStatus::Answered);
+        assert_eq!(result.answers.len(), 1);
+        assert!(result.answers[0].selected_option_ids.is_empty());
+        assert!(result.answers[0].custom_text.is_none());
     }
 
     #[test]
@@ -669,12 +530,7 @@ mod tests {
         assert_eq!(result.status, AskQuestionsStatus::Answered);
         assert_eq!(result.answers.len(), 1);
         assert_eq!(result.answers[0].question_id, "q1");
-        assert_eq!(result.answers[0].selected_option_indexes, vec![0]);
-        assert_eq!(
-            result.answers[0].selected_option_labels,
-            vec!["A".to_string()]
-        );
-        assert!(result.answers[0].answered);
+        assert_eq!(result.answers[0].selected_option_ids, vec!["a".to_string()]);
     }
 
     #[test]

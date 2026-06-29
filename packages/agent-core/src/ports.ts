@@ -510,9 +510,8 @@ export interface StartedToolAgentRound<State = JsonValue> {
   cancel?: () => void;
 }
 
-export type AskQuestionsQuestionKind = 'single_select' | 'multi_select' | 'text';
-
 export interface AskQuestionsOption {
+  id: string;
   label: string;
   summary?: string;
 }
@@ -520,12 +519,8 @@ export interface AskQuestionsOption {
 export interface AskQuestionsQuestion {
   id: string;
   title: string;
-  kind: AskQuestionsQuestionKind;
-  required?: boolean;
+  allowMultiple?: boolean;
   options?: AskQuestionsOption[];
-  allowCustomInput?: boolean;
-  customInputPlaceholder?: string;
-  customInputLabel?: string;
 }
 
 export interface AskQuestionsRequest {
@@ -535,13 +530,8 @@ export interface AskQuestionsRequest {
 
 export interface AskQuestionsAnswer {
   questionId: string;
-  title: string;
-  kind: AskQuestionsQuestionKind;
-  answered: boolean;
-  selectedOptionIndexes?: number[];
-  selectedOptionLabels?: string[];
-  customInput?: string;
-  text?: string;
+  selectedOptionIds: string[];
+  customText?: string;
 }
 
 export type AskQuestionsResult =

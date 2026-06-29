@@ -1360,28 +1360,20 @@ export interface AskQuestionsRequest {
 export interface AskQuestionsQuestionSpec {
   id: string;
   title: string;
-  kind: 'single_select' | 'multi_select' | 'text';
-  required: boolean;
+  allowMultiple: boolean;
   options: AskQuestionsOptionSpec[];
-  allowCustomInput: boolean;
-  customInputPlaceholder?: string;
-  customInputLabel?: string;
 }
 
 export interface AskQuestionsOptionSpec {
+  id: string;
   label: string;
   summary?: string;
 }
 
 export interface AskQuestionsAnswer {
   questionId: string;
-  title: string;
-  kind: 'single_select' | 'multi_select' | 'text';
-  answered: boolean;
-  selectedOptionIndexes?: number[];
-  selectedOptionLabels?: string[];
-  customInput?: string;
-  text?: string;
+  selectedOptionIds: string[];
+  customText?: string;
 }
 
 export interface AskQuestionsResult {

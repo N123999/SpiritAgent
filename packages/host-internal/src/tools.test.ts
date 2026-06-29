@@ -799,10 +799,8 @@ test('authorize still requires ask_questions under full-approval approval level'
       questions: [{
         id: 'q1',
         title: 'Choose one',
-        kind: 'single_select',
-        required: true,
-        options: [{ label: 'A' }],
-        allowCustomInput: false,
+        allowMultiple: false,
+        options: [{ id: 'a', label: 'A' }],
       }],
     });
 

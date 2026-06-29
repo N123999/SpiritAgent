@@ -688,6 +688,7 @@
     "answer": "Answer",
     "enterAnswer": "Please enter your answer",
     "customInput": "Custom Input",
+    "customAnswerPlaceholder": "Add details or an unlisted option",
     "supplementOption": "Supplement an unlisted option"
   },
   "workspace": {

@@ -146,9 +146,8 @@ function persistSessionUiDraft(
 }
 
 export interface QuestionDraft {
-  selectedOptionIndexes: number[];
-  customInput: string;
-  text: string;
+  selectedOptionIds: string[];
+  customText: string;
 }
 
 function describeError(error: unknown): string {
@@ -227,43 +226,20 @@ function updateConfigFromSettingsForm(
   };
 }
 
-function toUniqueIndexes(indexes: number[]): number[] {
-  return Array.from(new Set(indexes)).sort((left, right) => left - right);
-}
-
 function buildAskQuestionsAnswer(
   question: AskQuestionsQuestionSpec,
   draft: QuestionDraft,
 ): AskQuestionsAnswer {
-  const selectedOptionIndexes = toUniqueIndexes(draft.selectedOptionIndexes).filter(
-    (index) => index >= 0 && index < question.options.length,
+  const validOptionIds = new Set(question.options.map((option) => option.id));
+  const selectedOptionIds = Array.from(new Set(draft.selectedOptionIds)).filter((id) =>
+    validOptionIds.has(id),
   );
-  const selectedOptionLabels = selectedOptionIndexes
-    .map((index) => question.options[index]?.label)
-    .filter((label): label is string => typeof label === "string" && label.trim().length > 0);
-  const customInput = draft.customInput.trim();
-  const text = draft.text.trim();
-
-  if (question.kind === "text") {
-    return {
-      questionId: question.id,
-      title: question.title,
-      kind: question.kind,
-      answered: text.length > 0,
-      text: text || undefined,
-    };
-  }
+  const customText = draft.customText.trim();
 
   return {
     questionId: question.id,
-    title: question.title,
-    kind: question.kind,
-    answered: selectedOptionIndexes.length > 0 || customInput.length > 0,
-    selectedOptionIndexes:
-      selectedOptionIndexes.length > 0 ? selectedOptionIndexes : undefined,
-    selectedOptionLabels:
-      selectedOptionLabels.length > 0 ? selectedOptionLabels : undefined,
-    customInput: customInput || undefined,
+    selectedOptionIds,
+    ...(customText ? { customText } : {}),
   };
 }
 
@@ -275,16 +251,6 @@ function buildAskQuestionsResult(
     buildAskQuestionsAnswer(question, drafts[question.id] ?? emptyQuestionDraft()),
   );
 
-  const missingRequired = request.questions.find((question, index) => {
-    return question.required && !answers[index]?.answered;
-  });
-
-  if (missingRequired) {
-    return {
-      error: i18n.t('error.completeRequiredQuestion', { title: missingRequired.title }),
-    };
-  }
-
   return {
     result: {
       status: "answered",
@@ -295,9 +261,8 @@ function buildAskQuestionsResult(
 
 function emptyQuestionDraft(): QuestionDraft {
   return {
-    selectedOptionIndexes: [],
-    customInput: "",
-    text: "",
+    selectedOptionIds: [],
+    customText: "",
   };
 }
 
