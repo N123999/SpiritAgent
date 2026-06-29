@@ -1,6 +1,6 @@
 # @spirit-agent/acp-server
 
-ACP ([Agent Client Protocol](https://agentclientprotocol.com)) server adapter for [Spirit Agent](https://github.com/N123999/SpiritAgent). Exposes the same agent runtime as Desktop and CLI over **stdio / ndJSON**, so ACP-compatible editors (for example **Zed** or **JetBrains Junie**) can use Spirit Agent without bespoke integration.
+ACP ([Agent Client Protocol](https://agentclientprotocol.com)) server adapter for [Spirit Agent](https://github.com/SpiritAgents/SpiritAgent). Exposes the same agent runtime as Desktop and CLI over **stdio / ndJSON**, so ACP-compatible editors (for example **Zed** or **JetBrains Junie**) can use Spirit Agent without bespoke integration.
 
 ## What it provides
 
@@ -35,4 +35,4 @@ Setup writes to the shared Spirit data directory (`config.json` + OS keyring —
 
 ## License
 
-MIT — see the [Spirit Agent repository](https://github.com/N123999/SpiritAgent).
+MIT — see the [Spirit Agent repository](https://github.com/SpiritAgents/SpiritAgent).

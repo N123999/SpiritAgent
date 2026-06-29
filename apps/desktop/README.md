@@ -2,7 +2,7 @@
 
 **An AI agent built to multiply your productivity** — a native desktop workspace where models read your repo, run tools, and ship changes alongside you.
 
-Spirit Agent Desktop is the graphical host for [Spirit Agent](https://github.com/N123999/SpiritAgent). It pairs a conversational agent with an integrated development surface: file explorer, terminal, Git panel, in-app browser, and Monaco-based editor — all bound to a workspace root so context stays grounded in your project.
+Spirit Agent Desktop is the graphical host for [Spirit Agent](https://github.com/SpiritAgents/SpiritAgent). It pairs a conversational agent with an integrated development surface: file explorer, terminal, Git panel, in-app browser, and Monaco-based editor — all bound to a workspace root so context stays grounded in your project.
 
 ## Features
 
@@ -97,4 +97,4 @@ Desktop-only Git builtin skills are seeded from `apps/desktop/built-in-skills/`.
 
 ## License
 
-See the [repository root LICENSE](https://github.com/N123999/SpiritAgent/blob/main/LICENSE).
+See the [repository root LICENSE](https://github.com/SpiritAgents/SpiritAgent/blob/main/LICENSE).

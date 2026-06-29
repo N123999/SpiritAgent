@@ -39,7 +39,7 @@ test('mapTimelineEventToConversationItem maps committed event', () => {
 test('mapTimelineEventToConversationItem maps committed event from issue timeline shape', () => {
   const item = mapTimelineEventToConversationItem({
     sha: '3fc54ae2102e42ec0adc877fac601e6a517b117f',
-    html_url: 'https://github.com/N123999/SpiritAgent/commit/3fc54ae2102e42ec0adc877fac601e6a517b117f',
+    html_url: 'https://github.com/SpiritAgents/SpiritAgent/commit/3fc54ae2102e42ec0adc877fac601e6a517b117f',
     author: { name: 'XianYu', email: '121384036+N123999@users.noreply.github.com', date: '2026-06-10T03:40:34Z' },
     message: 'feat(desktop): 支持光标处斜杠 token 唤起菜单\n\n基于 composer 光标检测',
     event: 'committed',
@@ -118,7 +118,7 @@ test('mapTimelineEventToConversationItem maps review event with submitted_at onl
     submitted_at: '2026-06-10T04:44:53Z',
     user: { login: 'cursor[bot]', avatar_url: 'https://avatars.githubusercontent.com/in/1210556?v=4' },
     body: '✅ Bugbot reviewed your changes and found no new issues!',
-    html_url: 'https://github.com/N123999/SpiritAgent/pull/100#pullrequestreview-4464571196',
+    html_url: 'https://github.com/SpiritAgents/SpiritAgent/pull/100#pullrequestreview-4464571196',
   });
 
   assert.equal(item?.kind, 'review');
@@ -184,7 +184,7 @@ test('groupReviewCommentsIntoThreads groups replies under root comment', () => {
 test('enrichConversationCommitAuthors replaces timeline fallback with pull commits author', () => {
   const timelineItem = mapTimelineEventToConversationItem({
     sha: 'b40b5d065d1dafe791397c7ed4538a1eb7527a34',
-    html_url: 'https://github.com/N123999/SpiritAgent/commit/b40b5d065d1dafe791397c7ed4538a1eb7527a34',
+    html_url: 'https://github.com/SpiritAgents/SpiritAgent/commit/b40b5d065d1dafe791397c7ed4538a1eb7527a34',
     author: { name: 'Cursor Agent', email: 'cursoragent@cursor.com', date: '2026-06-13T10:17:52Z' },
     message: 'fix(desktop): 修正接近 100 万 token 的紧凑计数显示',
     event: 'committed',

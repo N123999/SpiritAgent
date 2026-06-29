@@ -28,7 +28,7 @@ test('buildOpenPullRequestNavigation creates PR tab when missing', () => {
   const navigation = buildOpenPullRequestNavigation({
     tabs: initial.tabs,
     activeTabId: initial.activeTabId,
-    request: { owner: 'N123999', repo: 'SpiritAgent', number: 100 },
+    request: { owner: 'SpiritAgents', repo: 'SpiritAgent', number: 100 },
   });
 
   assert.notEqual(navigation.activeTabId, initial.activeTabId);

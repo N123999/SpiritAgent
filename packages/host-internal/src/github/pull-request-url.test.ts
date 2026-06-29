@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { parseGitHubPullRequestUrl } from './pull-request-url.js';
 
 test('parseGitHubPullRequestUrl parses canonical pull request URLs', () => {
-  assert.deepEqual(parseGitHubPullRequestUrl('https://github.com/N123999/SpiritAgent/pull/100'), {
-    owner: 'N123999',
+  assert.deepEqual(parseGitHubPullRequestUrl('https://github.com/SpiritAgents/SpiritAgent/pull/100'), {
+    owner: 'SpiritAgents',
     repo: 'SpiritAgent',
     number: 100,
   });

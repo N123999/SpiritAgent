@@ -1,6 +1,6 @@
 # @spirit-agent/host-internal
 
-Shared **host-side implementation** for [Spirit Agent](https://github.com/N123999/SpiritAgent). It sits between platform hosts (Desktop, CLI, ACP server) and [`@spirit-agent/core`](https://www.npmjs.com/package/@spirit-agent/core), providing discovery, workspace helpers, and local execution plumbing.
+Shared **host-side implementation** for [Spirit Agent](https://github.com/SpiritAgents/SpiritAgent). It sits between platform hosts (Desktop, CLI, ACP server) and [`@spirit-agent/core`](https://www.npmjs.com/package/@spirit-agent/core), providing discovery, workspace helpers, and local execution plumbing.
 
 ## What it provides
 
@@ -22,4 +22,4 @@ Shared **host-side implementation** for [Spirit Agent](https://github.com/N12399
 
 ## License
 
-MIT — see the [Spirit Agent repository](https://github.com/N123999/SpiritAgent).
+MIT — see the [Spirit Agent repository](https://github.com/SpiritAgents/SpiritAgent).

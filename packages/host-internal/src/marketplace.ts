@@ -20,7 +20,7 @@ const MAX_MARKETPLACE_JSON_BYTES = 512 * 1024;
 const MAX_MARKETPLACE_TEXT_BYTES = 2 * 1024 * 1024;
 const MAX_MARKETPLACE_TARBALL_BYTES = 50 * 1024 * 1024;
 export const DEFAULT_MARKETPLACE_REGISTRY_BASE_URL =
-  'https://raw.githubusercontent.com/N123999/awesome-SpiritAgent/refs/heads/main/registry/';
+  'https://raw.githubusercontent.com/SpiritAgents/awesome/refs/heads/main/registry/';
 
 export type MarketplaceChannel = 'stable' | 'preview' | 'experimental';
 export type MarketplaceReviewStatus = 'unverified' | 'verified' | 'revoked';

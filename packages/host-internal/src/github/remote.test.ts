@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { parseGitHubRemoteUrl } from './remote.js';
 
 test('parseGitHubRemoteUrl parses https origin', () => {
-  assert.deepEqual(parseGitHubRemoteUrl('https://github.com/N123999/SpiritAgent.git'), {
-    owner: 'N123999',
+  assert.deepEqual(parseGitHubRemoteUrl('https://github.com/SpiritAgents/SpiritAgent.git'), {
+    owner: 'SpiritAgents',
     repo: 'SpiritAgent',
   });
 });
