@@ -316,3 +316,18 @@ test('resolveProviderConnectApiBase prefers site apiBase for alibaba', () => {
     /requires a workspace ID/,
   );
 });
+
+test('resolveProviderConnectApiBase resolves alibaba token plan without site or workspace', () => {
+  assert.equal(
+    resolveProviderConnectApiBase('alibaba', 'openai-compatible', { billingMode: 'token-plan' }),
+    'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('alibaba', 'anthropic', { billingMode: 'token-plan' }),
+    'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('alibaba', 'open-responses', { billingMode: 'token-plan' }),
+    'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+  );
+});

@@ -111,10 +111,19 @@ type ProviderSiteSelectionByProvider = Partial<
   Record<PresetModelProviderId, ProviderSiteSelectionConfig>
 >;
 
+export type AlibabaBillingMode = 'token-plan';
+
+export interface AlibabaTokenPlanConfig {
+  compatibleApiBase: string;
+  docUrl: string;
+}
+
 export interface ResolveProviderConnectApiBaseOptions {
   site?: ProviderConnectSiteId;
   workspaceId?: string;
   customApiBaseTrimmed?: string;
+  /** Alibaba Token Plan：固定 cn-beijing 端点，忽略 site/workspace。 */
+  billingMode?: AlibabaBillingMode;
 }
 
 export interface ProviderPickerLabel {
@@ -152,6 +161,7 @@ interface ParsedModelProviderPresets {
   >;
   presetApiBaseByTransport: PresetApiBaseByTransport;
   providerSiteSelection: ProviderSiteSelectionByProvider;
+  alibabaTokenPlan: AlibabaTokenPlanConfig;
   pickerOrder: readonly ModelProviderId[];
   pickerLabels: Record<ModelProviderId, ProviderPickerLabel>;
 }
@@ -268,6 +278,16 @@ export function parseProviderSiteSelection(data: unknown): ProviderSiteSelection
   return result;
 }
 
+function parseAlibabaTokenPlanConfig(data: unknown): AlibabaTokenPlanConfig {
+  if (!isJsonRecord(data)) {
+    throw new Error('model-provider-presets.json: alibabaTokenPlan must be an object');
+  }
+  return {
+    compatibleApiBase: requireStringField(data, 'compatibleApiBase'),
+    docUrl: requireStringField(data, 'docUrl'),
+  };
+}
+
 function parsePickerLabel(data: unknown, id: ModelProviderId): ProviderPickerLabel {
   if (!isJsonRecord(data)) {
     throw new Error(`model-provider-presets.json: pickerLabels.${id} must be an object`);
@@ -337,18 +357,23 @@ function parseModelProviderPresetsJson(data: unknown): ParsedModelProviderPreset
       : parsePresetApiBaseByTransport(presetApiBaseByTransportRaw);
 
   const providerSiteSelection = parseProviderSiteSelection(data.providerSiteSelection);
+  const alibabaTokenPlan = parseAlibabaTokenPlanConfig(data.alibabaTokenPlan);
 
   return {
     defaultCustomApiBase,
     presetApiBaseByProvider,
     presetApiBaseByTransport,
     providerSiteSelection,
+    alibabaTokenPlan,
     pickerOrder,
     pickerLabels: pickerLabels as Record<ModelProviderId, ProviderPickerLabel>,
   };
 }
 
 const raw = parseModelProviderPresetsJson(rawImport as unknown);
+
+export const ALIBABA_TOKEN_PLAN_COMPATIBLE_API_BASE: string = raw.alibabaTokenPlan.compatibleApiBase;
+export const ALIBABA_TOKEN_PLAN_DOC_URL: string = raw.alibabaTokenPlan.docUrl;
 
 export const DEFAULT_CUSTOM_API_BASE: string = raw.defaultCustomApiBase;
 
@@ -578,6 +603,15 @@ function resolveTransportApiBaseForProviderSite(
   }
 }
 
+/** Alibaba Token Plan：固定 cn-beijing compatible base，按 transport 推导 Anthropic / Open Responses。 */
+export function resolveAlibabaTokenPlanConnectApiBase(
+  transportKind: ProviderModelTransportKind,
+): string {
+  const siteBase = ALIBABA_TOKEN_PLAN_COMPATIBLE_API_BASE;
+  const transportAdjusted = resolveTransportApiBaseForProviderSite('alibaba', transportKind, siteBase);
+  return transportAdjusted ?? siteBase;
+}
+
 export function resolveConnectApiBase(
   provider: ModelProviderId,
   customApiBaseTrimmed: string,
@@ -635,10 +669,15 @@ export function resolveProviderConnectApiBase(
   transportKind: ProviderModelTransportKind,
   options?: ResolveProviderConnectApiBaseOptions | string,
 ): string {
-  const { site, workspaceId, customApiBaseTrimmed = '' } = normalizeResolveProviderConnectApiBaseOptions(options);
+  const { site, workspaceId, customApiBaseTrimmed = '', billingMode } =
+    normalizeResolveProviderConnectApiBaseOptions(options);
 
   if (provider === 'custom') {
     return customApiBaseTrimmed.trim();
+  }
+
+  if (provider === 'alibaba' && billingMode === 'token-plan') {
+    return resolveAlibabaTokenPlanConnectApiBase(transportKind);
   }
 
   const siteBase = site ? resolveProviderConnectSiteApiBase(provider, site, workspaceId) : undefined;

@@ -126,6 +126,10 @@
       }
     }
   },
+  "alibabaTokenPlan": {
+    "compatibleApiBase": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "docUrl": "https://bailian.console.aliyun.com/cn-beijing?tab=doc#/doc/?type=model&url=3029020"
+  },
   "pickerOrder": ["openai", "anthropic", "google", "xai", "vercel-ai-gateway", "deepseek", "openrouter", "moonshot-ai", "kimi-code", "z-ai", "zhipu-ai", "alibaba", "minimax", "xiaomi", "siliconflow", "volcengine", "azure", "amazon-bedrock", "google-vertex-ai", "custom"],
   "pickerLabels": {
     "deepseek": {
