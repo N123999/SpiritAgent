@@ -2463,7 +2463,7 @@ mod tests {
         assert_eq!(value, "line1 line2");
     }
 
-    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 18;
+    const MODEL_ADD_CUSTOM_PROVIDER_INDEX: usize = 19;
 
     #[test]
     fn model_add_form_parses_preset_connection() {
@@ -2605,7 +2605,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 10;
+                *selected = 11;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2654,7 +2654,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 14;
+                *selected = 15;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2685,7 +2685,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 13;
+                *selected = 14;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2739,11 +2739,39 @@ mod tests {
     }
 
     #[test]
+    fn model_add_form_parses_kimi_code_preset_connection() {
+        let mut form = new_model_add_form();
+        if let Some(f) = form.fields.get_mut(0) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 8;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        assert_eq!(form.fields.len(), 4);
+        if let Some(f) = form.fields.get_mut(2) {
+            if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
+                *selected = 1;
+            }
+        }
+        sync_model_add_form_fields(&mut form);
+        form.selected_field = 3;
+        insert_text(&mut form, "sk-kimi-code");
+
+        let parsed = parse_model_add_connection(&form).expect("parse");
+        assert_eq!(parsed.provider, ModelProvider::KimiCode);
+        assert_eq!(parsed.transport_kind, ModelTransportKind::Anthropic);
+        assert!(parsed.bulk);
+        assert!(parsed.model_name.is_none());
+        assert_eq!(parsed.api_base, "https://api.kimi.com/coding");
+        assert_eq!(parsed.api_key, "sk-kimi-code");
+    }
+
+    #[test]
     fn model_add_form_parses_minimax_preset_connection() {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 11;
+                *selected = 12;
             }
         }
         sync_model_add_form_fields(&mut form);
@@ -2772,7 +2800,7 @@ mod tests {
         let mut form = new_model_add_form();
         if let Some(f) = form.fields.get_mut(0) {
             if let BottomFormFieldEditorView::Choice { selected, .. } = &mut f.editor {
-                *selected = 15;
+                *selected = 16;
             }
         }
         sync_model_add_form_fields(&mut form);
