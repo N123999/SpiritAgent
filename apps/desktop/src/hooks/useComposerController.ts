@@ -530,17 +530,15 @@ export function useComposerController({
 
   const insertComposerText = useCallback(
     (text: string) => {
-      const segments = composerRichInputRef.current?.getSegments() ?? [];
-      const hasRichChips = segments.some((segment) => segment.kind !== "text");
-      if (hasRichChips) {
-        composerRichInputRef.current?.insertPlainTextAtCaret(text);
+      const richInput = composerRichInputRef.current;
+      if (richInput) {
+        richInput.insertPlainTextAtCaret(text);
       } else {
         const selectionStart = composerCursorCodeUnits;
         const selectionEnd = selectionStart;
         const nextValue = `${runtime.composer.slice(0, selectionStart)}${text}${runtime.composer.slice(selectionEnd)}`;
-        const nextCursorCodeUnits = selectionStart + text.length;
         runtime.setComposer(nextValue);
-        setComposerCursorCodeUnits(nextCursorCodeUnits);
+        setComposerCursorCodeUnits(selectionStart + text.length);
       }
       setSlashSelectedIndex(-1);
       setFileReferenceSelectedIndex(-1);
