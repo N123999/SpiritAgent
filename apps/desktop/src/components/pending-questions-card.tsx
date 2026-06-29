@@ -4,22 +4,46 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import type { QuestionDraft } from "@/hooks/useDesktopRuntime";
 import {
   DESKTOP_CHROME_TOGGLE_ICON_BTN,
-  DESKTOP_FORM_INPUT_SHELL,
-  DESKTOP_FORM_TEXTAREA_INNER,
   instantHoverMotionClass,
 } from "@/lib/desktop-chrome";
 import { cn } from "@/lib/utils";
-import type { AskQuestionsQuestionSpec, PendingQuestionsSnapshot } from "@/types";
+import type { PendingQuestionsSnapshot } from "@/types";
+
+const questionRowBleedClass = "-mx-2 box-border w-[calc(100%+1rem)] px-2";
+
+const questionOptionSurfaceClass =
+  "rounded-lg border-0 bg-transparent py-1.5 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10";
+
+const questionRowIndexClass = "text-muted-foreground [font-variant-numeric:lining-nums]";
+
+const questionRowLayoutClass =
+  "grid grid-cols-[1.125rem_minmax(0,1fr)] items-start gap-x-1";
+
+const questionRowTextClass = "text-foreground/80";
 
 const questionOptionClass = cn(
-  "rounded-xl border px-3 py-2.5 text-left outline-none transition-none",
+  questionRowLayoutClass,
+  "text-left outline-none transition-none leading-snug",
+  questionRowBleedClass,
+  questionOptionSurfaceClass,
   instantHoverMotionClass,
   "active:!translate-y-0",
+);
+
+const questionInputRowClass = cn(
+  "grid grid-cols-[1.125rem_minmax(0,1fr)] items-center gap-x-1",
+  questionRowBleedClass,
+);
+
+const questionInputInnerClass = cn(
+  "h-7 min-h-7 min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-sm shadow-none dark:!bg-transparent",
+  questionRowTextClass,
+  "placeholder:text-muted-foreground focus-visible:border-transparent focus-visible:ring-0",
+  "hover:bg-transparent focus-visible:bg-transparent",
 );
 
 type PendingQuestionsCardProps = {
@@ -132,10 +156,10 @@ export function PendingQuestionsCard({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-1.5 px-3 pb-2 pt-0">
+      <CardContent className="grid gap-1 px-3 pb-2 pt-0">
         {question.options.length > 0 ? (
-          <div className="grid gap-1.5">
-            {question.options.map((option) => {
+          <div className="grid gap-1">
+            {question.options.map((option, optionIndex) => {
               const selected = question.allowMultiple
                 ? draft.selectedOptionIds.includes(option.id)
                 : draft.selectedOptionIds[0] === option.id;
@@ -145,9 +169,7 @@ export function PendingQuestionsCard({
                   type="button"
                   className={cn(
                     questionOptionClass,
-                    selected
-                      ? "border-primary/60 bg-primary/8"
-                      : "border-border/60 bg-card/70 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+                    selected && "bg-primary/8",
                   )}
                   disabled={questionsBusy}
                   onClick={() =>
@@ -156,8 +178,16 @@ export function PendingQuestionsCard({
                       : handleSingleSelect(option.id)
                   }
                 >
-                  <div className="space-y-0.5">
-                    <span className="font-medium">{option.label}</span>
+                  <span className={questionRowIndexClass}>{optionIndex + 1}.</span>
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <span
+                      className={cn(
+                        "font-medium",
+                        selected ? "text-foreground/90" : questionRowTextClass,
+                      )}
+                    >
+                      {option.label}
+                    </span>
                     {option.summary ? (
                       <p className="text-xs leading-relaxed text-muted-foreground">
                         {option.summary}
@@ -170,34 +200,35 @@ export function PendingQuestionsCard({
           </div>
         ) : null}
 
-        <div className={cn("space-y-1", question.options.length > 0 && "mt-2.5")}>
-          <Label htmlFor={`${question.id}-custom`} className="text-xs">
-            {t("app.customAnswer")}
-          </Label>
-          <div className={DESKTOP_FORM_INPUT_SHELL}>
-            <Textarea
-              id={`${question.id}-custom`}
-              value={draft.customText}
-              onChange={(event) =>
-                onUpdateDraft(question.id, (current) => ({
-                  ...current,
-                  customText: event.target.value,
-                }))
-              }
-              placeholder={t("app.customAnswerPlaceholder")}
-              className={cn(DESKTOP_FORM_TEXTAREA_INNER, "min-h-20")}
-              disabled={questionsBusy}
-            />
-          </div>
+        <div
+          className={cn(
+            questionInputRowClass,
+            question.options.length > 0 && "mt-0",
+          )}
+        >
+          <span className={questionRowIndexClass}>{question.options.length + 1}.</span>
+          <Input
+            id={`${question.id}-custom`}
+            value={draft.customText}
+            onChange={(event) =>
+              onUpdateDraft(question.id, (current) => ({
+                ...current,
+                customText: event.target.value,
+              }))
+            }
+            placeholder={t("app.customAnswerPlaceholder")}
+            className={questionInputInnerClass}
+            disabled={questionsBusy}
+          />
         </div>
 
-        <div className="flex items-center justify-between gap-2">
+        <div className="mt-4 flex items-center justify-end gap-2">
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className={cn(
-              "h-8 px-2 text-muted-foreground hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
+              "px-2 text-muted-foreground hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
               instantHoverMotionClass,
               "active:!translate-y-0",
             )}
@@ -209,7 +240,7 @@ export function PendingQuestionsCard({
           <Button
             type="button"
             size="sm"
-            className={cn("h-8 min-w-20", instantHoverMotionClass, "active:!translate-y-0")}
+            className={cn("min-w-20", instantHoverMotionClass, "active:!translate-y-0")}
             disabled={questionsBusy}
             onClick={handleContinue}
           >
