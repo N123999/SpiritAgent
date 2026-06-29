@@ -22,6 +22,7 @@ test('parse model provider helpers accept canonical ids and reject invalid value
   assert.equal(parseModelProviderId('xai'), 'xai');
   assert.equal(parseModelProviderId('custom'), 'custom');
   assert.equal(parseModelProviderId('moonshot-ai'), 'moonshot-ai');
+  assert.equal(parseModelProviderId('kimi-code'), 'kimi-code');
   assert.equal(parseModelProviderId('z-ai'), 'z-ai');
   assert.equal(parseModelProviderId('zhipu-ai'), 'zhipu-ai');
   assert.equal(parseModelProviderId('xiaomi'), 'xiaomi');
@@ -235,6 +236,18 @@ test('resolveProviderConnectApiBase prefers site apiBase for moonshot-ai', () =>
   assert.equal(
     resolveProviderConnectApiBase('moonshot-ai', 'openai-compatible'),
     'https://api.moonshot.ai/v1',
+  );
+});
+
+test('resolveProviderConnectApiBase resolves kimi-code transport endpoints', () => {
+  assert.equal(providerSupportsSiteSelection('kimi-code'), false);
+  assert.equal(
+    resolveProviderConnectApiBase('kimi-code', 'openai-compatible'),
+    'https://api.kimi.com/coding/v1',
+  );
+  assert.equal(
+    resolveProviderConnectApiBase('kimi-code', 'anthropic'),
+    'https://api.kimi.com/coding',
   );
 });
 
