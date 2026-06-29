@@ -156,6 +156,29 @@ test('findModelCatalogEntry returns entry without pricing', () => {
   assert.equal(modelCatalogDisplayTitle(model, entry), 'Claude Sonnet 4');
 });
 
+test('findModelCatalogEntry resolves moonshot-ai catalog with contextLength', () => {
+  const hints = [
+    {
+      provider: 'moonshot-ai',
+      transportKind: 'openai-compatible',
+      apiBase: 'https://api.moonshot.cn/v1',
+      modelIds: ['kimi-k2.5'],
+      modelCatalog: [{ id: 'kimi-k2.5', displayName: 'Kimi K2.5', contextLength: 256000 }],
+      fetchedAtUnixMs: 1,
+    },
+  ];
+  const model = {
+    name: 'kimi-k2.5',
+    apiBase: 'https://api.moonshot.cn/v1',
+    provider: 'moonshot-ai',
+    transportKind: 'openai-compatible',
+    reasoningEffort: 'default',
+    keyConfigured: true,
+  };
+  const entry = findModelCatalogEntry(model, hints);
+  assert.equal(entry?.contextLength, 256000);
+});
+
 test('modelCatalogHasDetailBody is false when only displayName is present', () => {
   const model = {
     name: 'minimax/M2.7',
