@@ -1,13 +1,11 @@
-import type { ReactNode } from "react";
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
-  ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSectionItems,
   type ContextMenuSectionItem,
-  ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { desktopShellPlatform } from "@/lib/desktop-shell";
 
@@ -40,8 +38,9 @@ export function useMoveToTrashLabel(): string {
   return t(platformKey("workspace.moveToTrash"));
 }
 
-export type WorkspaceFileContextMenuProps = {
-  target: WorkspaceExplorerContextTarget;
+export type WorkspaceFileContextMenuContentProps = {
+  target: WorkspaceExplorerContextTarget | null;
+  targetRef: RefObject<WorkspaceExplorerContextTarget | null>;
   workspaceRoot: string;
   isElectron: boolean;
   onReveal?: (target: WorkspaceExplorerContextTarget) => void;
@@ -49,11 +48,12 @@ export type WorkspaceFileContextMenuProps = {
   onDelete?: (target: WorkspaceExplorerContextTarget) => void;
   onAddToSession?: (target: WorkspaceExplorerContextTarget) => void;
   onCloseAutoFocus?: (event: Event) => void;
-  children: ReactNode;
 };
 
-export function WorkspaceFileContextMenu({
+/** 面板级单一 ContextMenu 的 Content（对齐 session-sidebar WorkspaceListNav 模式）。 */
+export function WorkspaceFileContextMenuContent({
   target,
+  targetRef,
   workspaceRoot,
   isElectron,
   onReveal,
@@ -61,14 +61,12 @@ export function WorkspaceFileContextMenu({
   onDelete,
   onAddToSession,
   onCloseAutoFocus,
-  children,
-}: WorkspaceFileContextMenuProps) {
+}: WorkspaceFileContextMenuContentProps) {
   const { t } = useTranslation();
   const revealLabel = useRevealInExplorerLabel();
-  const shellActionsEnabled = isElectron && Boolean(onReveal);
-  const deleteEnabled = isElectron && Boolean(onDelete);
-  const absolutePath = joinWorkspaceAbsolutePath(workspaceRoot, target.relativePath);
-  const relativePathForCopy = formatWorkspaceRelativePathForCopy(target.relativePath);
+  const resolved = targetRef.current ?? target;
+  const shellActionsEnabled = isElectron && Boolean(onReveal) && Boolean(resolved);
+  const deleteEnabled = isElectron && Boolean(onDelete) && Boolean(resolved);
 
   const menuItems: ContextMenuSectionItem[] = [];
 
@@ -80,7 +78,10 @@ export function WorkspaceFileContextMenu({
           disabled={!shellActionsEnabled}
           title={!isElectron ? t("workspace.shellElectronOnly") : undefined}
           onSelect={() => {
-            onReveal(target);
+            const entry = targetRef.current ?? target;
+            if (entry) {
+              onReveal(entry);
+            }
           }}
         >
           {revealLabel}
@@ -95,7 +96,10 @@ export function WorkspaceFileContextMenu({
       item: (
         <ContextMenuItem
           onSelect={() => {
-            onAddToSession(target);
+            const entry = targetRef.current ?? target;
+            if (entry) {
+              onAddToSession(entry);
+            }
           }}
         >
           {t("workspace.addFileToSession")}
@@ -110,7 +114,13 @@ export function WorkspaceFileContextMenu({
       item: (
         <ContextMenuItem
           onSelect={() => {
-            void navigator.clipboard.writeText(absolutePath);
+            const entry = targetRef.current ?? target;
+            if (!entry) {
+              return;
+            }
+            void navigator.clipboard.writeText(
+              joinWorkspaceAbsolutePath(workspaceRoot, entry.relativePath),
+            );
           }}
         >
           {t("workspace.copyPath")}
@@ -122,7 +132,13 @@ export function WorkspaceFileContextMenu({
       item: (
         <ContextMenuItem
           onSelect={() => {
-            void navigator.clipboard.writeText(relativePathForCopy);
+            const entry = targetRef.current ?? target;
+            if (!entry) {
+              return;
+            }
+            void navigator.clipboard.writeText(
+              formatWorkspaceRelativePathForCopy(entry.relativePath),
+            );
           }}
         >
           {t("workspace.copyRelativePath")}
@@ -137,7 +153,10 @@ export function WorkspaceFileContextMenu({
       item: (
         <ContextMenuItem
           onSelect={() => {
-            onRename(target);
+            const entry = targetRef.current ?? target;
+            if (entry) {
+              onRename(entry);
+            }
           }}
         >
           {t("workspace.rename")}
@@ -155,7 +174,10 @@ export function WorkspaceFileContextMenu({
           disabled={!deleteEnabled}
           title={!isElectron ? t("workspace.shellElectronOnly") : undefined}
           onSelect={() => {
-            onDelete(target);
+            const entry = targetRef.current ?? target;
+            if (entry) {
+              onDelete(entry);
+            }
           }}
         >
           {t("workspace.delete")}
@@ -165,14 +187,11 @@ export function WorkspaceFileContextMenu({
   }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent
-        aria-label={t("workspace.fileActions")}
-        onCloseAutoFocus={onCloseAutoFocus}
-      >
-        <ContextMenuSectionItems items={menuItems} />
-      </ContextMenuContent>
-    </ContextMenu>
+    <ContextMenuContent
+      aria-label={t("workspace.fileActions")}
+      onCloseAutoFocus={onCloseAutoFocus}
+    >
+      <ContextMenuSectionItems items={menuItems} />
+    </ContextMenuContent>
   );
 }

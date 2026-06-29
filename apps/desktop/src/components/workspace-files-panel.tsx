@@ -12,10 +12,14 @@ import {
 import { WORKSPACE_REFERENCE_DIRECTORY_SUFFIX } from "@spirit-agent/host-internal/workspace-file-reference-query";
 
 import {
-  WorkspaceFileContextMenu,
+  WorkspaceFileContextMenuContent,
   useMoveToTrashLabel,
   type WorkspaceExplorerContextTarget,
 } from "@/components/workspace-file-context-menu";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import {
   Dialog,
   DialogContent,
@@ -178,17 +182,12 @@ export type WorkspaceFilesPanelProps = {
 
 type ExplorerRowProps = {
   target: WorkspaceExplorerContextTarget;
-  workspaceRoot: string;
   depth: number;
   selected: boolean;
-  isElectron: boolean;
   renaming: boolean;
   renameValue: string;
   renameError: string;
-  onReveal: (target: WorkspaceExplorerContextTarget) => void;
   onRenameStart?: (target: WorkspaceExplorerContextTarget) => void;
-  onDelete?: (target: WorkspaceExplorerContextTarget) => void;
-  onAddToSession?: (target: WorkspaceExplorerContextTarget) => void;
   onRenameValueChange: (value: string) => void;
   onRenameCommit: () => void;
   onRenameCancel: () => void;
@@ -209,17 +208,12 @@ type ExplorerRowProps = {
 
 function ExplorerRow({
   target,
-  workspaceRoot,
   depth,
   selected,
-  isElectron,
   renaming,
   renameValue,
   renameError,
-  onReveal,
   onRenameStart,
-  onDelete,
-  onAddToSession,
   onRenameValueChange,
   onRenameCommit,
   onRenameCancel,
@@ -238,7 +232,6 @@ function ExplorerRow({
 }: ExplorerRowProps) {
   const rowLabel = label ?? target.name;
   const renameInputRef = useRef<HTMLInputElement>(null);
-  const pendingRenameFocusRef = useRef(false);
   const skipBlurCommitRef = useRef(false);
 
   useLayoutEffect(() => {
@@ -312,6 +305,9 @@ function ExplorerRow({
       className={rowClassName}
       style={rowStyle}
       aria-current={selected ? "true" : undefined}
+      data-explorer-context-path={target.relativePath}
+      data-explorer-context-kind={target.kind}
+      data-explorer-context-name={target.name}
       {...(onDragOver ? { "data-explorer-folder-drop": target.relativePath } : {})}
       onClick={onClick}
       onDragStart={onDragStart}
@@ -325,33 +321,9 @@ function ExplorerRow({
     </button>
   );
 
-  const handleContextMenuCloseAutoFocus = (event: Event) => {
-    if (!pendingRenameFocusRef.current && !renaming) {
-      return;
-    }
-    event.preventDefault();
-    pendingRenameFocusRef.current = false;
-  };
-
-  const handleRenameStartFromMenu = (entry: WorkspaceExplorerContextTarget) => {
-    pendingRenameFocusRef.current = true;
-    onRenameStart?.(entry);
-  };
-
   return (
     <li className="min-w-0">
-      <WorkspaceFileContextMenu
-        target={target}
-        workspaceRoot={workspaceRoot}
-        isElectron={isElectron}
-        onReveal={onReveal}
-        onRename={onRenameStart ? handleRenameStartFromMenu : undefined}
-        onDelete={onDelete}
-        onAddToSession={onAddToSession}
-        onCloseAutoFocus={handleContextMenuCloseAutoFocus}
-      >
-        {rowTrigger}
-      </WorkspaceFileContextMenu>
+      {rowTrigger}
       {renaming && renameError ? (
         <p className="py-0.5 pl-1 text-destructive/90" style={{ paddingLeft: `${depth * 12 + 4}px` }}>
           {renameError}
@@ -497,6 +469,10 @@ export function WorkspaceFilesPanel({
   const [treeHovered, setTreeHovered] = useState(false);
   const [createTooltipAnchorLocked, setCreateTooltipAnchorLocked] = useState(false);
   const [creatingEntry, setCreatingEntry] = useState<CreatingEntryState | null>(null);
+  const [fileContextMenuTarget, setFileContextMenuTarget] =
+    useState<WorkspaceExplorerContextTarget | null>(null);
+  const fileContextMenuTargetRef = useRef<WorkspaceExplorerContextTarget | null>(null);
+  const pendingRenameFocusPathRef = useRef<string | null>(null);
   const createTooltipOpenKindsRef = useRef<Set<"file" | "dir">>(new Set());
   const renameCommitInFlightRef = useRef(false);
   const createCommitInFlightRef = useRef(false);
@@ -713,6 +689,38 @@ export function WorkspaceFilesPanel({
     setRenamingPath(target.relativePath);
     setRenameValue(target.name);
     setRenameError("");
+  }, []);
+
+  const handleRenameStartFromMenu = useCallback(
+    (target: WorkspaceExplorerContextTarget) => {
+      pendingRenameFocusPathRef.current = target.relativePath;
+      handleRenameStart(target);
+    },
+    [handleRenameStart],
+  );
+
+  const handleFileContextMenuCloseAutoFocus = useCallback((event: Event) => {
+    if (!pendingRenameFocusPathRef.current) {
+      return;
+    }
+    event.preventDefault();
+    pendingRenameFocusPathRef.current = null;
+  }, []);
+
+  const handleFileContextMenuCapture = useCallback((event: MouseEvent<HTMLElement>) => {
+    const row = (event.target as HTMLElement).closest("[data-explorer-context-path]");
+    if (!row) {
+      return;
+    }
+    const relativePath = row.getAttribute("data-explorer-context-path") ?? "";
+    const kind = row.getAttribute("data-explorer-context-kind");
+    if (kind !== "file" && kind !== "dir") {
+      return;
+    }
+    const name = row.getAttribute("data-explorer-context-name") ?? "";
+    const entry: WorkspaceExplorerContextTarget = { relativePath, kind, name };
+    fileContextMenuTargetRef.current = entry;
+    setFileContextMenuTarget(entry);
   }, []);
 
   const handleRenameCancel = useCallback(() => {
@@ -1222,18 +1230,13 @@ export function WorkspaceFilesPanel({
                 {fileCreateRow}
                 <ExplorerRow
                 target={target}
-                workspaceRoot={workspaceRoot}
                 depth={depth}
                 selected={selected}
                 ignored={ignored}
-                isElectron={isElectron}
                 renaming={renamingPath === childRel}
                 renameValue={renameValue}
                 renameError={renamingPath === childRel ? renameError : ""}
-                onReveal={handleReveal}
                 onRenameStart={handleRenameStart}
-                onDelete={handleDeleteRequest}
-                onAddToSession={onWorkspaceFileAddToSession ? handleAddToSession : undefined}
                 onRenameValueChange={setRenameValue}
                 onRenameCommit={() => void handleRenameCommit()}
                 onRenameCancel={handleRenameCancel}
@@ -1255,18 +1258,13 @@ export function WorkspaceFilesPanel({
               {fileCreateRow}
               <ExplorerRow
               target={target}
-              workspaceRoot={workspaceRoot}
               depth={depth}
               selected={directoryRowFocused(dirRel)}
               ignored={ignored}
-              isElectron={isElectron}
               renaming={renamingPath === dirRel}
               renameValue={renameValue}
               renameError={renamingPath === dirRel ? renameError : ""}
-              onReveal={handleReveal}
               onRenameStart={handleRenameStart}
-              onDelete={handleDeleteRequest}
-              onAddToSession={onWorkspaceFileAddToSession ? handleAddToSession : undefined}
               onRenameValueChange={setRenameValue}
               onRenameCommit={() => void handleRenameCommit()}
               onRenameCancel={handleRenameCancel}
@@ -1338,6 +1336,12 @@ export function WorkspaceFilesPanel({
         onMouseEnter={handleTreeMouseEnter}
         onMouseLeave={handleTreeMouseLeave}
       >
+        <ContextMenu>
+        <ContextMenuTrigger asChild>
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+          onContextMenuCapture={handleFileContextMenuCapture}
+        >
         <div className="mb-1 shrink-0">
           <div
             className={cn(
@@ -1346,12 +1350,6 @@ export function WorkspaceFilesPanel({
               focusedDirectoryRel === "" && "bg-foreground/[0.08] dark:bg-foreground/12",
             )}
           >
-            <WorkspaceFileContextMenu
-              target={rootTarget}
-              workspaceRoot={workspaceRoot}
-              isElectron={isElectron}
-              onReveal={handleReveal}
-            >
               <button
                 type="button"
                 className={cn(
@@ -1360,6 +1358,9 @@ export function WorkspaceFilesPanel({
                 )}
                 aria-expanded={rootOpen}
                 aria-current={focusedDirectoryRel === "" ? "true" : undefined}
+                data-explorer-context-path={rootTarget.relativePath}
+                data-explorer-context-kind={rootTarget.kind}
+                data-explorer-context-name={rootTarget.name}
                 onClick={() => {
                   setFocusedDirectoryRel("");
                   setRootOpen((open) => !open);
@@ -1372,7 +1373,6 @@ export function WorkspaceFilesPanel({
                 )}
                 <span className="min-w-0 truncate">{rootLabel}</span>
               </button>
-            </WorkspaceFileContextMenu>
             {isElectron && (treeHovered || createTooltipAnchorLocked) ? (
               <div
                 className={cn(
@@ -1474,6 +1474,20 @@ export function WorkspaceFilesPanel({
       ) : (
         <div className="mb-1">{renderPlanItem()}</div>
       )}
+        </div>
+        </ContextMenuTrigger>
+        <WorkspaceFileContextMenuContent
+          target={fileContextMenuTarget}
+          targetRef={fileContextMenuTargetRef}
+          workspaceRoot={workspaceRoot}
+          isElectron={isElectron}
+          onReveal={handleReveal}
+          onRename={handleRenameStartFromMenu}
+          onDelete={handleDeleteRequest}
+          onAddToSession={onWorkspaceFileAddToSession ? handleAddToSession : undefined}
+          onCloseAutoFocus={handleFileContextMenuCloseAutoFocus}
+        />
+        </ContextMenu>
       </div>
 
       <Dialog

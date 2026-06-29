@@ -1,58 +1,56 @@
-import type { ReactNode } from "react";
+import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
-  ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSectionItems,
   type ContextMenuSectionItem,
-  ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import type { GitCommitRecord } from "@/types";
 
-export type WorkspaceGitCommitContextMenuProps = {
-  commit: GitCommitRecord;
+export type WorkspaceGitCommitContextMenuContentProps = {
+  commit: GitCommitRecord | null;
+  commitRef: RefObject<GitCommitRecord | null>;
   onAddToSession?: (commit: GitCommitRecord) => void;
   addToSessionDisabled?: boolean;
-  children: ReactNode;
 };
 
-export function WorkspaceGitCommitContextMenu({
+/** 面板级单一 ContextMenu 的 Content（对齐 session-sidebar 列表 capture 模式）。 */
+export function WorkspaceGitCommitContextMenuContent({
   commit,
+  commitRef,
   onAddToSession,
   addToSessionDisabled = false,
-  children,
-}: WorkspaceGitCommitContextMenuProps) {
+}: WorkspaceGitCommitContextMenuContentProps) {
   const { t } = useTranslation();
-  const menuItems: ContextMenuSectionItem[] = [];
 
-  if (onAddToSession) {
-    menuItems.push({
+  if (!onAddToSession) {
+    return null;
+  }
+
+  const menuItems: ContextMenuSectionItem[] = [
+    {
       section: "session",
       item: (
         <ContextMenuItem
           disabled={addToSessionDisabled}
           onSelect={() => {
-            onAddToSession(commit);
+            const resolved = commitRef.current ?? commit;
+            if (resolved) {
+              onAddToSession(resolved);
+            }
           }}
         >
           {t("workspace.addCommitToSession")}
         </ContextMenuItem>
       ),
-    });
-  }
-
-  if (menuItems.length === 0) {
-    return children;
-  }
+    },
+  ];
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent aria-label={t("workspace.git.commitActions")}>
-        <ContextMenuSectionItems items={menuItems} />
-      </ContextMenuContent>
-    </ContextMenu>
+    <ContextMenuContent aria-label={t("workspace.git.commitActions")}>
+      <ContextMenuSectionItems items={menuItems} />
+    </ContextMenuContent>
   );
 }

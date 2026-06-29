@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ComponentRef,
+  type MouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,8 +15,9 @@ import { Check, Copy, GitCommit, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipItem, useTooltipTriggerProps } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { PrConversationTimelineNode } from "@/components/workspace-pr-conversation-timeline";
-import { WorkspaceGitCommitContextMenu } from "@/components/workspace-git-commit-context-menu";
+import { WorkspaceGitCommitContextMenuContent } from "@/components/workspace-git-commit-context-menu";
 import { cn } from "@/lib/utils";
 import type { GitCommitGraphRow, GitCommitRecord, GitHistorySnapshot } from "@/types";
 
@@ -523,13 +525,9 @@ function CommitGraphRowDetail({ row }: { row: GitCommitGraphRow }) {
 function CommitGraphRowWithHover({
   row,
   textInset,
-  onAddCommitToSession,
-  addCommitToSessionDisabled = false,
 }: {
   row: GitCommitGraphRow;
   textInset: number;
-  onAddCommitToSession?: (commit: GitCommitRecord) => void;
-  addCommitToSessionDisabled?: boolean;
 }) {
   const { onPointerEnter, isHighlighted } = useTooltipTriggerProps(row);
 
@@ -540,6 +538,7 @@ function CommitGraphRowWithHover({
         "flex w-full min-w-0 items-center py-1 pr-2 text-left",
         isHighlighted ? "bg-muted/30" : "hover:bg-muted/30",
       )}
+      data-commit-oid={row.commit.oid}
       onPointerEnter={onPointerEnter}
     >
       <span className="min-w-0 flex-1 truncate text-xs font-medium leading-snug text-foreground/80">
@@ -548,24 +547,12 @@ function CommitGraphRowWithHover({
     </button>
   );
 
-  const trigger = onAddCommitToSession ? (
-    <WorkspaceGitCommitContextMenu
-      commit={row.commit}
-      onAddToSession={onAddCommitToSession}
-      addToSessionDisabled={addCommitToSessionDisabled}
-    >
-      {rowButton}
-    </WorkspaceGitCommitContextMenu>
-  ) : (
-    rowButton
-  );
-
   return (
     <div
       className="relative min-w-0"
       style={{ minHeight: ROW_HEIGHT_PX, paddingLeft: textInset }}
     >
-      <TooltipItem item={row}>{trigger}</TooltipItem>
+      <TooltipItem item={row}>{rowButton}</TooltipItem>
     </div>
   );
 }
@@ -585,11 +572,35 @@ export function GitCommitGraph({
 
   const rows = history?.rows ?? [];
   const graphWidth = useMemo(() => computeGraphWidth(rows), [rows]);
+  const commitByOid = useMemo(
+    () => new Map(rows.map((row) => [row.commit.oid, row.commit])),
+    [rows],
+  );
   const rowsContainerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<ComponentRef<typeof ScrollArea>>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const loadMoreInFlightRef = useRef(false);
   const [geometry, setGeometry] = useState<RowGeometry | null>(null);
+  const [commitContextMenuTarget, setCommitContextMenuTarget] = useState<GitCommitRecord | null>(
+    null,
+  );
+  const commitContextMenuTargetRef = useRef<GitCommitRecord | null>(null);
+  const handleCommitContextMenuCapture = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      const row = (event.target as HTMLElement).closest("[data-commit-oid]");
+      if (!row) {
+        return;
+      }
+      const oid = row.getAttribute("data-commit-oid");
+      const commit = oid ? commitByOid.get(oid) : undefined;
+      if (!commit) {
+        return;
+      }
+      commitContextMenuTargetRef.current = commit;
+      setCommitContextMenuTarget(commit);
+    },
+    [commitByOid],
+  );
 
   useEffect(() => {
     if (!hasMore || !onLoadMore || loadingMore) {
@@ -702,46 +713,22 @@ export function GitCommitGraph({
 
   const showLoadMoreFooter = hasMore || loadingMore;
 
-  return (
-    <ScrollArea ref={scrollAreaRef} className={cn("min-h-0 flex-1", className)}>
+  const graphBody = (
+    <div
+      className="relative min-w-0 pr-1"
+      onContextMenuCapture={onAddCommitToSession ? handleCommitContextMenuCapture : undefined}
+    >
+      <CommitGraphGutter rows={rows} graphWidth={graphWidth} geometry={geometry} />
       <Tooltip<GitCommitGraphRow> getItemId={(row) => row.commit.oid}>
-        <div className="relative min-w-0 pr-1">
-          <CommitGraphGutter rows={rows} graphWidth={graphWidth} geometry={geometry} />
-          <Tooltip.Zone ref={rowsContainerRef} className="relative">
-            {rows.map((row, rowIndex) => (
-              <CommitGraphRowWithHover
-                key={row.commit.oid}
-                row={row}
-                textInset={textInsetForRow(row, rowIndex, rows)}
-                onAddCommitToSession={onAddCommitToSession}
-                addCommitToSessionDisabled={addCommitToSessionDisabled}
-              />
-            ))}
-          </Tooltip.Zone>
-          {showLoadMoreFooter ? (
-            <div
-              ref={loadMoreSentinelRef}
-              className="flex min-h-10 items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
-            >
-              {loadingMore ? (
-                <>
-                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
-                  {t("workspace.git.loadingMoreHistory")}
-                </>
-              ) : hasMore && onLoadMore ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={onLoadMore}
-                >
-                  {t("workspace.git.loadMoreHistory")}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+        <Tooltip.Zone ref={rowsContainerRef} className="relative">
+          {rows.map((row, rowIndex) => (
+            <CommitGraphRowWithHover
+              key={row.commit.oid}
+              row={row}
+              textInset={textInsetForRow(row, rowIndex, rows)}
+            />
+          ))}
+        </Tooltip.Zone>
         <TooltipContent
           appearance="detail"
           side="right"
@@ -754,6 +741,47 @@ export function GitCommitGraph({
             activeRow ? <CommitGraphRowDetail row={activeRow as GitCommitGraphRow} /> : null}
         </TooltipContent>
       </Tooltip>
+      {showLoadMoreFooter ? (
+        <div
+          ref={loadMoreSentinelRef}
+          className="flex min-h-10 items-center justify-center gap-2 py-2 text-xs text-muted-foreground"
+        >
+          {loadingMore ? (
+            <>
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+              {t("workspace.git.loadingMoreHistory")}
+            </>
+          ) : hasMore && onLoadMore ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={onLoadMore}
+            >
+              {t("workspace.git.loadMoreHistory")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <ScrollArea ref={scrollAreaRef} className={cn("min-h-0 flex-1", className)}>
+      {onAddCommitToSession ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>{graphBody}</ContextMenuTrigger>
+          <WorkspaceGitCommitContextMenuContent
+            commit={commitContextMenuTarget}
+            commitRef={commitContextMenuTargetRef}
+            onAddToSession={onAddCommitToSession}
+            addToSessionDisabled={addCommitToSessionDisabled}
+          />
+        </ContextMenu>
+      ) : (
+        graphBody
+      )}
     </ScrollArea>
   );
 }
