@@ -81,3 +81,65 @@ test('responses streaming uses only the first reasoning-delta item id', async ()
   const chunks = await collectThinkingChunks(stream());
   assert.deepEqual(chunks, ['Plan.']);
 });
+
+test('responses streaming falls back to raw reasoning when reasoning-delta is absent', async () => {
+  const volcengineConfig: OpenResponsesTransportConfig = {
+    transportKind: 'open-responses',
+    apiKey: 'test',
+    model: 'doubao-seed-2-1-pro-260628',
+    llmVendor: 'volcengine',
+    responsesProvider: 'open-responses-compatible',
+  };
+
+  async function* stream(): AsyncGenerator<TextStreamPart<any>> {
+    yield {
+      type: 'raw',
+      rawValue: {
+        type: 'response.reasoning_summary_text.delta',
+        delta: 'Sum ',
+      },
+    };
+    yield {
+      type: 'raw',
+      rawValue: {
+        type: 'response.reasoning_summary_text.delta',
+        delta: 'values.',
+      },
+    };
+    yield { type: 'text-delta', id: 't1', text: '42' };
+    yield {
+      type: 'raw',
+      rawValue: {
+        type: 'response.completed',
+        response: { id: 'resp-volcengine' },
+      },
+    };
+  }
+
+  const state: ToolAgentState = { messages: [], steps: 0 };
+  const completion = createDeferred<ToolAgentRoundCompletion<ToolAgentState>>();
+  const chunks: string[] = [];
+
+  for await (const event of responsesEventStreamToRuntimeEvents(
+    volcengineConfig,
+    stream(),
+    {},
+    state,
+    [],
+    completion,
+  )) {
+    if (event.kind === 'thinking-chunk') {
+      chunks.push(event.text);
+    }
+  }
+
+  await completion.promise;
+  assert.deepEqual(chunks, ['Sum ', 'values.']);
+  const assistant = state.messages.at(-1);
+  assert.equal(
+    assistant && typeof assistant === 'object' && !Array.isArray(assistant)
+      ? (assistant as { reasoning_content?: string }).reasoning_content
+      : undefined,
+    'Sum values.',
+  );
+});

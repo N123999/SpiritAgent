@@ -272,6 +272,17 @@ export async function* responsesEventStreamToRuntimeEvents(
             responseId = rawResponseId;
           }
 
+          if (
+            activeReasoningDeltaId === undefined
+            && shouldUseRawResponsesReasoningFallback(config)
+          ) {
+            const rawReasoningText = extractOpenResponsesReasoningTextFromRawChunk(part.rawValue);
+            if (rawReasoningText) {
+              reasoningContent += rawReasoningText;
+              yield { kind: 'thinking-chunk', text: rawReasoningText };
+            }
+          }
+
           break;
         }
         default:
@@ -571,6 +582,13 @@ function accumulateOpenResponsesToolCallProgressFromRawChunk(
   }
 
   return { events, nextToolIndex: toolIndex };
+}
+
+function shouldUseRawResponsesReasoningFallback(
+  config: OpenResponsesTransportConfig,
+): boolean {
+  // 火山方舟 Responses 流仅经 raw SSE 返回 reasoning_summary_text.delta，AI SDK 不发 reasoning-delta。
+  return config.llmVendor === 'volcengine';
 }
 
 function shouldAggregateGatewaySdkToolCalls(config: OpenResponsesTransportConfig): boolean {
