@@ -179,6 +179,9 @@ export async function updateConfigCommand(
             ...(existing.supportedReasoningEfforts !== undefined
               ? { supportedEfforts: existing.supportedReasoningEfforts }
               : {}),
+            ...(existing.supportsThinkingType
+              ? { supportsThinkingType: existing.supportsThinkingType }
+              : {}),
           };
           if (thinkingEnabled) {
             delete existing.thinkingEnabled;
@@ -642,6 +645,8 @@ export async function addProviderModelsCommand(
       reasoningEffort: ModelReasoningEffort;
       supportedReasoningEfforts?: DesktopModelReasoningEffort[];
       capabilities?: DesktopModelCapability[];
+      contextLength?: number;
+      supportsThinkingType?: 'only';
       provider?: DesktopModelProvider;
       transportKind?: DesktopTransportKind;
       awsRegion?: string;
@@ -668,6 +673,9 @@ export async function addProviderModelsCommand(
           ...(catalogEntry?.supportedReasoningEfforts !== undefined
             ? { supportedEfforts: catalogEntry.supportedReasoningEfforts }
             : {}),
+          ...(catalogEntry?.supportsThinkingType
+            ? { supportsThinkingType: catalogEntry.supportsThinkingType }
+            : {}),
         }),
       };
       if (catalogEntry?.supportedReasoningEfforts !== undefined) {
@@ -675,6 +683,15 @@ export async function addProviderModelsCommand(
       }
       if (catalogEntry?.capabilities) {
         profile.capabilities = catalogEntry.capabilities;
+      }
+      if (catalogEntry?.contextLength !== undefined) {
+        const contextLength = parseModelContextLength(catalogEntry.contextLength);
+        if (contextLength !== undefined) {
+          profile.contextLength = contextLength;
+        }
+      }
+      if (catalogEntry?.supportsThinkingType !== undefined) {
+        profile.supportsThinkingType = catalogEntry.supportsThinkingType;
       }
       if (provider !== undefined) {
         profile.provider = provider;
@@ -893,6 +910,7 @@ export async function addModelCommand(
       transportKind?: DesktopTransportKind;
       capabilities?: DesktopModelCapability[];
       contextLength?: number;
+      supportsThinkingType?: 'only';
       awsRegion?: string;
       providerSite?: DesktopProviderConnectSiteId;
       alibabaWorkspaceId?: string;
@@ -909,6 +927,9 @@ export async function addModelCommand(
         model: name,
         ...(catalogEntry?.supportedReasoningEfforts !== undefined
           ? { supportedEfforts: catalogEntry.supportedReasoningEfforts }
+          : {}),
+        ...(catalogEntry?.supportsThinkingType
+          ? { supportsThinkingType: catalogEntry.supportsThinkingType }
           : {}),
       }),
     };
@@ -948,6 +969,15 @@ export async function addModelCommand(
     });
     if (capabilities) {
       profile.capabilities = capabilities;
+    }
+    if (catalogEntry?.contextLength !== undefined && request.contextLength === undefined) {
+      const contextLength = parseModelContextLength(catalogEntry.contextLength);
+      if (contextLength !== undefined) {
+        profile.contextLength = contextLength;
+      }
+    }
+    if (catalogEntry?.supportsThinkingType !== undefined) {
+      profile.supportsThinkingType = catalogEntry.supportsThinkingType;
     }
     if (request.contextLength !== undefined) {
       const contextLength = parseModelContextLength(request.contextLength);

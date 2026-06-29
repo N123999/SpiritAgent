@@ -509,3 +509,33 @@ test('openrouter provider passes contextLength through catalog metadata', () => 
     },
   ]);
 });
+
+test('kimi-code provider maps catalog traits including displayName and supportsThinkingType', () => {
+  const preview = previewModelCatalogForTransport({
+    provider: 'kimi-code',
+    transportKind: 'openai-compatible',
+    listedModels: [
+      {
+        id: 'kimi-for-coding',
+        displayName: 'K2.7 Code',
+        supportsImageInput: true,
+        supportsVideoInput: true,
+        supportsReasoning: true,
+        supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+        contextLength: 262144,
+        supportsThinkingType: 'only',
+      },
+    ],
+  });
+
+  assert.deepEqual(preview, [
+    {
+      id: 'kimi-for-coding',
+      displayName: 'K2.7 Code',
+      capabilities: ['chat', 'image', 'video'],
+      supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high'],
+      contextLength: 262144,
+      supportsThinkingType: 'only',
+    },
+  ]);
+});

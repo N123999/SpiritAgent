@@ -13,7 +13,7 @@ import type {
   PreviewModelCatalogVideoDurationPricing,
 } from '@/types';
 
-const METADATA_PROVIDERS = new Set<DesktopModelProvider>(['vercel-ai-gateway', 'openrouter']);
+const METADATA_PROVIDERS = new Set<DesktopModelProvider>(['vercel-ai-gateway', 'openrouter', 'kimi-code']);
 
 export function providerSupportsModelCatalogDetail(
   provider: DesktopModelProvider | undefined,

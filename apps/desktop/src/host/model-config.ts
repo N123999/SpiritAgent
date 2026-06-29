@@ -188,6 +188,7 @@ type AgentModelProfileFields = Pick<
   | 'reasoningEffort'
   | 'supportedReasoningEfforts'
   | 'thinkingEnabled'
+  | 'supportsThinkingType'
 >;
 
 function buildAgentModelReasoningContext(
@@ -200,6 +201,7 @@ function buildAgentModelReasoningContext(
     ...(profile?.supportedReasoningEfforts !== undefined
       ? { supportedEfforts: profile.supportedReasoningEfforts }
       : {}),
+    ...(profile?.supportsThinkingType ? { supportsThinkingType: profile.supportsThinkingType } : {}),
     model,
   };
 }

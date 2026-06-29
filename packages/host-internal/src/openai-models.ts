@@ -36,6 +36,8 @@ export interface ProviderListedModelPricing {
   videoDurationPricing?: ProviderListedModelVideoDurationPricing[];
 }
 
+export type KimiCodeSupportsThinkingType = 'only';
+
 export interface ProviderListedModelEntry {
   id: string;
   displayName?: string;
@@ -46,6 +48,7 @@ export interface ProviderListedModelEntry {
   supportsVideoGeneration?: boolean;
   supportsImageGeneration?: boolean;
   supportsReasoning?: boolean;
+  supportsThinkingType?: KimiCodeSupportsThinkingType;
   contextLength?: number;
   supportedReasoningEfforts?: string[];
 }
@@ -81,6 +84,10 @@ export function parseOpenAiCompatibleModelEntriesPayload(
 ): ProviderListedModelEntry[] {
   if (provider === 'moonshot-ai') {
     return parseMoonshotModelEntriesPayload(body);
+  }
+
+  if (provider === 'kimi-code') {
+    return parseKimiCodeModelEntriesPayload(body);
   }
 
   if (provider === 'vercel-ai-gateway') {
@@ -172,6 +179,68 @@ export function parseMoonshotModelEntriesPayload(body: unknown): ProviderListedM
     entries.push(modelEntry);
   }
   return entries;
+}
+
+/** Kimi Code `GET /v1/models`：Moonshot 形态 trait + `display_name` + `supports_thinking_type`。 */
+export function parseKimiCodeModelEntriesPayload(body: unknown): ProviderListedModelEntry[] {
+  if (typeof body !== 'object' || body === null || !('data' in body)) {
+    return [];
+  }
+  const raw = (body as { data?: unknown }).data;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const entries: ProviderListedModelEntry[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const id = record.id;
+    if (typeof id !== 'string' || id.trim().length === 0) {
+      continue;
+    }
+
+    const modelEntry: ProviderListedModelEntry = { id: id.trim() };
+    const displayName = readOptionalTrimmedString(record.display_name);
+    if (displayName) {
+      modelEntry.displayName = displayName;
+    }
+    const supportsImageInput = readBooleanModelTrait(record, 'supports_image_in');
+    if (supportsImageInput !== undefined) {
+      modelEntry.supportsImageInput = supportsImageInput;
+    }
+    const supportsVideoInput = readBooleanModelTrait(record, 'supports_video_in');
+    if (supportsVideoInput !== undefined) {
+      modelEntry.supportsVideoInput = supportsVideoInput;
+    }
+    const supportsReasoning = readBooleanModelTrait(record, 'supports_reasoning');
+    if (supportsReasoning !== undefined) {
+      modelEntry.supportsReasoning = supportsReasoning;
+      modelEntry.supportedReasoningEfforts = moonshotSupportedReasoningEfforts(supportsReasoning);
+    }
+    const contextLength = readPositiveIntegerModelTrait(record, 'context_length');
+    if (contextLength !== undefined) {
+      modelEntry.contextLength = contextLength;
+    }
+    const supportsThinkingType = readKimiCodeSupportsThinkingType(record);
+    if (supportsThinkingType !== undefined) {
+      modelEntry.supportsThinkingType = supportsThinkingType;
+    }
+    entries.push(modelEntry);
+  }
+  return entries;
+}
+
+function readKimiCodeSupportsThinkingType(
+  record: Record<string, unknown>,
+): KimiCodeSupportsThinkingType | undefined {
+  const value = record.supports_thinking_type;
+  if (typeof value === 'string' && value.trim().toLowerCase() === 'only') {
+    return 'only';
+  }
+  return undefined;
 }
 
 export type SiliconFlowModelListKind = 'chat' | 'image' | 'video';

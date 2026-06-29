@@ -3,6 +3,8 @@ import type { ModelReasoningEffortContext } from './reasoning-effort.js';
 import {
   isDeepSeekV4ReasoningEffortModel,
   isGoogleReasoningEffortModel,
+  isKimiCodeReasoningEffortModel,
+  isKimiCodeThinkingOnlyModel,
   isMoonshotReasoningEffortModel,
   isOpenRouterAnthropicClaudeReasoningModel,
   isXaiReasoningEffortModel,
@@ -191,6 +193,12 @@ export function modelUsesReasoningEffortPrimaryControl(
   if (isMoonshotReasoningEffortModel(context) && !isMoonshotThinkingSwitchModel(context)) {
     return true;
   }
+  if (isKimiCodeReasoningEffortModel(context) && isKimiCodeThinkingOnlyModel(context)) {
+    return true;
+  }
+  if (isKimiCodeReasoningEffortModel(context) && context?.supportsThinkingType === undefined) {
+    return true;
+  }
   if (isGoogleReasoningEffortModel(context)) {
     return true;
   }
@@ -210,6 +218,9 @@ export function modelUsesReasoningEffortPrimaryControl(
 export function modelSupportsThinkingSwitch(context?: ModelReasoningEffortContext): boolean {
   if (isAnthropicClaudeSwitchableThinkingModel(context)) {
     return true;
+  }
+  if (context?.supportsThinkingType === 'only') {
+    return false;
   }
   if (modelUsesReasoningEffortPrimaryControl(context)) {
     return false;

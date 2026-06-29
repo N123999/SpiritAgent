@@ -335,6 +335,12 @@ export function applyCatalogEntryToStoredModel(
     }
   }
 
+  if (catalogEntry.supportsThinkingType !== undefined
+    && model.supportsThinkingType !== catalogEntry.supportsThinkingType) {
+    model.supportsThinkingType = catalogEntry.supportsThinkingType;
+    changed = true;
+  }
+
   return changed;
 }
 

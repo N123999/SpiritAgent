@@ -152,6 +152,7 @@ export interface PreviewModelCatalogEntry {
   capabilities?: DesktopModelCapability[];
   supportedReasoningEfforts?: DesktopModelReasoningEffort[];
   contextLength?: number;
+  supportsThinkingType?: 'only';
 }
 
 /** 预览某端点下列出的模型 id（带本地 TTL 缓存）。 */
@@ -1178,6 +1179,8 @@ export interface ModelProfileSnapshot {
   vertexLocation?: string;
   /** 用户配置的模型上下文长度（token）；优先于 catalog 解析。 */
   contextLength?: number;
+  /** Kimi Code `supports_thinking_type`；`only` 表示思考常开。 */
+  supportsThinkingType?: 'only';
   /** 宿主快照：该模型是否在系统钥匙串中有专属 API Key 条目（与 CLI 一致；不含环境变量与全局回退）。 */
   keyConfigured?: boolean;
 }

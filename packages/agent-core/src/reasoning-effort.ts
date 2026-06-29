@@ -65,11 +65,15 @@ export interface ModelReasoningEffortOption<T extends string = string> {
   label: string;
 }
 
+export type ModelSupportsThinkingType = 'only';
+
 export interface ModelReasoningEffortContext {
   provider?: ModelReasoningProvider;
   model?: string;
   transportKind?: ModelReasoningTransportKind;
   supportedEfforts?: readonly ModelReasoningEffort[];
+  /** Kimi Code `supports_thinking_type`；`only` 表示思考常开且隐藏 Thinking 开关。 */
+  supportsThinkingType?: ModelSupportsThinkingType;
 }
 
 export const DEFAULT_MODEL_REASONING_EFFORT: OpenAiCompatibleReasoningEffort = 'medium';
@@ -220,6 +224,10 @@ export function defaultModelReasoningEffort(
     return 'default';
   }
 
+  if (isKimiCodeReasoningEffortModel(context)) {
+    return 'default';
+  }
+
   if (isXaiReasoningEffortModel(context)) {
     return 'default';
   }
@@ -260,6 +268,13 @@ export function modelReasoningEffortOptions(
   }
 
   if (isMoonshotReasoningEffortModel(context)) {
+    if (context?.supportedEfforts !== undefined) {
+      return moonshotReasoningEffortOptionsForSupportedEfforts(context.supportedEfforts);
+    }
+    return MOONSHOT_REASONING_EFFORT_OPTIONS;
+  }
+
+  if (isKimiCodeReasoningEffortModel(context)) {
     if (context?.supportedEfforts !== undefined) {
       return moonshotReasoningEffortOptionsForSupportedEfforts(context.supportedEfforts);
     }
@@ -377,6 +392,18 @@ export function isMoonshotReasoningEffortModel(
   return context?.provider === 'moonshot-ai';
 }
 
+export function isKimiCodeReasoningEffortModel(
+  context?: ModelReasoningEffortContext,
+): boolean {
+  return context?.provider === 'kimi-code';
+}
+
+export function isKimiCodeThinkingOnlyModel(
+  context?: ModelReasoningEffortContext,
+): boolean {
+  return context?.supportsThinkingType === 'only';
+}
+
 export function isXaiReasoningEffortModel(
   context?: ModelReasoningEffortContext,
 ): boolean {
@@ -481,6 +508,19 @@ function resolveCompatibleModelReasoningEffort(
   }
 
   if (isMoonshotReasoningEffortModel(context)) {
+    const supportedEfforts = normalizeSupportedReasoningEfforts(context?.supportedEfforts);
+    switch (normalized) {
+      case 'none':
+        return 'default';
+      case 'xhigh':
+      case 'max':
+        return 'high';
+      default:
+        return moonshotReasoningEffortValueForContext(normalized, supportedEfforts) ?? 'default';
+    }
+  }
+
+  if (isKimiCodeReasoningEffortModel(context)) {
     const supportedEfforts = normalizeSupportedReasoningEfforts(context?.supportedEfforts);
     switch (normalized) {
       case 'none':

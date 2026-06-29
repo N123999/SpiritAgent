@@ -46,6 +46,9 @@ export function modelPickerInspectorNeedsWideLayout(
       ? { supportedEfforts: model.supportedReasoningEfforts }
       : {}),
     ...(model.transportKind ? { transportKind: model.transportKind } : {}),
+    ...((model.supportsThinkingType ?? catalogEntry?.supportsThinkingType)
+      ? { supportsThinkingType: model.supportsThinkingType ?? catalogEntry?.supportsThinkingType }
+      : {}),
   };
   if (modelSupportsThinkingSwitch(modelContext)) {
     return true;
@@ -83,6 +86,9 @@ export function ModelPickerInspectorPanel({
       ? { supportedEfforts: model.supportedReasoningEfforts }
       : {}),
     ...(model.transportKind ? { transportKind: model.transportKind } : {}),
+    ...((model.supportsThinkingType ?? catalogEntry?.supportsThinkingType)
+      ? { supportsThinkingType: model.supportsThinkingType ?? catalogEntry?.supportsThinkingType }
+      : {}),
   };
   const supportsThinkingSwitch = modelSupportsThinkingSwitch(modelContext);
   const [pendingThinkingEnabled, setPendingThinkingEnabled] = useState<boolean | null>(null);

@@ -852,6 +852,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
           const capabilities = normalizeModelCapabilities(model.capabilities);
           const supportedReasoningEfforts = normalizeSupportedReasoningEfforts(model.supportedReasoningEfforts);
           const contextLength = parseModelContextLength(model.contextLength);
+          const supportsThinkingType = model.supportsThinkingType === 'only' ? 'only' as const : undefined;
           const awsRegion =
             typeof model.awsRegion === 'string' && model.awsRegion.trim().length > 0
               ? model.awsRegion.trim()
@@ -887,6 +888,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
               model: model.name,
               ...(transportKind ? { transportKind } : {}),
               ...(supportedReasoningEfforts !== undefined ? { supportedEfforts: supportedReasoningEfforts } : {}),
+              ...(supportsThinkingType ? { supportsThinkingType } : {}),
             }),
             ...(supportedReasoningEfforts !== undefined ? { supportedReasoningEfforts } : {}),
             ...(capabilities ? { capabilities } : {}),
@@ -899,6 +901,7 @@ function normalizeConfig(raw: Partial<DesktopConfigFile>): DesktopConfigFile {
             ...(vertexLocation ? { vertexLocation } : {}),
             ...(azureResourceName ? { azureResourceName } : {}),
             ...(contextLength !== undefined ? { contextLength } : {}),
+            ...(supportsThinkingType ? { supportsThinkingType } : {}),
             ...(model.thinkingEnabled === false ? { thinkingEnabled: false } : {}),
           };
         })

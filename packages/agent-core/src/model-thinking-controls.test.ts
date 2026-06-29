@@ -64,6 +64,18 @@ test('DeepSeek R1 has no thinking switch', () => {
   assert.equal(modelSupportsThinkingSwitch(context), false);
 });
 
+test('Kimi Code kimi-for-coding uses reasoning effort primary control only', () => {
+  const context = {
+    provider: 'kimi-code' as const,
+    model: 'kimi-for-coding',
+    transportKind: 'openai-compatible' as const,
+    supportsThinkingType: 'only' as const,
+  };
+  assert.equal(modelUsesReasoningEffortPrimaryControl(context), true);
+  assert.equal(modelSupportsThinkingSwitch(context), false);
+  assert.equal(modelShowsReasoningEffortControl(context, true), true);
+});
+
 test('Moonshot kimi-k2 uses reasoning effort primary control only', () => {
   const context = {
     provider: 'moonshot-ai' as const,
