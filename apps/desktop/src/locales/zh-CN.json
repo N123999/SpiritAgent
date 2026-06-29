@@ -315,7 +315,7 @@
     "minimaxConnectionDescription": "请选择站点与 API 类型，并填写对应站点的 API Key。",
     "alibabaConnectionDescription": "请选择区域与 API 类型，按需填写 Workspace ID 与 API Key。",
     "alibabaBillingMode": "计费模式",
-    "alibabaBillingModeStandard": "Standard（按量）",
+    "alibabaBillingModeStandard": "标准",
     "alibabaBillingModeTokenPlan": "Token Plan",
     "alibabaWorkspaceId": "Workspace ID",
     "alibabaWorkspaceIdPlaceholder": "业务空间 ID",

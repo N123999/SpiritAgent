@@ -315,7 +315,7 @@
     "minimaxConnectionDescription": "Select site and API type, then enter the API key for that site.",
     "alibabaConnectionDescription": "Select region and API type, then enter Workspace ID (if required) and API key.",
     "alibabaBillingMode": "Billing mode",
-    "alibabaBillingModeStandard": "Standard (pay-as-you-go)",
+    "alibabaBillingModeStandard": "Standard",
     "alibabaBillingModeTokenPlan": "Token Plan",
     "alibabaWorkspaceId": "Workspace ID",
     "alibabaWorkspaceIdPlaceholder": "Business space ID",
