@@ -89,6 +89,22 @@ test('fuzzy suggestions include directories and prioritize exact directory basen
   assert.ok(suggestions.includes('packages/other/desktop-helper.ts'));
 });
 
+test('fuzzy suggestions can omit directories for file-open pickers', () => {
+  const files = [
+    'apps/desktop/src/lib/desktop-shell.ts',
+    'apps/desktop/electron/main.ts',
+    'packages/other/desktop-helper.ts',
+  ];
+
+  const suggestions = computeWorkspaceFileReferenceSuggestions('@Desktop', files, {
+    includeDirectories: false,
+  });
+
+  assert.ok(!suggestions.some((path) => path.endsWith('/')));
+  assert.ok(suggestions.includes('apps/desktop/electron/main.ts'));
+  assert.ok(suggestions.includes('packages/other/desktop-helper.ts'));
+});
+
 test('derive workspace directory paths from indexed files', () => {
   assert.deepEqual(
     deriveWorkspaceDirectoryPathsFromFiles(['apps/desktop/src/main.ts', 'README.md']),

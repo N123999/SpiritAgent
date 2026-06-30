@@ -93,9 +93,19 @@ export function useWorkspaceFileIndex({
     return computeWorkspaceFileReferenceSuggestions(query, filesRef.current)
   }, [ready, fileCount])
 
+  const searchFilesOnly = useCallback((query: string): string[] => {
+    if (!ready || filesRef.current.length === 0) {
+      return []
+    }
+    return computeWorkspaceFileReferenceSuggestions(query, filesRef.current, {
+      includeDirectories: false,
+    })
+  }, [ready, fileCount])
+
   return {
     ready,
     fileCount,
     search,
+    searchFilesOnly,
   }
 }

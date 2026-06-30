@@ -107,13 +107,15 @@ export function deriveWorkspaceDirectoryPathsFromFiles(files: readonly string[])
 export function computeWorkspaceFileReferenceSuggestions(
   query: string,
   files: readonly string[],
+  options?: { includeDirectories?: boolean },
 ): string[] {
   const needle = query
     .replace(/^@/u, '')
     .trim()
     .toLowerCase();
 
-  const directories = deriveWorkspaceDirectoryPathsFromFiles(files);
+  const includeDirectories = options?.includeDirectories !== false;
+  const directories = includeDirectories ? deriveWorkspaceDirectoryPathsFromFiles(files) : [];
   const candidates = [...directories, ...files];
 
   const scored = candidates

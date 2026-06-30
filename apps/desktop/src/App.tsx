@@ -680,7 +680,7 @@ export default function App() {
         }}
         statHostTextFile={runtime.statHostTextFile}
         indexReady={composer.workspaceFileIndex.ready}
-        searchWorkspaceFiles={composer.workspaceFileIndex.search}
+        searchWorkspaceFiles={composer.workspaceFileIndex.searchFilesOnly}
       />
 
       <BranchCheckoutDialog
