@@ -64,6 +64,7 @@ export function WorkspaceFileIcon({
         width: size,
         height: size,
         ...(icon.color ? { color: icon.color } : undefined),
+        ...(icon.opacity !== undefined ? { opacity: icon.opacity } : undefined),
       }}
       aria-hidden
       dangerouslySetInnerHTML={{ __html: prepareSetiSvgForDisplay(icon.svg, size) }}

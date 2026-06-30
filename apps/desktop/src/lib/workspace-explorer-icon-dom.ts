@@ -55,6 +55,9 @@ export function appendWorkspaceFileIconSvg(
   if (icon.color) {
     wrapper.style.color = icon.color;
   }
+  if (icon.opacity !== undefined) {
+    wrapper.style.opacity = String(icon.opacity);
+  }
 
   const template = doc.createElement('template');
   template.innerHTML = prepareSetiSvgForDisplay(icon.svg, attrs.size);

@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   resolveWorkspaceFileIcon,
   setiFileIconThemeMap,
+  SETI_FALLBACK_GLYPH_OPACITY,
 } from '../../src/lib/workspace-file-icon-resolver.ts';
 
 test('resolveWorkspaceFileIcon maps common filenames and extensions with Seti colors', () => {
@@ -24,6 +25,29 @@ test('resolveWorkspaceFileIcon maps common filenames and extensions with Seti co
   const unknown = resolveWorkspaceFileIcon('notes', 'file');
   assert.ok(unknown);
   assert.equal(unknown.color, setiFileIconThemeMap('dark').white);
+});
+
+test('resolveWorkspaceFileIcon matches Seti default fallback appearance for .gitignore and Cargo.toml', () => {
+  const fallback = setiFileIconThemeMap('dark').white;
+  const lock = resolveWorkspaceFileIcon('Cargo.lock', 'file');
+  assert.ok(lock);
+  assert.equal(lock.color, fallback);
+  assert.equal(lock.opacity, undefined);
+
+  const gitignore = resolveWorkspaceFileIcon('.gitignore', 'file');
+  assert.ok(gitignore);
+  assert.equal(gitignore.color, fallback);
+  assert.equal(gitignore.opacity, SETI_FALLBACK_GLYPH_OPACITY);
+
+  const cargoToml = resolveWorkspaceFileIcon('Cargo.toml', 'file');
+  assert.ok(cargoToml);
+  assert.equal(cargoToml.color, fallback);
+  assert.equal(cargoToml.opacity, SETI_FALLBACK_GLYPH_OPACITY);
+
+  const otherToml = resolveWorkspaceFileIcon('pyproject.toml', 'file');
+  assert.ok(otherToml);
+  assert.equal(otherToml.color, setiFileIconThemeMap('dark')['grey-light']);
+  assert.equal(otherToml.opacity, undefined);
 });
 
 test('resolveWorkspaceFileIcon colorMode inherit omits Seti hex', () => {
