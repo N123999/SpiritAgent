@@ -902,6 +902,47 @@ test('edit_file tool-execution-finished preserves lspWriteDiagnostics on tool sn
   assert.equal(toolMessage?.tool?.lspWriteDiagnostics?.items[0]?.severity, 'error');
 });
 
+test('Moonshot Formula web_search tool-execution-finished preserves preview suppressExpand and argsExcerpt', () => {
+  const harness = createHarness();
+  harness.pushUser('search DeepSeek');
+
+  const argumentsJson = JSON.stringify({
+    status: 'completed',
+    _spiritUi: {
+      inputExcerpt: 'DeepSeek 是什么',
+      headlineDetail: 'DeepSeek 是什么',
+      suppressExpand: true,
+    },
+  });
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    {
+      kind: 'streaming-tool-preview',
+      toolCallId: 'ws_formula_1',
+      toolName: 'web_search',
+      argumentsJson,
+    },
+    {
+      kind: 'tool-execution-finished',
+      execution: {
+        toolCallId: 'ws_formula_1',
+        toolName: 'web_search',
+        request: { name: 'web_search', argumentsJson: '{"query":"DeepSeek 是什么"}' },
+        output: '[moonshot formula web_search] completed',
+        failed: false,
+      },
+    },
+  ]);
+
+  const tool = harness.timeline
+    .toMessages()
+    .find((message) => message.tool?.toolCallId === 'ws_formula_1')?.tool;
+  assert.equal(tool?.phase, 'succeeded');
+  assert.equal(tool?.suppressExpand, true);
+  assert.equal(tool?.argsExcerpt, 'DeepSeek 是什么');
+});
+
 function createContextUsageHarness(options = {}) {
   let messages = [];
   let nextMessageId = 1;

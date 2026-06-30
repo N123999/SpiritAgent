@@ -901,9 +901,9 @@ export class DesktopRuntimeEventOrchestrator {
         this.activeGenerateVideoTools.delete(execution.toolCallId);
       }
       const callId = execution.toolCallId || `tool:${execution.toolName}`;
+      const existingSnapshot = this.findExistingToolSnapshot(callId);
       if (source === 'turn-result') {
-        const integrated = this.findExistingToolSnapshot(callId);
-        if (integrated?.phase === 'succeeded' || integrated?.phase === 'failed') {
+        if (existingSnapshot?.phase === 'succeeded' || existingSnapshot?.phase === 'failed') {
           continue;
         }
       }
@@ -939,7 +939,9 @@ export class DesktopRuntimeEventOrchestrator {
                     }
                   : this.toolSummaryOptions(),
             );
-      const argsExcerpt = truncateJson(execution.request);
+      const argsExcerpt = existingSnapshot?.argsExcerpt?.trim()
+        ? existingSnapshot.argsExcerpt
+        : truncateJson(execution.request);
       const fileToolDiffArgumentsJson = FILE_DIFF_TOOL_NAMES.has(execution.toolName)
         ? serializeFileToolDiffArgumentsJson(execution.request)
         : undefined;
@@ -953,6 +955,7 @@ export class DesktopRuntimeEventOrchestrator {
             detailLines: [],
             argsExcerpt,
             outputExcerpt: truncateText(execution.output, 4_000),
+            ...(existingSnapshot?.suppressExpand ? { suppressExpand: true } : {}),
             ...(fileToolDiffArgumentsJson ? { fileToolDiffArgumentsJson } : {}),
             ...(imagePaths.length > 0 ? { imagePaths } : {}),
             ...(videoPaths.length > 0 ? { videoPaths } : {}),
