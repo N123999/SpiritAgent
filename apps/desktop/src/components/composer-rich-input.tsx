@@ -129,6 +129,7 @@ export type InsertSkillChipOptions = {
 
 export type ComposerRichInputHandle = {
   focus(): void;
+  focusAtEnd(): void;
   insertAttachment(a: BrowserElementAttachment): void;
   insertPrDiffAttachment(attachment: PrDiffAttachment): void;
   insertGitCommitAttachment(attachment: GitCommitAttachment): void;
@@ -731,6 +732,18 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       [commitSegments],
     );
 
+    const focusAtEnd = useCallback(() => {
+      const div = divRef.current;
+      if (!div) {
+        return;
+      }
+      const segments = segmentsRef.current;
+      div.focus();
+      const caret = normalizeCaretForComposer(segments, caretAtEnd(segments));
+      caretToDomRange(div, segments, caret);
+      reportSelectionChange();
+    }, [reportSelectionChange]);
+
     const getPlainTextCaretClientRect = useCallback((plainTextOffset: number): DOMRect | null => {
       const root = divRef.current;
       if (!root) {
@@ -766,6 +779,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       ref,
       () => ({
         focus: () => divRef.current?.focus(),
+        focusAtEnd,
         insertAttachment,
         insertPrDiffAttachment,
         insertGitCommitAttachment,
@@ -807,6 +821,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
         removeAgentModeChip,
         insertSkillChip,
         resetAfterSend,
+        focusAtEnd,
         getSegments,
         getPlainTextCaretClientRect,
         applySegments,

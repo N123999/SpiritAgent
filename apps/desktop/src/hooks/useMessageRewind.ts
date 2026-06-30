@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ClipboardEvent as ReactClipboardEvent,
+  type DragEvent as ReactDragEvent,
+} from "react";
 
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { segmentsToMessageText } from "@/components/composer-rich-input";
@@ -76,6 +84,15 @@ export function useMessageRewind({
       setRewindDraft(null);
     }
   }, [messages, rewindDraft]);
+
+  useLayoutEffect(() => {
+    if (!rewindDraft) {
+      return;
+    }
+    const focus = () => rewindRichInputRef.current?.focusAtEnd();
+    queueMicrotask(focus);
+    requestAnimationFrame(focus);
+  }, [rewindDraft?.listIndex, rewindDraft?.messageId]);
 
   const startMessageRewind = useCallback(
     (message: ConversationMessageSnapshot, listIndex: number) => {
