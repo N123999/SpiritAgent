@@ -101,6 +101,8 @@
     "hooksSaveFailed": "Failed to save hook entry.",
     "hooksMatcher": "Matcher (optional)",
     "hooksFailClosed": "Fail closed on errors",
+    "generateHookTooltip": "Go to main chat area, prefill /create-hook, and describe requirements in natural language",
+    "generateHook": "Generate Hooks",
     "skills": "Skills",
     "rules": "Rules",
     "dreams": "Dreams",

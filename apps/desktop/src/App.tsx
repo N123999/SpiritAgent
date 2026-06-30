@@ -392,6 +392,9 @@ export default function App() {
               onGenerateRuleNavigate={() => {
                 composer.prefillComposerSkillChip("create-rule");
               }}
+              onGenerateHookNavigate={() => {
+                composer.prefillComposerSkillChip("create-hook");
+              }}
               getGitHubAuthStatus={runtime.getGitHubAuthStatus}
               beginGitHubDeviceLogin={runtime.beginGitHubDeviceLogin}
               completeGitHubDeviceLogin={runtime.completeGitHubDeviceLogin}

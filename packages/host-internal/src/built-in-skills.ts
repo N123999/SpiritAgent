@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { SKILL_FILE_NAME, SKILLS_DIR_NAME } from './storage.js';
 
-export const BUILTIN_AUTHORING_SKILL_NAMES = ['create-rule', 'create-skill'] as const;
+export const BUILTIN_AUTHORING_SKILL_NAMES = ['create-rule', 'create-skill', 'create-hook'] as const;
 
 export type BuiltinAuthoringSkillName = (typeof BUILTIN_AUTHORING_SKILL_NAMES)[number];
 

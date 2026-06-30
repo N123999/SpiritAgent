@@ -96,6 +96,8 @@ export type SettingsViewProps = {
   onGenerateSkillNavigate?: () => void;
   /** Rules 页「生成规则」：回到主对话区并插入 create-rule Chip。 */
   onGenerateRuleNavigate?: () => void;
+  /** Hooks 页「生成 Hooks」：回到主对话区并插入 create-hook Chip。 */
+  onGenerateHookNavigate?: () => void;
   /** 开发者页：在对话区播放上下文压缩 UI 演示（不调用模型）。 */
   onStartCompactionUiDemo?: () => void;
   /** Windows 云母 / macOS Vibrancy：内层透明以避免与 settings-shell 双层 tint 叠深。 */

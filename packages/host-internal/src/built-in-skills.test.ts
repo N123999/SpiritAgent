@@ -26,7 +26,7 @@ test('ensureBuiltinAuthoringSkills seeds shared builtin skills without overwriti
       assert.match(content, /^---\r?\nname: /);
     }
 
-    assert.deepEqual(BUILTIN_AUTHORING_SKILL_NAMES, ['create-rule', 'create-skill']);
+    assert.deepEqual(BUILTIN_AUTHORING_SKILL_NAMES, ['create-rule', 'create-skill', 'create-hook']);
 
     const skillPath = join(spiritDataDir, 'skills', 'create-skill', 'SKILL.md');
     const first = await readFile(skillPath, 'utf8');

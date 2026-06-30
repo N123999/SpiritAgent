@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,9 +56,11 @@ const hookCreateScopeOptions: Array<{
 type HooksSettingsPanelProps = {
   snapshot: DesktopSnapshot | null;
   hooksBusy?: boolean;
+  apiReady?: boolean;
   workspaceBinding: DesktopWorkspaceBinding;
   onSaveHookEntry(request: SaveHookEntryRequest): void | Promise<void>;
   onDeleteHookEntry(request: DeleteHookEntryRequest): void | Promise<void>;
+  onGenerateHookNavigate?: () => void;
 };
 
 function hookScopeLabel(scope: DesktopHookScope, t: (key: string) => string): string {
@@ -68,9 +70,11 @@ function hookScopeLabel(scope: DesktopHookScope, t: (key: string) => string): st
 export function HooksSettingsPanel({
   snapshot,
   hooksBusy,
+  apiReady,
   workspaceBinding,
   onSaveHookEntry,
   onDeleteHookEntry,
+  onGenerateHookNavigate,
 }: HooksSettingsPanelProps) {
   const { t } = useTranslation();
   const workspaceBindingDisabled = workspaceBinding === "none";
@@ -158,18 +162,34 @@ export function HooksSettingsPanel({
             <p className="text-xs text-muted-foreground">{t("app.noWorkspaceBindingHint")}</p>
           ) : null}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="shrink-0"
-          disabled={hooksBusy}
-          onClick={() => {
-            resetForm();
-            setAddDialogOpen(true);
-          }}
-        >
-          {t("settings.hooksAdd")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {onGenerateHookNavigate ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5"
+              disabled={!apiReady}
+              title={t("settings.generateHookTooltip")}
+              onClick={() => onGenerateHookNavigate()}
+            >
+              <Sparkles className="size-3.5 shrink-0" aria-hidden />
+              {t("settings.generateHook")}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0"
+            disabled={hooksBusy}
+            onClick={() => {
+              resetForm();
+              setAddDialogOpen(true);
+            }}
+          >
+            {t("settings.hooksAdd")}
+          </Button>
+        </div>
       </div>
 
       <div className="divide-y divide-border/35 rounded-lg border border-border/40 bg-background/80">

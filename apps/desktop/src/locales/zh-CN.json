@@ -101,6 +101,8 @@
     "hooksSaveFailed": "保存 Hook 条目失败。",
     "hooksMatcher": "Matcher（可选）",
     "hooksFailClosed": "失败时阻断（failClosed）",
+    "generateHookTooltip": "进入主对话区，预填 /create-hook，并直接用自然语言描述需求",
+    "generateHook": "生成 Hooks",
     "skills": "Skills",
     "rules": "规则",
     "dreams": "梦境",

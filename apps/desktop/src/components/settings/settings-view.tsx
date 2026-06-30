@@ -69,6 +69,7 @@ export function SettingsView({
   lspInstallBusy,
   onGenerateSkillNavigate,
   onGenerateRuleNavigate,
+  onGenerateHookNavigate,
   onStartCompactionUiDemo,
   useMicaBackdrop = false,
   getGitHubAuthStatus,
@@ -188,9 +189,11 @@ export function SettingsView({
               <HooksSettingsPanel
                 snapshot={snapshot}
                 hooksBusy={hooksBusy}
+                apiReady={apiReady}
                 workspaceBinding={snapshot?.workspaceBinding ?? "none"}
                 onSaveHookEntry={onSaveHookEntry}
                 onDeleteHookEntry={onDeleteHookEntry}
+                onGenerateHookNavigate={onGenerateHookNavigate}
               />
             ) : tab === "general" ? (
               <GeneralSettingsPanel settings={settings} onSavePatch={onSavePatch} />
