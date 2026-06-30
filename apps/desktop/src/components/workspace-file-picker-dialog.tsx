@@ -17,7 +17,7 @@ import {
 } from '@/lib/file-picker-path'
 import { instantHoverMotionClass } from '@/lib/desktop-chrome'
 import { RADIX_OVERLAY_CLOSE_MS } from '@/lib/overlay-motion'
-import { workspaceExplorerIconForPath } from '@/lib/workspace-explorer-icon'
+import { WorkspaceFileIcon } from '@/components/workspace-file-icon'
 import { cn } from '@/lib/utils'
 
 type WorkspaceFilePickerDialogProps = {
@@ -120,9 +120,7 @@ export function WorkspaceFilePickerDialog({
   const showEmpty =
     suggestions.length === 0
     && (!absolutePathCandidate || absolutePathExists === false)
-  const AbsolutePathIcon = absolutePathCandidate
-    ? workspaceExplorerIconForPath(absolutePathCandidate)
-    : null
+  const showAbsolutePathIcon = Boolean(absolutePathCandidate && absolutePathExists !== false)
 
   return (
     <CommandDialog
@@ -143,7 +141,7 @@ export function WorkspaceFilePickerDialog({
           placeholder={t('workspace.filePickerPlaceholder')}
         />
         <CommandList className="max-h-96">
-          {absolutePathCandidate && absolutePathExists !== false && AbsolutePathIcon ? (
+          {absolutePathCandidate && absolutePathExists !== false && showAbsolutePathIcon ? (
             <CommandItem
               key={`absolute:${absolutePathCandidate}`}
               value={`absolute:${absolutePathCandidate}`}
@@ -153,7 +151,7 @@ export function WorkspaceFilePickerDialog({
               )}
               onSelect={() => closeAndOpenExternalFile(absolutePathCandidate)}
             >
-              <AbsolutePathIcon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+              <WorkspaceFileIcon path={absolutePathCandidate} className="size-3.5 shrink-0" />
               <span className="min-w-0 truncate text-sm text-popover-foreground">
                 {t('workspace.filePickerOpenAbsolutePath', { path: absolutePathCandidate })}
               </span>

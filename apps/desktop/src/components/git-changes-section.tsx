@@ -8,7 +8,7 @@ import { GitChangesActions } from "@/components/git-changes-actions";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
 import { GIT_CHANGES_HEADER_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
-import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
+import { WorkspaceFileIcon } from "@/components/workspace-file-icon";
 import { cn } from "@/lib/utils";
 import type {
   DesktopGitSnapshot,
@@ -67,7 +67,6 @@ function ChangeRow({
   onOpen?: (relativePath: string) => void;
 }) {
   const { fileName, dirLabel } = splitChangePath(change.path);
-  const Icon = workspaceExplorerIcon(fileName, "file");
   const statusLabel = change.code.trim() || "·";
   const clickable = Boolean(onOpen);
 
@@ -83,7 +82,7 @@ function ChangeRow({
         title={change.path}
         onClick={() => onOpen?.(change.path)}
       >
-        <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+        <WorkspaceFileIcon name={fileName} className="size-3.5 shrink-0" />
         <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
           <span className="shrink-0 truncate text-foreground/90">{fileName}</span>
           {dirLabel ? (

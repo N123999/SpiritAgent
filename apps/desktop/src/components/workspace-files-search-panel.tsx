@@ -5,7 +5,6 @@ import {
   CaseSensitive,
   ChevronDown,
   ChevronRight,
-  FileText,
   Regex,
   WholeWord,
 } from "lucide-react";
@@ -16,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DESKTOP_OVERLAY_LIST_FILTER_INPUT_SHELL, instantHoverMotionClass } from "@/lib/desktop-chrome";
 import { scrollAreaViewport } from "@/lib/scroll-area-viewport";
+import { WorkspaceFileIcon } from "@/components/workspace-file-icon";
 import { resolveWorkspaceFilesTabIcon } from "@/lib/workspace-explorer-icon";
 import { normalizeWorkspaceEntryRel } from "@/lib/workspace-entry-path-sync";
 import {
@@ -329,7 +329,8 @@ export function WorkspaceFilesSearchPanel({
               }
 
               if (row.kind === "header") {
-                const Icon = resolveWorkspaceFilesTabIcon(pathBasename(row.relativePath)) ?? FileText;
+                const headerName = pathBasename(row.relativePath);
+                const PlanTabIcon = resolveWorkspaceFilesTabIcon(headerName);
                 return (
                   <div
                     key={`header:${row.normalizedPath}`}
@@ -348,7 +349,15 @@ export function WorkspaceFilesSearchPanel({
                       ) : (
                         <ChevronRight className="size-3 shrink-0 opacity-70" aria-hidden />
                       )}
-                      <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                      {PlanTabIcon ? (
+                        <PlanTabIcon className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                      ) : (
+                        <WorkspaceFileIcon
+                          name={headerName}
+                          kind="dir"
+                          className="size-3.5 shrink-0 opacity-80"
+                        />
+                      )}
                       <span className="min-w-0 flex-1 truncate font-medium">
                         {pathBasename(row.relativePath)}
                       </span>

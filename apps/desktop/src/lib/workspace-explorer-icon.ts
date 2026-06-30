@@ -123,7 +123,7 @@ export function workspaceExplorerIconForPath(
   return workspaceExplorerIcon(workspaceFileBasename(path), kind);
 }
 
-/** 文件工具选项卡有 tabTitle 时解析图标；无标题时返回 undefined。Plan 仍用 Lucide。 */
+/** 文件工具选项卡有 tabTitle 时解析 Lucide 图标；仅 Plan 保留 Lucide，其余由 Seti 渲染。 */
 export function resolveWorkspaceFilesTabIcon(
   tabTitle: string | undefined,
 ): LucideIcon | undefined {
@@ -134,7 +134,7 @@ export function resolveWorkspaceFilesTabIcon(
   if (title === 'Plan') {
     return ListTodo;
   }
-  return workspaceExplorerIcon(title, 'file');
+  return undefined;
 }
 
 export function resolveWorkspaceFileIconForPath(

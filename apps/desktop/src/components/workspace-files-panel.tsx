@@ -34,7 +34,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHostApi } from "@/hooks/useHostApi";
 import { runAfterRadixOverlayClose } from "@/lib/overlay-motion";
-import { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
+import { WorkspaceFileIcon } from "@/components/workspace-file-icon";
 import {
   collapseWorkspaceExplorerDirChain,
   collectWorkspaceExplorerDirCollapsePrefetchRels,
@@ -117,15 +117,14 @@ function isExplorerTreeBlankTarget(target: EventTarget | null): boolean {
   return isExplorerListChromeDragTarget(target);
 }
 
-export { workspaceExplorerIcon } from "@/lib/workspace-explorer-icon";
-
 export { joinExplorerRel } from "@/lib/workspace-explorer-dir-collapse";
 
 const EXPLORER_ROW_TRIGGER_CLASS = cn(
   "flex w-full min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left",
   "text-foreground/90 hover:bg-foreground/[0.06] dark:hover:bg-foreground/10",
 );
-const EXPLORER_ROW_ICON_CLASS = "size-3.5 shrink-0 opacity-70";
+const EXPLORER_ROW_ICON_CLASS = "size-3.5 shrink-0";
+const EXPLORER_DIR_CHEVRON_CLASS = "size-3.5 shrink-0 opacity-70";
 const EXPLORER_ROW_LEADING_SPACER = (
   <span className="inline-block w-4 shrink-0" aria-hidden />
 );
@@ -193,7 +192,7 @@ type ExplorerRowProps = {
   onRenameCancel: () => void;
   onClick: () => void;
   leading: ReactNode;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: ReactNode;
   dropHighlight?: boolean;
   draggable?: boolean;
   onDragStart?: (event: DragEvent<HTMLButtonElement>) => void;
@@ -219,7 +218,7 @@ function ExplorerRow({
   onRenameCancel,
   onClick,
   leading,
-  icon: Icon,
+  icon,
   dropHighlight = false,
   draggable = false,
   onDragStart,
@@ -295,7 +294,7 @@ function ExplorerRow({
   const rowTrigger = renaming ? (
     <div className={rowClassName} style={rowStyle} role="treeitem">
       {leading}
-      <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+      {icon}
       {renameInput}
     </div>
   ) : (
@@ -316,7 +315,7 @@ function ExplorerRow({
       onDrop={onDrop}
     >
       {leading}
-      <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+      {icon}
       <span className={labelClassName}>{rowLabel}</span>
     </button>
   );
@@ -355,7 +354,12 @@ function ExplorerCreateRow({
 }: ExplorerCreateRowProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const skipBlurCommitRef = useRef(false);
-  const Icon = kind === "dir" ? ChevronRight : workspaceExplorerIcon("untitled.txt", "file");
+  const icon =
+    kind === "dir" ? (
+      <ChevronRight className={EXPLORER_DIR_CHEVRON_CLASS} aria-hidden />
+    ) : (
+      <WorkspaceFileIcon name="untitled.txt" className={EXPLORER_ROW_ICON_CLASS} />
+    );
 
   useLayoutEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -396,7 +400,7 @@ function ExplorerCreateRow({
         role="treeitem"
       >
         {EXPLORER_ROW_LEADING_SPACER}
-        <Icon className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+        {icon}
         <input
           ref={inputRef}
           type="text"
@@ -1211,7 +1215,13 @@ export function WorkspaceFilesPanel({
             ? collapseWorkspaceExplorerDirChain(childRel, entry.name, getExplorerDirEntries)
             : null;
           const dirRel = collapsedDir?.leafRel ?? childRel;
-          const Icon = workspaceExplorerIcon(entry.name, entry.kind);
+          const fileIcon = (
+            <WorkspaceFileIcon
+              name={entry.name}
+              kind={entry.kind}
+              className={EXPLORER_ROW_ICON_CLASS}
+            />
+          );
           const open =
             isDir
             && collapsedDir !== null
@@ -1245,7 +1255,7 @@ export function WorkspaceFilesPanel({
                   onOpenFile?.(childRel);
                 }}
                 leading={EXPLORER_ROW_LEADING_SPACER}
-                icon={Icon}
+                icon={fileIcon}
                 draggable
                 onDragStart={(event) => handleDragStart(event, target)}
               />
@@ -1274,7 +1284,13 @@ export function WorkspaceFilesPanel({
               }}
               label={collapsedDir?.displayName}
               leading={EXPLORER_ROW_LEADING_SPACER}
-              icon={open ? ChevronDown : ChevronRight}
+              icon={
+                open ? (
+                  <ChevronDown className={EXPLORER_DIR_CHEVRON_CLASS} aria-hidden />
+                ) : (
+                  <ChevronRight className={EXPLORER_DIR_CHEVRON_CLASS} aria-hidden />
+                )
+              }
               dropHighlight={dragOverDirectory === dirRel}
               draggable
               onDragStart={(event) => handleDragStart(event, target)}
@@ -1367,9 +1383,9 @@ export function WorkspaceFilesPanel({
                 }}
               >
                 {rootOpen ? (
-                  <ChevronDown className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+                  <ChevronDown className={EXPLORER_DIR_CHEVRON_CLASS} aria-hidden />
                 ) : (
-                  <ChevronRight className={EXPLORER_ROW_ICON_CLASS} aria-hidden />
+                  <ChevronRight className={EXPLORER_DIR_CHEVRON_CLASS} aria-hidden />
                 )}
                 <span className="min-w-0 truncate">{rootLabel}</span>
               </button>

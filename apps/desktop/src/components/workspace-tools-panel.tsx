@@ -77,6 +77,7 @@ import type {
   EditorFileTarget,
   WorkspaceEditorViewMode,
 } from "@/lib/workspace-editor-navigation";
+import { WorkspaceFileIcon } from "@/components/workspace-file-icon";
 import { resolveWorkspaceFilesTabIcon } from "@/lib/workspace-explorer-icon";
 import {
   addWorkspaceToolTab,
@@ -714,12 +715,14 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
               {tabs.map((item) => {
                 const meta = TAB_KIND_META[item.kind];
                 const displayTitle = item.tabTitle;
-                const filesTabIcon =
+                const filesPlanTabIcon =
                   item.kind === "files" ? resolveWorkspaceFilesTabIcon(displayTitle) : undefined;
+                const showFilesSetiIcon =
+                  item.kind === "files" && displayTitle && !filesPlanTabIcon;
                 const Icon =
                   item.kind === "pr" && item.prStatus
                     ? resolvePrTabStatusIcon(item.prStatus)
-                    : filesTabIcon ?? meta.icon;
+                    : filesPlanTabIcon ?? meta.icon;
                 const selected = item.id === activeTabId;
                 const label = workspaceToolTabLabel(item.kind, tabs, item.id, t);
                 const renderTabButton = () => (
@@ -734,7 +737,14 @@ const WorkspaceToolsDockContent = memo(function WorkspaceToolsDockContent({
                     className="flex min-w-0 flex-1 items-center gap-1 rounded-t-md bg-transparent py-2 pl-2 pr-2 text-xs font-medium outline-none"
                     onClick={() => onActiveTabIdChange(item.id)}
                   >
-                    <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                    {showFilesSetiIcon ? (
+                      <WorkspaceFileIcon
+                        name={displayTitle}
+                        className="size-3.5 shrink-0 opacity-80"
+                      />
+                    ) : (
+                      <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
+                    )}
                     {displayTitle ? (
                       <span className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate">{displayTitle}</span>
