@@ -14,9 +14,33 @@ import {
 } from 'lucide-react';
 
 import { workspaceFileBasename } from '@/lib/file-picker-path';
+import {
+  resolveWorkspaceFileIcon,
+  type ResolveWorkspaceFileIconOptions,
+  type ResolvedWorkspaceFileIcon,
+  type WorkspaceFileIconColorMode,
+} from '@/lib/workspace-file-icon-resolver';
 import type { WorkspaceExplorerEntryKind } from '@/types';
 
-/** 按扩展名/常见文件名选图标（按名称启发式，非主题引擎映射）。 */
+export {
+  resolveWorkspaceFileIcon,
+  setiFileIconThemeMap,
+  type ResolveWorkspaceFileIconOptions,
+  type ResolvedWorkspaceFileIcon,
+  type WorkspaceFileIconColorMode,
+} from '@/lib/workspace-file-icon-resolver';
+
+export {
+  SETI_FILE_ICON_COLORS_DARK,
+  SETI_FILE_ICON_COLORS_LIGHT,
+  setiFileIconColorsForTheme,
+  type SetiFileIconColorKey,
+  type SetiFileIconColorMap,
+} from '@/lib/seti-file-icon-colors';
+
+export { normalizeSetiSvgForCurrentColor } from '@/lib/workspace-file-icon-svg';
+
+/** 按扩展名/常见文件名选 Lucide 图标；Phase 2 起由 Seti 替代，Phase 3 删除。 */
 export function workspaceExplorerIcon(
   name: string,
   kind: WorkspaceExplorerEntryKind,
@@ -99,7 +123,7 @@ export function workspaceExplorerIconForPath(
   return workspaceExplorerIcon(workspaceFileBasename(path), kind);
 }
 
-/** 文件工具选项卡有 tabTitle 时解析图标；无标题时返回 undefined。 */
+/** 文件工具选项卡有 tabTitle 时解析图标；无标题时返回 undefined。Plan 仍用 Lucide。 */
 export function resolveWorkspaceFilesTabIcon(
   tabTitle: string | undefined,
 ): LucideIcon | undefined {
@@ -111,4 +135,12 @@ export function resolveWorkspaceFilesTabIcon(
     return ListTodo;
   }
   return workspaceExplorerIcon(title, 'file');
+}
+
+export function resolveWorkspaceFileIconForPath(
+  path: string,
+  kind: WorkspaceExplorerEntryKind = 'file',
+  options?: ResolveWorkspaceFileIconOptions,
+): ResolvedWorkspaceFileIcon | null {
+  return resolveWorkspaceFileIcon(workspaceFileBasename(path), kind, options);
 }

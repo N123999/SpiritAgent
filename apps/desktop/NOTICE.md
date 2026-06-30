@@ -6,7 +6,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
 
 ## Summary
 
-- MIT: 49 package(s)
+- MIT: 50 package(s)
 - Apache-2.0: 7 package(s)
 - BSD-3-Clause: 2 package(s)
 - ISC: 2 package(s)
@@ -21,7 +21,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/fontsource/font-files
 - **@napi-rs/keyring** 1.2.0 — MIT
   - https://github.com/Brooooooklyn/keyring-node
-- **@radix-ui/react-scroll-area** 1.2.10 — MIT
+- **@radix-ui/react-scroll-area** 1.2.12 — MIT
   - https://github.com/radix-ui/primitives
 - **@shikijs/monaco** 3.23.0 — MIT
   - https://github.com/shikijs/shiki
@@ -97,7 +97,7 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/microsoft/node-pty
 - **png-to-ico** 3.0.1 — MIT
   - https://github.com/steambap/png-to-ico
-- **radix-ui** 1.4.3 — MIT
+- **radix-ui** 1.6.0 — MIT
   - https://github.com/radix-ui/primitives
 - **react** 19.2.5 — MIT
   - https://github.com/facebook/react
@@ -117,6 +117,8 @@ Scope constraint: exclude workspace-local/internal dependencies resolved via `wo
   - https://github.com/remarkjs/remark-breaks
 - **remark-gfm** 4.0.1 — MIT
   - https://github.com/remarkjs/remark-gfm
+- **seti-icons** 0.0.4 — MIT
+  - https://github.com/elviswolcott/seti-icons
 - **shadcn** 4.4.0 — MIT
   - https://github.com/shadcn-ui/ui
 - **sharp** 0.34.5 — Apache-2.0
@@ -860,8 +862,8 @@ SOFTWARE.
 ### MIT
 
 **Used by:**
-- @radix-ui/react-scroll-area 1.2.10
-- radix-ui 1.4.3
+- @radix-ui/react-scroll-area 1.2.12
+- radix-ui 1.6.0
 
 ```
 MIT License
@@ -1770,6 +1772,100 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### MIT
+
+**Used by:**
+- seti-icons 0.0.4
+
+```
+[![Travis (.com)](https://img.shields.io/travis/com/elviswolcott/seti-icons?logo=travis)](https://travis-ci.com/elviswolcott/seti-icons)
+[![npm](https://img.shields.io/npm/v/seti-icons?label=seti-icons&logo=npm)](https://www.npmjs.com/package/seti-icons)
+# seti-icons
+
+> File icons from Seti-UI
+
+All of the icons come from [jesseweed/seti-ui](https://github.com/jesseweed/seti-ui). 
+This repo just packages them up so you can use them with `npm install`.
+
+This package is primarily intended for use in static sites.
+All of the icons are stored in a JSON file as SVG strings.
+For most static sites, you only want a few icons on a page (and will likely reuse the same few icons across the entire site).
+As a result, it is best to inline the icons in the pages.
+
+In other cases, this approach does not make sense. 
+For example, in a webapp where the icons are used dynamically, it would likely be better to use an SVG spritesheet to enable caching of the icons instead of bundling 100K of SVG strings.
+
+# Usage
+
+By default, the color name from Seti-UI is returned for icons.
+
+```js
+import { getIcon } from "seti-icons";
+
+const { svg, color } = getIcon("README.md");
+```
+
+To replace the color keywords, use `themeIcons`.
+
+```js
+import { themeIcons } from "seti-icons";
+
+const getIcon = themeIcons({
+  blue: "#268bd2";
+  grey: "#657b83";
+  "grey-light": "#839496";
+  green: "#859900";
+  orange: "#cb4b16";
+  pink: "#d33682";
+  purple: "#6c71c4";
+  red: "#dc322f";
+  white: "#fdf6e3";
+  yellow: "#b58900";
+  ignore: "#586e75";
+})
+
+const { svg, color } = getIcon("README.md");
+```
+
+# Development
+
+## Available Scripts
+
+In the project directory, you can run:
+
+### `./build/build.sh`
+
+Runs a complete build from a fresh install
+
+### `npm run build`
+
+Builds the package using typescript into `./lib`
+
+### `npm run build:scripts`
+
+Builds the build scripts
+
+### `npm run extract`
+
+Processes the icons and styles in `seti-ui` into JSON files
+
+### `npm test`
+
+Launches the Jest to run tests.
+
+### `npm run lint`
+
+Checks code for style issues and syntax errors with TSLint and Prettier.
+
+### `npm run lint:fix`
+
+Checks code for style issues and syntax errors with TSLint and Prettier, attempting to fix them when possible.
+
+## Publishing a new version
+
+Travis is configured to run deploys on tags.
 ```
 
 ### MIT
