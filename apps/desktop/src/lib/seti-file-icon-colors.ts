@@ -1,8 +1,3 @@
-/**
- * 色板对齐 VS Code 默认 Seti 文件图标主题（`extensions/theme-seti`），便于溯源。
- * hex 取自 vs-seti-icon-theme.json 中 dark / light 的 fontColor，非 seti-icons 包内默认值。
- * `yellow` 改用 [`styles.css`](../../styles.css) 终端 ANSI 金黄，避免 seti 原黄发灰发绿。
- */
 export type SetiFileIconColorKey =
   | 'blue'
   | 'grey'
@@ -18,7 +13,6 @@ export type SetiFileIconColorKey =
 
 export type SetiFileIconColorMap = Record<SetiFileIconColorKey, string>;
 
-/** VS Code theme-seti 暗色主题 */
 export const SETI_FILE_ICON_COLORS_DARK: SetiFileIconColorMap = {
   blue: '#519aba',
   grey: '#4d5a5e',
@@ -33,7 +27,6 @@ export const SETI_FILE_ICON_COLORS_DARK: SetiFileIconColorMap = {
   ignore: '#41535b',
 };
 
-/** VS Code theme-seti 亮色主题 */
 export const SETI_FILE_ICON_COLORS_LIGHT: SetiFileIconColorMap = {
   blue: '#498ba7',
   grey: '#455155',
