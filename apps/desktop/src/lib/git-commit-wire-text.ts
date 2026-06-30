@@ -7,7 +7,8 @@ function formatGitCommitWireMeta(
 }
 
 const GIT_COMMIT_HEADER_PREFIX = "Selected git commit ";
-const GIT_COMMIT_HEADER_RE = /^Selected git commit ([^\n]+?) \(([^)]*)\):$/u;
+/** Meta 在括号内且 subject 可含 `)`；用贪婪匹配到行末 `):`。 */
+const GIT_COMMIT_HEADER_RE = /^Selected git commit (\S+) \((.*)\):$/u;
 
 function chooseTextFence(text: string): { open: string; close: string } {
   if (!/^\s*```/m.test(text)) {
