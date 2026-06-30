@@ -1,4 +1,5 @@
 import { workspaceFileBasename } from '@/lib/file-picker-path';
+import { renderWorkspaceDirectoryIconMarkup } from '@/lib/workspace-directory-icon';
 import {
   resolveWorkspaceFileIcon,
   type WorkspaceFileIconColorMode,
@@ -14,7 +15,7 @@ export type AppendWorkspaceFileIconSvgOptions = {
   theme?: 'dark' | 'light';
 };
 
-/** contenteditable chip / DOM：注入 Seti SVG，与 React WorkspaceFileIcon 同源。 */
+/** contenteditable chip / DOM：注入 Seti SVG 或目录 Folder，与 React WorkspaceFileIcon 同源。 */
 export function appendWorkspaceFileIconSvg(
   parent: HTMLElement,
   doc: Document,
@@ -24,6 +25,17 @@ export function appendWorkspaceFileIconSvg(
   options: AppendWorkspaceFileIconSvgOptions = {},
 ): void {
   const { colorMode = 'seti', theme = resolveDomSetiIconTheme() } = options;
+
+  if (kind === 'dir') {
+    const template = doc.createElement('template');
+    template.innerHTML = renderWorkspaceDirectoryIconMarkup(attrs.className, colorMode);
+    const svg = template.content.firstElementChild;
+    if (svg) {
+      parent.appendChild(doc.importNode(svg, true));
+    }
+    return;
+  }
+
   const icon = resolveWorkspaceFileIcon(workspaceFileBasename(path), kind, {
     colorMode,
     theme,

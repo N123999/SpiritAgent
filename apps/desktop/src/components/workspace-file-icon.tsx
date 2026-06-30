@@ -1,5 +1,8 @@
+import { Folder } from 'lucide-react';
+
 import { useTheme } from '@/hooks/useTheme';
 import { workspaceFileBasename } from '@/lib/file-picker-path';
+import { workspaceDirectoryIconClassName } from '@/lib/workspace-directory-icon';
 import {
   resolveWorkspaceFileIcon,
   type WorkspaceFileIconColorMode,
@@ -30,12 +33,27 @@ export function WorkspaceFileIcon({
 }: WorkspaceFileIconProps) {
   const { resolvedDark } = useTheme();
   const resolvedName = name ?? (path ? workspaceFileBasename(path) : '');
+  if (!resolvedName) {
+    return null;
+  }
+
+  const theme = resolvedDark ? 'dark' : 'light';
+
+  if (kind === 'dir') {
+    return (
+      <Folder
+        className={workspaceDirectoryIconClassName(colorMode, className)}
+        aria-hidden
+      />
+    );
+  }
+
   const icon = resolveWorkspaceFileIcon(resolvedName, kind, {
     colorMode,
-    theme: resolvedDark ? 'dark' : 'light',
+    theme,
   });
 
-  if (!icon || !resolvedName) {
+  if (!icon) {
     return null;
   }
 
