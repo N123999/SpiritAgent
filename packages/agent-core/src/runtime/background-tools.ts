@@ -99,6 +99,21 @@ function hasOutstandingToolTurnWork<
     || flags.deferredBgCount > 0;
 }
 
+/** persistAssistantToolCalls 只写 historyStore；续跑 LLM 须从 history 重建 state，避免 pending.state 缺 assistant tool_calls。 */
+function buildBackgroundToolContinuationState<
+  Config,
+  State,
+  ToolRequest,
+  TrustTarget = string,
+>(
+  runtime: BackgroundToolsRuntime<Config, State, ToolRequest, TrustTarget>,
+  pendingUserInput: string,
+): State {
+  return runtime.options.createContinuationState
+    ? runtime.options.createContinuationState(runtime.historyStore)
+    : runtime.options.createToolAgentState(runtime.historyStore, pendingUserInput);
+}
+
 export function startBackgroundToolExecutionAsync<
   Config,
   State,
@@ -380,24 +395,23 @@ export async function pollPendingBackgroundToolExecution<
     pending.failed,
   );
 
-  const preparedOutput = await prepareAndSyncRuntimeToolResultToHistory(
+  await prepareAndSyncRuntimeToolResultToHistory(
     runtime,
     pending.toolCallId,
     pending.output.summaryText,
   );
-  const resumedState = runtime.options.appendToolResultMessage(
-    pending.state,
-    pending.toolCallId,
-    preparedOutput,
+  const continuationState = buildBackgroundToolContinuationState(
+    runtime,
+    pending.pendingUserInput,
   );
-  runtime.advanceTurnToolState?.(pending.turn, resumedState);
+  runtime.advanceTurnToolState?.(pending.turn, continuationState);
   if (runtime.deferredBackgroundToolExecutions.length > 0) {
-    startNextDeferredBackgroundToolExecution(runtime, resumedState);
+    startNextDeferredBackgroundToolExecution(runtime, continuationState);
     return;
   }
   if (pending.remainingCalls.length > 0) {
     runtime.queuePendingToolCallContinuation(
-      resumedState,
+      continuationState,
       pending.pendingUserInput,
       pending.remainingCalls,
       pending.turn,
@@ -413,7 +427,6 @@ export async function pollPendingBackgroundToolExecution<
   }
 
   if (pending.resumeAsStreaming) {
-    const continuationState = runtime.resolveTurnToolState?.(pending.turn, resumedState) ?? resumedState;
     await runtime.startStreamingRound(
       continuationState,
       pending.pendingUserInput,
@@ -423,6 +436,5 @@ export async function pollPendingBackgroundToolExecution<
     return;
   }
 
-  const continuationState = runtime.resolveTurnToolState?.(pending.turn, resumedState) ?? resumedState;
   runtime.startToolAgentRoundAsync(continuationState, pending.pendingUserInput, pending.turn);
 }

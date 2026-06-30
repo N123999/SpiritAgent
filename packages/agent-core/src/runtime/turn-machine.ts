@@ -1466,7 +1466,7 @@ export async function processToolCallsAsync<
       )) {
         return;
       }
-      continue;
+      return;
     }
 
     const internalHandled = await runtime.maybeContinueInternalToolCallAsync?.(
