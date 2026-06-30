@@ -16,6 +16,7 @@ import {
   toWorkspaceFileReferenceQueryInput,
 } from '@/lib/file-picker-path'
 import { instantHoverMotionClass } from '@/lib/desktop-chrome'
+import { RADIX_OVERLAY_CLOSE_MS } from '@/lib/overlay-motion'
 import { workspaceExplorerIconForPath } from '@/lib/workspace-explorer-icon'
 import { cn } from '@/lib/utils'
 
@@ -49,12 +50,15 @@ export function WorkspaceFilePickerDialog({
   const absoluteStatRequestIdRef = useRef(0)
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
       setQuery('')
       setSuggestions([])
       setAbsolutePathExists(null)
-      return
-    }
+    }, RADIX_OVERLAY_CLOSE_MS)
+    return () => window.clearTimeout(timeoutId)
   }, [open])
 
   useEffect(() => {

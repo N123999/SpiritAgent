@@ -16,6 +16,7 @@ import {
   type ActionPaletteItem,
 } from '@/lib/action-palette'
 import { instantHoverMotionClass } from '@/lib/desktop-chrome'
+import { RADIX_OVERLAY_CLOSE_MS } from '@/lib/overlay-motion'
 import { cn } from '@/lib/utils'
 
 type ActionPickerDialogProps = {
@@ -39,9 +40,13 @@ export function ActionPickerDialog({
   const [query, setQuery] = useState('')
 
   useEffect(() => {
-    if (!open) {
-      setQuery('')
+    if (open) {
+      return
     }
+    const timeoutId = window.setTimeout(() => {
+      setQuery('')
+    }, RADIX_OVERLAY_CLOSE_MS)
+    return () => window.clearTimeout(timeoutId)
   }, [open])
 
   const items = useMemo(
