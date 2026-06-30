@@ -110,14 +110,17 @@ async function executeAndCommitMoonshotFormulaToolCall<
     failed: false,
   });
 
-  await prepareAndSyncRuntimeToolResultToHistory(runtime, call.id, execution.content);
-
-  const resumedState = runtime.options.appendToolResultMessage(
-    state,
+  const preparedContent = await prepareAndSyncRuntimeToolResultToHistory(
+    runtime,
     call.id,
     execution.content,
   );
-  return { state: resumedState, failed: false, modelContent: execution.content };
+  const resumedState = runtime.options.appendToolResultMessage(
+    state,
+    call.id,
+    preparedContent,
+  );
+  return { state: resumedState, failed: false, modelContent: preparedContent };
 }
 
 export async function handleManagedProviderToolCallInTurn<
