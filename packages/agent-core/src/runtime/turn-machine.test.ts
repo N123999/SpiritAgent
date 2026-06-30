@@ -4,7 +4,7 @@ import test from 'node:test';
 import { AgentRuntime } from '../runtime.js';
 import { llmMessageTextContent } from '../ports.js';
 import { assistantToolCallMessageFromState } from '../tool-agent.js';
-import { createTurnContext, repairMissingToolResultsInHistory } from './helpers.js';
+import { createTurnContext, hasUnansweredAssistantToolCalls, repairMissingToolResultsInHistory } from './helpers.js';
 import type { HookRunner } from '../hooks/types.js';
 import type { RuntimeEvent } from './types.js';
 import {
@@ -622,6 +622,34 @@ test('processToolCalls passes hook updatedInput to postToolUse', async () => {
   );
 
   assert.deepEqual(capturedToolInput, { path: 'hooked.md' });
+});
+
+test('hasUnansweredAssistantToolCalls detects parallel tool calls with partial results', () => {
+  const history = [
+    {
+      role: 'assistant' as const,
+      content: [{ type: 'text' as const, text: '' }],
+      toolCalls: [
+        { id: 'call_shell', name: 'shell', argumentsJson: '{}' },
+        { id: 'call_glob', name: 'glob', argumentsJson: '{}' },
+      ],
+    },
+    {
+      role: 'tool' as const,
+      toolCallId: 'call_glob',
+      content: [{ type: 'text' as const, text: 'glob ok' }],
+    },
+  ];
+
+  assert.equal(hasUnansweredAssistantToolCalls(history), true);
+
+  history.push({
+    role: 'tool' as const,
+    toolCallId: 'call_shell',
+    content: [{ type: 'text' as const, text: 'shell ok' }],
+  });
+
+  assert.equal(hasUnansweredAssistantToolCalls(history), false);
 });
 
 test('repairMissingToolResultsInHistory inserts placeholders for orphaned tool calls', () => {

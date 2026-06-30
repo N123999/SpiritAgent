@@ -122,6 +122,36 @@ export function enqueueDeferredToolOutputGuidance<ToolRequest>(
 export const MISSING_TOOL_RESULT_PLACEHOLDER =
   '[tool result unavailable] missing tool result recovered in session history';
 
+function assistantToolCallIdsMissingResults(history: readonly LlmMessage[]): string[] {
+  const missing: string[] = [];
+
+  for (let index = 0; index < history.length; index += 1) {
+    const message = history[index]!;
+    if (message.role !== 'assistant' || !message.toolCalls?.length) {
+      continue;
+    }
+
+    for (const toolCall of message.toolCalls) {
+      const hasResult = history.some(
+        (candidate, candidateIndex) =>
+          candidateIndex > index
+          && candidate.role === 'tool'
+          && candidate.toolCallId === toolCall.id,
+      );
+      if (!hasResult) {
+        missing.push(toolCall.id);
+      }
+    }
+  }
+
+  return missing;
+}
+
+/** history 中 assistant 已声明的 tool call 是否都已有对应 tool 消息（与 AI SDK MissingToolResults 校验一致）。 */
+export function hasUnansweredAssistantToolCalls(history: readonly LlmMessage[]): boolean {
+  return assistantToolCallIdsMissingResults(history).length > 0;
+}
+
 export function repairMissingToolResultsInHistory(history: readonly LlmMessage[]): LlmMessage[] {
   const repaired: LlmMessage[] = [];
 

@@ -43,6 +43,7 @@ import {
   appendLoopContinuationGuidance,
   enqueueDeferredToolOutputGuidance,
   enqueueDeferredUserGuidance,
+  hasUnansweredAssistantToolCalls,
   isCompatibleContinuedToolRequest,
   renderError,
   resolveFinalAssistantHistoryMessage,
@@ -1526,6 +1527,10 @@ export async function processToolCallsAsync<
     )) {
       return;
     }
+  }
+
+  if (hasUnansweredAssistantToolCalls(runtime.historyStore)) {
+    return;
   }
 
   if (resumeAsStreaming) {
