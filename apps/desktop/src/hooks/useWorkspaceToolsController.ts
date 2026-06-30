@@ -78,6 +78,14 @@ export function useWorkspaceToolsController({
   const [workspaceFileRevealLine, setWorkspaceFileRevealLine] = useState<number | null>(null);
   const [workspaceFileRevealColumn, setWorkspaceFileRevealColumn] = useState<number | null>(null);
   const [workspaceToolsWidthPx, setWorkspaceToolsWidthPx] = useState(readWorkspaceToolsWidthPx);
+
+  useEffect(() => {
+    const onResize = () => {
+      setWorkspaceToolsWidthPx(readWorkspaceToolsWidthPx());
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [workspacePrRevealNonce, setWorkspacePrRevealNonce] = useState(0);
   const [workspacePrRevealTargetId, setWorkspacePrRevealTargetId] = useState<string | null>(null);
   const [workspacePrRevealRequest, setWorkspacePrRevealRequest] =

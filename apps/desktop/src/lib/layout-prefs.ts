@@ -60,10 +60,13 @@ export function writeSessionSidebarWidthPx(widthPx: number): void {
 }
 
 const WORKSPACE_TOOLS_WIDTH_STORAGE_KEY = "spirit-desktop-workspace-tools-width-px";
+const WORKSPACE_TOOLS_WIDTH_RATIO_STORAGE_KEY = "spirit-desktop-workspace-tools-width-ratio";
 
 export const WORKSPACE_TOOLS_MIN_WIDTH_PX = 240;
 export const WORKSPACE_TOOLS_DEFAULT_WIDTH_PX = 420;
-const WORKSPACE_TOOLS_VIEWPORT_MAX_WIDTH_RATIO = 0.62;
+export const WORKSPACE_TOOLS_VIEWPORT_MAX_WIDTH_RATIO = 0.62;
+export const WORKSPACE_TOOLS_DEFAULT_WIDTH_RATIO =
+  WORKSPACE_TOOLS_DEFAULT_WIDTH_PX / 1200;
 
 export function computeWorkspaceToolsMaxWidthPx(
   viewportWidthPx = typeof window !== "undefined" ? window.innerWidth : 1200,
@@ -71,24 +74,125 @@ export function computeWorkspaceToolsMaxWidthPx(
   return Math.round(viewportWidthPx * WORKSPACE_TOOLS_VIEWPORT_MAX_WIDTH_RATIO);
 }
 
+function clampWorkspaceToolsWidthRatio(
+  ratio: number,
+  viewportWidthPx: number,
+): number {
+  const min =
+    viewportWidthPx > 0
+      ? WORKSPACE_TOOLS_MIN_WIDTH_PX / viewportWidthPx
+      : WORKSPACE_TOOLS_MIN_WIDTH_PX / 1200;
+  return Math.min(
+    WORKSPACE_TOOLS_VIEWPORT_MAX_WIDTH_RATIO,
+    Math.max(min, ratio),
+  );
+}
+
+function readStoredWorkspaceToolsWidthRatio(
+  viewportWidthPx: number,
+): number | null {
+  try {
+    if (typeof localStorage === "undefined") {
+      return null;
+    }
+    const raw = localStorage.getItem(WORKSPACE_TOOLS_WIDTH_RATIO_STORAGE_KEY);
+    const parsed = raw ? Number.parseFloat(raw) : Number.NaN;
+    if (Number.isFinite(parsed)) {
+      return clampWorkspaceToolsWidthRatio(parsed, viewportWidthPx);
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function writeStoredWorkspaceToolsWidthRatio(
+  ratio: number,
+  viewportWidthPx: number,
+): void {
+  try {
+    if (typeof localStorage === "undefined") {
+      return;
+    }
+    localStorage.setItem(
+      WORKSPACE_TOOLS_WIDTH_RATIO_STORAGE_KEY,
+      String(clampWorkspaceToolsWidthRatio(ratio, viewportWidthPx)),
+    );
+  } catch {
+    // ignore
+  }
+}
+
+export function readWorkspaceToolsWidthRatio(
+  viewportWidthPx = typeof window !== "undefined" ? window.innerWidth : 1200,
+): number {
+  const storedRatio = readStoredWorkspaceToolsWidthRatio(viewportWidthPx);
+  if (storedRatio !== null) {
+    return storedRatio;
+  }
+
+  try {
+    if (typeof localStorage === "undefined") {
+      return clampWorkspaceToolsWidthRatio(
+        WORKSPACE_TOOLS_DEFAULT_WIDTH_RATIO,
+        viewportWidthPx,
+      );
+    }
+    const legacyRaw = localStorage.getItem(WORKSPACE_TOOLS_WIDTH_STORAGE_KEY);
+    if (legacyRaw === null) {
+      return clampWorkspaceToolsWidthRatio(
+        WORKSPACE_TOOLS_DEFAULT_WIDTH_RATIO,
+        viewportWidthPx,
+      );
+    }
+    const legacyMax = computeWorkspaceToolsMaxWidthPx(viewportWidthPx);
+    const legacyPx = readStoredPositiveInt(
+      WORKSPACE_TOOLS_WIDTH_STORAGE_KEY,
+      WORKSPACE_TOOLS_DEFAULT_WIDTH_PX,
+      WORKSPACE_TOOLS_MIN_WIDTH_PX,
+      legacyMax,
+    );
+    const migratedRatio = clampWorkspaceToolsWidthRatio(
+      legacyPx / viewportWidthPx,
+      viewportWidthPx,
+    );
+    writeStoredWorkspaceToolsWidthRatio(migratedRatio, viewportWidthPx);
+    return migratedRatio;
+  } catch {
+    return clampWorkspaceToolsWidthRatio(
+      WORKSPACE_TOOLS_DEFAULT_WIDTH_RATIO,
+      viewportWidthPx,
+    );
+  }
+}
+
+export function writeWorkspaceToolsWidthRatio(
+  ratio: number,
+  viewportWidthPx = typeof window !== "undefined" ? window.innerWidth : 1200,
+): void {
+  writeStoredWorkspaceToolsWidthRatio(ratio, viewportWidthPx);
+}
+
 export function readWorkspaceToolsWidthPx(
   viewportWidthPx = typeof window !== "undefined" ? window.innerWidth : 1200,
 ): number {
+  const ratio = readWorkspaceToolsWidthRatio(viewportWidthPx);
   const max = computeWorkspaceToolsMaxWidthPx(viewportWidthPx);
-  return readStoredPositiveInt(
-    WORKSPACE_TOOLS_WIDTH_STORAGE_KEY,
-    WORKSPACE_TOOLS_DEFAULT_WIDTH_PX,
+  return clampInt(
+    Math.round(viewportWidthPx * ratio),
     WORKSPACE_TOOLS_MIN_WIDTH_PX,
     max,
   );
 }
 
-export function writeWorkspaceToolsWidthPx(widthPx: number): void {
-  const max = computeWorkspaceToolsMaxWidthPx();
-  writeStoredPositiveInt(
-    WORKSPACE_TOOLS_WIDTH_STORAGE_KEY,
-    clampInt(widthPx, WORKSPACE_TOOLS_MIN_WIDTH_PX, max),
-  );
+export function writeWorkspaceToolsWidthPx(
+  widthPx: number,
+  viewportWidthPx = typeof window !== "undefined" ? window.innerWidth : 1200,
+): void {
+  if (viewportWidthPx <= 0) {
+    return;
+  }
+  writeWorkspaceToolsWidthRatio(widthPx / viewportWidthPx, viewportWidthPx);
 }
 
 const PR_CHANGES_TREE_WIDTH_STORAGE_KEY = "spirit-desktop-pr-changes-tree-width-px";
