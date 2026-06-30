@@ -10,6 +10,7 @@ import {
   startToolAgentRoundAsync,
   type TurnMachineRuntime,
 } from '../../runtime/turn-machine.js';
+import { prepareAndSyncRuntimeToolResultToHistory } from '../../runtime/tool-output-append.js';
 import type {
   RuntimeTurnContext,
   RuntimeTurnResult,
@@ -108,6 +109,8 @@ async function executeAndCommitMoonshotFormulaToolCall<
     },
     failed: false,
   });
+
+  await prepareAndSyncRuntimeToolResultToHistory(runtime, call.id, execution.content);
 
   const resumedState = runtime.options.appendToolResultMessage(
     state,
