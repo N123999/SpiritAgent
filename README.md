@@ -1,6 +1,6 @@
 <div align="center">
 
-<img width="1552" height="1032" alt="Spirit Agent Desktop" src="https://github.com/user-attachments/assets/7b07e79d-c800-405a-bee6-40dda9d75b13" />
+<img width="128" height="128" alt="Spirit Agent Dark" src="https://github.com/user-attachments/assets/e424b9ab-4429-406a-8d6d-764bdc02759c" />
 
 
 # Spirit Agent
@@ -12,6 +12,8 @@
 > This project is under active development. Behavior and APIs may change between releases.
 
 [Simplified Chinese](docs/README_zh-CN.md)
+
+<img width="1552" height="1032" alt="Spirit Agent Desktop" src="https://github.com/user-attachments/assets/7b07e79d-c800-405a-bee6-40dda9d75b13" />
 
 </div>
 
