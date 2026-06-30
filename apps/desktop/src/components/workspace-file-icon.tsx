@@ -4,6 +4,7 @@ import {
   resolveWorkspaceFileIcon,
   type WorkspaceFileIconColorMode,
 } from '@/lib/workspace-file-icon-resolver';
+import { injectSetiSvgDimensions } from '@/lib/workspace-file-icon-svg';
 import { cn } from '@/lib/utils';
 import type { WorkspaceExplorerEntryKind } from '@/types';
 
@@ -17,13 +18,6 @@ export type WorkspaceFileIconProps = {
   className?: string;
   colorMode?: WorkspaceFileIconColorMode;
 };
-
-function injectSvgDimensions(svg: string, size: number): string {
-  return svg.replace(
-    /^<svg\b/u,
-    `<svg width="${size}" height="${size}"`,
-  );
-}
 
 export function WorkspaceFileIcon({
   name,
@@ -49,7 +43,7 @@ export function WorkspaceFileIcon({
       className={cn('inline-flex shrink-0 items-center justify-center', className)}
       style={icon.color ? { color: icon.color } : undefined}
       aria-hidden
-      dangerouslySetInnerHTML={{ __html: injectSvgDimensions(icon.svg, size) }}
+      dangerouslySetInnerHTML={{ __html: injectSetiSvgDimensions(icon.svg, size) }}
     />
   );
 }

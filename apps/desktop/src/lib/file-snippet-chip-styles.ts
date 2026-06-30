@@ -2,6 +2,7 @@ import {
   COMPOSER_INLINE_CHIP_CLASS,
   COMPOSER_INLINE_CHIP_ICON_CLASS,
 } from "@/lib/composer-inline-chip-styles";
+import { appendWorkspaceFileIconSvg } from "@/lib/workspace-explorer-icon-dom";
 import { workspaceFileBasename } from "@/lib/file-picker-path";
 import type { FileSnippetAttachment } from "@/lib/file-snippet-attachment";
 
@@ -30,9 +31,6 @@ export function formatFileSnippetChipTitle(attachment: FileSnippetAttachment): s
   return `${normalized}${linePart}`;
 }
 
-const FILE_SNIPPET_ICON_PATH =
-  '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>';
-
 export function makeFileSnippetChipNode(attachment: FileSnippetAttachment, doc: Document): HTMLElement {
   const span = doc.createElement("span");
   span.contentEditable = "false";
@@ -50,19 +48,11 @@ export function makeFileSnippetChipNode(attachment: FileSnippetAttachment, doc: 
     formatFileSnippetChipLabel(attachment.filePath, attachment.lineStart, attachment.lineEnd),
   );
 
-  const icon = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
-  icon.setAttribute("viewBox", "0 0 24 24");
-  icon.setAttribute("width", "10");
-  icon.setAttribute("height", "10");
-  icon.setAttribute("fill", "none");
-  icon.setAttribute("stroke", "currentColor");
-  icon.setAttribute("stroke-width", "2");
-  icon.setAttribute("stroke-linecap", "round");
-  icon.setAttribute("stroke-linejoin", "round");
-  icon.setAttribute("class", FILE_SNIPPET_CHIP_ICON_CLASS);
-  icon.setAttribute("aria-hidden", "true");
-  icon.innerHTML = FILE_SNIPPET_ICON_PATH;
-  span.appendChild(icon);
+  appendWorkspaceFileIconSvg(span, doc, attachment.filePath, {
+    size: 10,
+    className: FILE_SNIPPET_CHIP_ICON_CLASS,
+  }, 'file', { colorMode: 'inherit' });
+
   span.appendChild(
     doc.createTextNode(
       formatFileSnippetChipLabel(attachment.filePath, attachment.lineStart, attachment.lineEnd),

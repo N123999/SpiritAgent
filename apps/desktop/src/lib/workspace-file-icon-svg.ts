@@ -5,3 +5,14 @@ export function normalizeSetiSvgForCurrentColor(svg: string): string {
   }
   return svg.replace(/<path\b/gu, '<path fill="currentColor"');
 }
+
+export function injectSetiSvgDimensions(svg: string, size: number): string {
+  return svg.replace(/^<svg\b/u, `<svg width="${size}" height="${size}"`);
+}
+
+export function resolveDomSetiIconTheme(): 'dark' | 'light' {
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) {
+    return 'dark';
+  }
+  return 'light';
+}

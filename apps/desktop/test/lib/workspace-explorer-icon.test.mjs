@@ -1,28 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  File,
-  FileCode,
-  FileJson,
-  FileText,
-  Image as ImageIcon,
-} from 'lucide-react';
+import { ListTodo } from 'lucide-react';
 
 import {
-  workspaceExplorerIcon,
-  workspaceExplorerIconForPath,
+  resolveWorkspaceFileIconForPath,
+  resolveWorkspaceFilesTabIcon,
+  setiFileIconThemeMap,
 } from '../../src/lib/workspace-explorer-icon.ts';
 
-test('workspaceExplorerIcon maps common filenames and extensions', () => {
-  assert.equal(workspaceExplorerIcon('package.json', 'file'), FileJson);
-  assert.equal(workspaceExplorerIcon('App.tsx', 'file'), FileCode);
-  assert.equal(workspaceExplorerIcon('README.md', 'file'), FileText);
-  assert.equal(workspaceExplorerIcon('logo.png', 'file'), ImageIcon);
-  assert.equal(workspaceExplorerIcon('notes', 'file'), File);
+test('resolveWorkspaceFileIconForPath maps common paths with Seti colors', () => {
+  const tsx = resolveWorkspaceFileIconForPath('src/App.tsx');
+  assert.ok(tsx);
+  assert.equal(tsx.color, setiFileIconThemeMap('dark').blue);
+
+  const md = resolveWorkspaceFileIconForPath('docs/README.md');
+  assert.ok(md);
+  assert.equal(md.color, setiFileIconThemeMap('dark').blue);
 });
 
-test('workspaceExplorerIconForPath uses basename from relative paths', () => {
-  assert.equal(workspaceExplorerIconForPath('src/App.tsx'), FileCode);
-  assert.equal(workspaceExplorerIconForPath('docs/README.md'), FileText);
+test('resolveWorkspaceFilesTabIcon returns ListTodo only for Plan', () => {
+  assert.equal(resolveWorkspaceFilesTabIcon('Plan'), ListTodo);
+  assert.equal(resolveWorkspaceFilesTabIcon('App.tsx'), undefined);
+  assert.equal(resolveWorkspaceFilesTabIcon(undefined), undefined);
 });

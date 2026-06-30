@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, FileCode2, Folder } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder } from "lucide-react";
+
+import { WorkspaceFileIcon } from "@/components/workspace-file-icon";
 
 import { cn } from "@/lib/utils";
 import type { PrChangedFilesTreeNode } from "@/lib/pr-changed-files-tree";
@@ -38,7 +40,7 @@ function PrChangesTreeNodeRow({
           onClick={() => onSelectFile(node.path)}
         >
           <span className="inline-block w-4 shrink-0" aria-hidden />
-          <FileCode2 className="size-3.5 shrink-0 opacity-70" aria-hidden />
+          <WorkspaceFileIcon path={node.path} className="size-3.5 shrink-0" />
           <span className="min-w-0 truncate">{node.name}</span>
         </button>
       </li>
