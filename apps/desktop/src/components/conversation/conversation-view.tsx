@@ -41,6 +41,7 @@ import type {
 } from "@/types";
 import type { useDesktopRuntime } from "@/hooks/useDesktopRuntime";
 import { useConversationSessionScrollTail } from "@/hooks/useConversationSessionScrollTail";
+import { useConversationStreamScrollTail } from "@/hooks/useConversationStreamScrollTail";
 import type { ConversationRenderItem } from "@/lib/conversation-process-groups";
 import type { TurnContinuePresentation } from "@/lib/conversation-continue-ui";
 import type { PendingAssistantAux } from "@/types";
@@ -226,6 +227,15 @@ export function ConversationView({
   useConversationSessionScrollTail({
     scrollAreaRef: conversationScrollAreaRef,
     composerSessionKey: list.composerSessionKey,
+    enabled: conversationMessagesVisible,
+  });
+
+  useConversationStreamScrollTail({
+    scrollAreaRef: conversationScrollAreaRef,
+    messages: list.messages,
+    pendingAuxState: list.conversationPendingAuxState,
+    isBusy: snapshot?.conversation.isBusy === true,
+    scrollBedPaddingPx: conversationScrollBedPaddingPx,
     enabled: conversationMessagesVisible,
   });
 
