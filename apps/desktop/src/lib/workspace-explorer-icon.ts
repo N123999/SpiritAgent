@@ -27,7 +27,7 @@ export {
 
 export { normalizeSetiSvgForCurrentColor } from '@/lib/workspace-file-icon-svg';
 
-/** 文件工具选项卡有 tabTitle 时解析 Lucide 图标；仅 Plan 保留 Lucide，其余由 Seti 渲染。 */
+/** 文件工具 Tab：仅 Plan 用 Lucide；其余 Seti 字形由 WorkspaceFileIcon 渲染。 */
 export function resolveWorkspaceFilesTabIcon(
   tabTitle: string | undefined,
 ): LucideIcon | undefined {
