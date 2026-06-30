@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
 import {
@@ -43,8 +44,13 @@ export function ReasoningLabelWithShimmer({
 }
 
 export function ThinkingLabelWithShimmer({ active }: { active: boolean }) {
+  const { t } = useTranslation();
   return (
-    <ReasoningLabelWithShimmer active={active} activeLabel="Thinking" idleLabel="Thought" />
+    <ReasoningLabelWithShimmer
+      active={active}
+      activeLabel={t("app.reasoningThinkingActive")}
+      idleLabel={t("app.reasoningThinkingIdle")}
+    />
   );
 }
 

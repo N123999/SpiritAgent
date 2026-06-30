@@ -626,6 +626,8 @@
     "modelPickerEffort": "强度",
     "modelPickerThinking": "思考",
     "modelPickerNotThinking": "不思考",
+    "reasoningThinkingActive": "思考",
+    "reasoningThinkingIdle": "思考",
     "noModelsAvailable": "无可用模型",
     "abort": "中止",
     "send": "发送",

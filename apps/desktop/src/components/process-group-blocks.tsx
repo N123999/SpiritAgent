@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { AgentMarkdownMessage } from "@/components/agent-markdown-message";
 import {
@@ -97,6 +98,7 @@ export function ProcessGroupThinkingBlock({
   readManagedImagePreviewDataUrl: ReadManagedImagePreview;
   readManagedVideoPreviewUrl: ReadManagedVideoPreview;
 }) {
+  const { t } = useTranslation();
   const thinking = message.aux?.thinking?.trim() ?? "";
   if (!thinking || isGenericPendingThinkingStatusText(thinking)) {
     return null;
@@ -105,8 +107,8 @@ export function ProcessGroupThinkingBlock({
   return (
     <ProcessGroupReasoningBlock
       labelActive={thinkingActive}
-      activeLabel="Thinking"
-      idleLabel="Thought"
+      activeLabel={t("app.reasoningThinkingActive")}
+      idleLabel={t("app.reasoningThinkingIdle")}
       body={thinking}
       streaming={thinkingActive}
       readManagedImagePreviewDataUrl={readManagedImagePreviewDataUrl}
