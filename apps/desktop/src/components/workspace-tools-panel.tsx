@@ -273,7 +273,7 @@ function WorkspaceToolsDockInner(props: WorkspaceToolsDockProps) {
       useMicaBackdrop={useMicaBackdrop}
       isResizing={isResizing}
       onResizingChange={setIsResizing}
-      contentProps={{ ...contentProps, isResizing }}
+      contentProps={{ ...contentProps, isResizing, useMicaBackdrop }}
     />
   );
 }
