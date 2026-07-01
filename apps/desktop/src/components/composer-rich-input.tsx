@@ -88,8 +88,6 @@ const COMPOSER_PLACEHOLDER_CLASS =
 const AGENT_MODE_CHIP_SELECTOR =
   "[data-plan-chip='true'],[data-ask-chip='true'],[data-debug-chip='true']";
 
-const AGENT_MODE_CHIP_PLACEHOLDER_GAP_PX = 4;
-
 const ELEMENT_MIME = "application/x-spirit-elements";
 
 type Props = {
@@ -1352,10 +1350,40 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
           return;
         }
         const shellRect = shell.getBoundingClientRect();
-        const chipRect = chip.getBoundingClientRect();
-        setAgentModeChipPlaceholderLeft(
-          chipRect.right - shellRect.left + AGENT_MODE_CHIP_PLACEHOLDER_GAP_PX,
-        );
+        const editorRect = editor.getBoundingClientRect();
+        const editorPaddingLeft = parseFloat(getComputedStyle(editor).paddingLeft) || 0;
+        const defaultPlaceholderLeft = editorPaddingLeft + (editorRect.left - shellRect.left);
+
+        const segs = segmentsRef.current;
+        const caret = caretAfterAgentModeChip(segs);
+        const selection = window.getSelection();
+        const savedRanges: Range[] = [];
+        if (selection) {
+          for (let index = 0; index < selection.rangeCount; index += 1) {
+            savedRanges.push(selection.getRangeAt(index).cloneRange());
+          }
+        }
+
+        let caretRect: DOMRect | null = null;
+        if (
+          selection
+          && selection.rangeCount > 0
+          && editor.contains(selection.anchorNode)
+        ) {
+          caretRect = selection.getRangeAt(0).getBoundingClientRect();
+        } else {
+          caretToDomRange(editor, segs, caret);
+          if (selection && selection.rangeCount > 0) {
+            caretRect = selection.getRangeAt(0).getBoundingClientRect();
+          }
+          selection?.removeAllRanges();
+          for (const range of savedRanges) {
+            selection?.addRange(range);
+          }
+        }
+
+        const caretLeftInShell = caretRect ? caretRect.left - shellRect.left : null;
+        setAgentModeChipPlaceholderLeft(caretLeftInShell ?? defaultPlaceholderLeft);
       };
 
       measure();
