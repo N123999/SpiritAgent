@@ -31,6 +31,7 @@ import {
 import {
   applyAgentModeChipPolicy,
   buildSegmentsAfterSend,
+  composerShowsAgentModeChipPlaceholder,
   composerShowsPlaceholder,
   domParsedMissingRequiredAgentChip,
   shouldPinAgentModeChip,
@@ -80,6 +81,14 @@ export {
   segmentsToMessageText,
   segmentsToPlainText,
 } from "@/lib/composer-segment-model";
+
+const COMPOSER_PLACEHOLDER_CLASS =
+  "pointer-events-none absolute top-2.5 text-sm leading-relaxed text-muted-foreground select-none";
+
+const AGENT_MODE_CHIP_SELECTOR =
+  "[data-plan-chip='true'],[data-ask-chip='true'],[data-debug-chip='true']";
+
+const AGENT_MODE_CHIP_PLACEHOLDER_GAP_PX = 4;
 
 const ELEMENT_MIME = "application/x-spirit-elements";
 
@@ -193,6 +202,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     ref,
   ) {
     const divRef = useRef<HTMLDivElement>(null);
+    const shellRef = useRef<HTMLDivElement>(null);
     const [segments, setSegments] = useState<RichSegment[]>(() => {
       const base = initialSegments?.length
         ? ensureLoopPinned(mergeAdjacentTextSegments([...initialSegments]))
@@ -205,6 +215,9 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
     segmentsRef.current = segments;
     const isComposingRef = useRef(false);
     const [isComposing, setIsComposing] = useState(false);
+    const [agentModeChipPlaceholderLeft, setAgentModeChipPlaceholderLeft] = useState<number | null>(
+      null,
+    );
     const pendingCaretRef = useRef<SegmentCaret | null>(null);
     const skipExternalValueSyncRef = useRef(Boolean(initialSegments?.length));
     /** 最近一次 notifyParents 上报给父级的纯文本，用于识别 poll 时滞后的 value。 */
@@ -1313,16 +1326,70 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       attachmentCount: elementAttachments?.length ?? 0,
     });
 
+    const showAgentModeChipPlaceholder =
+      composerShowsAgentModeChipPlaceholder(segments, {
+        composing: isComposing,
+        attachmentCount: elementAttachments?.length ?? 0,
+      }) && Boolean(agentModeChipPlaceholder);
+
+    useLayoutEffect(() => {
+      if (!showAgentModeChipPlaceholder) {
+        setAgentModeChipPlaceholderLeft(null);
+        return;
+      }
+
+      const shell = shellRef.current;
+      const editor = divRef.current;
+      if (!shell || !editor) {
+        setAgentModeChipPlaceholderLeft(null);
+        return;
+      }
+
+      const measure = () => {
+        const chip = editor.querySelector(AGENT_MODE_CHIP_SELECTOR);
+        if (!(chip instanceof HTMLElement)) {
+          setAgentModeChipPlaceholderLeft(null);
+          return;
+        }
+        const shellRect = shell.getBoundingClientRect();
+        const chipRect = chip.getBoundingClientRect();
+        setAgentModeChipPlaceholderLeft(
+          chipRect.right - shellRect.left + AGENT_MODE_CHIP_PLACEHOLDER_GAP_PX,
+        );
+      };
+
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(editor);
+      observer.observe(shell);
+      window.addEventListener("resize", measure);
+      return () => {
+        observer.disconnect();
+        window.removeEventListener("resize", measure);
+      };
+    }, [showAgentModeChipPlaceholder, segments]);
+
     return (
-      <div className="relative">
+      <div ref={shellRef} className="relative">
         {isEmpty && placeholder && (
           <span
             aria-hidden
-            className="pointer-events-none absolute left-3 top-2.5 text-sm leading-relaxed text-muted-foreground select-none"
+            className={cn(COMPOSER_PLACEHOLDER_CLASS, "left-3")}
           >
             {placeholder}
           </span>
         )}
+        {showAgentModeChipPlaceholder
+          && agentModeChipPlaceholderLeft !== null
+          && agentModeChipPlaceholder ? (
+          <span
+            aria-hidden
+            className={COMPOSER_PLACEHOLDER_CLASS}
+            style={{ left: agentModeChipPlaceholderLeft }}
+          >
+            {agentModeChipPlaceholder}
+          </span>
+        ) : null}
         <div
           ref={divRef}
           contentEditable={readOnly ? false : true}
