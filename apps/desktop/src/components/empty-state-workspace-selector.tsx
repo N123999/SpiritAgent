@@ -8,6 +8,7 @@ import {
   FilteredOverlayMenuTrigger,
 } from "@/components/ui/filtered-overlay-menu";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DESKTOP_OVERLAY_LIST_ACTION_ITEM,
   DESKTOP_OVERLAY_LIST_ITEM,
@@ -42,7 +43,9 @@ export function EmptyStateWorkspaceSelector({
   onAddWorkspace,
 }: EmptyStateWorkspaceSelectorProps) {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [workspaceFilter, setWorkspaceFilter] = useState("");
+  const suppressTooltip = menuOpen || disabled;
   const filteredWorkspaces = useMemo(() => {
     const query = workspaceFilter.trim().toLowerCase();
     if (!query) {
@@ -71,27 +74,39 @@ export function EmptyStateWorkspaceSelector({
         onFilterChange={setWorkspaceFilter}
         filterPlaceholder={t('app.searchWorkspace')}
         onOpenChange={(open) => {
+          setMenuOpen(open);
           if (!open) {
             setWorkspaceFilter("");
           }
         }}
         trigger={
-          <FilteredOverlayMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={disabled}
-              aria-label={t('app.selectWorkspace')}
-              className={cn(
-                "inline-flex h-8 max-w-[min(24rem,100%)] min-w-0 items-center gap-1 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-                instantHoverMotionClass,
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={currentWorkspaceRoot}>
-                {currentWorkspaceLabel}
-              </span>
-              <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
-            </button>
-          </FilteredOverlayMenuTrigger>
+          <Tooltip
+            open={suppressTooltip ? false : undefined}
+            delayDuration={300}
+            disableHoverableContent
+          >
+            <TooltipTrigger asChild>
+              <FilteredOverlayMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  aria-label={t('app.selectWorkspace')}
+                  className={cn(
+                    "inline-flex h-8 max-w-[min(24rem,100%)] min-w-0 items-center gap-1 rounded-md border-0 bg-transparent pr-0.5 pl-1 text-left outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+                    instantHoverMotionClass,
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    {currentWorkspaceLabel}
+                  </span>
+                  <ChevronDown className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
+                </button>
+              </FilteredOverlayMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              {t('app.selectWorkspace')}
+            </TooltipContent>
+          </Tooltip>
         }
         footer={
           <>
