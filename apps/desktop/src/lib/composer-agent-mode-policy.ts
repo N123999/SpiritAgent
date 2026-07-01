@@ -54,6 +54,11 @@ export function composerShowsPlaceholder(
   return isComposerPlainEmpty(segmentsToPlainText(segs));
 }
 
+/** Chip 插入时尾部的 lone spacer；用户再输入空白或非空字符即视为已开始编辑。 */
+function isAgentModeChipPlaceholderBaselinePlain(plain: string): boolean {
+  return plain === "" || plain === " ";
+}
+
 export function composerShowsAgentModeChipPlaceholder(
   segs: RichSegment[],
   opts: { composing: boolean; attachmentCount: number },
@@ -64,7 +69,11 @@ export function composerShowsAgentModeChipPlaceholder(
   if (!currentAgentModeSegment(segs)) {
     return false;
   }
-  return isComposerPlainEmpty(segmentsToPlainText(segs));
+  const plain = segmentsToPlainText(segs);
+  if (!isAgentModeChipPlaceholderBaselinePlain(plain)) {
+    return false;
+  }
+  return isComposerPlainEmpty(plain);
 }
 
 export function buildSegmentsAfterSend(agentMode: DesktopAgentMode): RichSegment[] {

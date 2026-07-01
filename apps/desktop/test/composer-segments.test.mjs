@@ -787,6 +787,16 @@ test("composerShowsAgentModeChipPlaceholder false when user typed text", () => {
   );
 });
 
+test("composerShowsAgentModeChipPlaceholder false when user typed extra whitespace", () => {
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "debug" }, { kind: "text", value: "  " }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    false,
+  );
+});
+
 test("composerShowsAgentModeChipPlaceholder false while composing or with attachments", () => {
   const segs = [{ kind: "ask" }, { kind: "text", value: " " }];
   assert.equal(
