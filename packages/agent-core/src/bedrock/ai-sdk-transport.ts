@@ -39,6 +39,7 @@ import {
   isJsonObject,
   type ToolAgentState,
 } from '../tool-agent.js';
+import { llmHistoryToOpenAiMessages } from '../openai/tool-agent-helpers.js';
 import type {
   GeneratedImageFile,
   GeneratedImageSaveRequest,
@@ -314,11 +315,13 @@ export class AiSdkBedrockTransport
     }
 
     const promptMessages = toolStateMessagesToAiSdkMessages(
-      buildCompactHistoryPromptMessages(history, {
-        ...(context?.preCompactionArchivePath === undefined
-          ? {}
-          : { preCompactionArchivePath: context.preCompactionArchivePath }),
-      }),
+      llmHistoryToOpenAiMessages(
+        buildCompactHistoryPromptMessages(history, {
+          ...(context?.preCompactionArchivePath === undefined
+            ? {}
+            : { preCompactionArchivePath: context.preCompactionArchivePath }),
+        }),
+      ),
     );
     const compactConfig: BedrockTransportConfig = {
       ...config,

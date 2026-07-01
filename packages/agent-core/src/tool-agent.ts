@@ -2,8 +2,6 @@ import {
   cloneLlmProviderState,
   cloneLlmMessageContent,
   createLlmMessageContentFromText,
-  llmMessageHasImages,
-  llmMessageHasVideos,
   llmMessageTextContent,
   type JsonObject,
   type JsonValue,
@@ -80,10 +78,13 @@ ${COMPACT_HISTORY_ARCHIVE_OUTPUT_SECTION}`;
 
 const PRE_COMPACTION_ARCHIVE_HARD_REQUIREMENT = `6. The [Pre-compaction Archive] section must contain exactly three lines: the section title, then the archive absolute path alone on the next line, then this exact guidance sentence on the following line: ${PRE_COMPACTION_ARCHIVE_READ_FILE_GUIDANCE} Do not output only the path.`;
 
+export const COMPACT_HISTORY_TRIGGER_USER_PROMPT =
+  'Output the compression summary now. Follow the system message template exactly; do not call tools or ask questions.';
+
 function buildCompactHistorySystemPromptCore(includeArchiveSection: boolean): string {
   const hardRequirements = [
     '1. Output must strictly follow the section titles, order, and hierarchy in the output template; do not add, remove, or rename sections.',
-    '2. The [User Messages] section must include every user message from the input conversation: one message per line, in order of appearance, preserving original wording; do not omit, merge, paraphrase, or rewrite. You may append [images attached] / [videos attached] annotations only when a message is extremely long.',
+    '2. The [User Messages] section must include every user message from the conversation above: one message per line, in order of appearance, preserving original wording; do not omit, merge, paraphrase, or rewrite. You may append [images attached] / [videos attached] annotations only when a message is extremely long.',
     '3. For sections other than [User Messages], summarize in concise bullet points, preserving decision rationale and verifiable details; avoid vague repetition.',
     '4. Omit small talk, thanks, repeated explanations, and low-information back-and-forth confirmations.',
     '5. Output only the summary body; do not wrap it in markdown code fences; do not add explanations, preambles, or closings.',
@@ -91,7 +92,7 @@ function buildCompactHistorySystemPromptCore(includeArchiveSection: boolean): st
   ];
 
   return [
-    'Compress the following conversation into a reusable system summary for later turns.',
+    'Compress the conversation in the messages that follow into a reusable system summary for later turns.',
     '',
     'Hard requirements:',
     ...hardRequirements,
@@ -127,34 +128,47 @@ export function buildCompactHistorySystemPrompt(preCompactionArchivePath?: strin
 
 export const COMPACT_HISTORY_SYSTEM_PROMPT = buildCompactHistorySystemPrompt();
 
-export function buildCompactHistoryUserPrompt(history: LlmMessage[]): string {
-  return history
-    .map((message) => {
-      const text = llmMessageTextContent(message.content);
-      const mediaNote = llmMessageHasImages(message.content)
-        ? '\n[images attached]'
-        : llmMessageHasVideos(message.content)
-          ? '\n[videos attached]'
-          : '';
-      return `${message.role.toUpperCase()}: ${text}${mediaNote}`;
-    })
-    .join('\n\n');
-}
-
 export interface BuildCompactHistoryPromptMessagesOptions {
   preCompactionArchivePath?: string;
 }
 
+function cloneLlmHistoryMessages(history: readonly LlmMessage[]): LlmMessage[] {
+  return history.map((message) => ({
+    role: message.role,
+    content: cloneLlmMessageContent(message.content),
+    ...(message.toolCallId !== undefined ? { toolCallId: message.toolCallId } : {}),
+    ...(message.toolCalls !== undefined
+      ? {
+          toolCalls: message.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.name,
+            argumentsJson: toolCall.argumentsJson,
+          })),
+        }
+      : {}),
+    ...(message.providerState !== undefined
+      ? { providerState: cloneLlmProviderState(message.providerState) }
+      : {}),
+  }));
+}
+
+/** Compaction request: instruction system + native history + trigger user (no flattened replay). */
 export function buildCompactHistoryPromptMessages(
   history: LlmMessage[],
   options: BuildCompactHistoryPromptMessagesOptions = {},
-): Array<{ role: 'system' | 'user'; content: string }> {
+): LlmMessage[] {
   return [
     {
       role: 'system',
-      content: buildCompactHistorySystemPrompt(options.preCompactionArchivePath),
+      content: createLlmMessageContentFromText(
+        buildCompactHistorySystemPrompt(options.preCompactionArchivePath),
+      ),
     },
-    { role: 'user', content: buildCompactHistoryUserPrompt(history) },
+    ...cloneLlmHistoryMessages(history),
+    {
+      role: 'user',
+      content: createLlmMessageContentFromText(COMPACT_HISTORY_TRIGGER_USER_PROMPT),
+    },
   ];
 }
 

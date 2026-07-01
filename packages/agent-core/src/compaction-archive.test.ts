@@ -6,6 +6,7 @@ import { wrapCompactSummaryBlock } from './llm-context-block.js';
 import {
   buildCompactHistorySystemPrompt,
   buildCompactHistoryPromptMessages,
+  COMPACT_HISTORY_TRIGGER_USER_PROMPT,
 } from './tool-agent.js';
 import { createLlmMessageContentFromText } from './ports.js';
 
@@ -74,14 +75,31 @@ test('buildCompactHistorySystemPrompt includes filled archive section example wh
   assert.match(prompt, /Do not output only the path/);
 });
 
-test('buildCompactHistoryPromptMessages forwards archive path into system prompt', () => {
-  const messages = buildCompactHistoryPromptMessages(
-    [{ role: 'user', content: createLlmMessageContentFromText('hi') }],
-    { preCompactionArchivePath: '/tmp/archive.json' },
-  );
+test('buildCompactHistoryPromptMessages uses native history instead of flattened replay', () => {
+  const history = [
+    { role: 'user' as const, content: createLlmMessageContentFromText('hi') },
+    {
+      role: 'assistant' as const,
+      content: [],
+      toolCalls: [{ id: 'call-1', name: 'read_file', argumentsJson: '{}' }],
+    },
+    {
+      role: 'tool' as const,
+      toolCallId: 'call-1',
+      content: createLlmMessageContentFromText('file contents'),
+    },
+  ];
+  const messages = buildCompactHistoryPromptMessages(history, {
+    preCompactionArchivePath: '/tmp/archive.json',
+  });
 
+  assert.equal(messages.length, 5);
   assert.equal(messages[0]?.role, 'system');
-  assert.match(messages[0]?.content ?? '', /\/tmp\/archive\.json/);
-  assert.equal(messages[1]?.role, 'user');
-  assert.match(messages[1]?.content ?? '', /USER: hi/);
+  assert.match(messages[0]?.content[0]?.type === 'text' ? messages[0].content[0].text : '', /\/tmp\/archive\.json/);
+  assert.deepEqual(messages.slice(1, 4), history);
+  assert.equal(messages[4]?.role, 'user');
+  assert.equal(
+    messages[4]?.content[0]?.type === 'text' ? messages[4].content[0].text : '',
+    COMPACT_HISTORY_TRIGGER_USER_PROMPT,
+  );
 });

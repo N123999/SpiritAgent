@@ -419,11 +419,13 @@ export class AiSdkOpenResponsesTransport
     }
 
     const promptMessages = openAiMessagesToResponsesAiSdkMessages(
-      buildCompactHistoryPromptMessages(history, {
-        ...(context?.preCompactionArchivePath === undefined
-          ? {}
-          : { preCompactionArchivePath: context.preCompactionArchivePath }),
-      }),
+      llmHistoryToOpenAiMessages(
+        buildCompactHistoryPromptMessages(history, {
+          ...(context?.preCompactionArchivePath === undefined
+            ? {}
+            : { preCompactionArchivePath: context.preCompactionArchivePath }),
+        }),
+      ),
     );
     const compactConfig: OpenResponsesTransportConfig = {
       ...config,
