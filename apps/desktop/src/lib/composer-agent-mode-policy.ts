@@ -4,6 +4,7 @@ import { emptySegments, hasSkillSegment, isComposerPlainEmpty, mergeAdjacentText
 import { hasInlineAttachmentChipSegments } from "@/lib/composer-inline-chip-dom";
 import { hasLoopSegment } from "@/lib/composer-loop-segments";
 import {
+  currentAgentModeSegment,
   hasAgentModeSegment,
   insertAgentModeSegment,
   isAgentModeChipKind,
@@ -51,6 +52,28 @@ export function composerShowsPlaceholder(
     return false;
   }
   return isComposerPlainEmpty(segmentsToPlainText(segs));
+}
+
+/** Chip 插入时尾部的 lone spacer；用户再输入空白或非空字符即视为已开始编辑。 */
+function isAgentModeChipPlaceholderBaselinePlain(plain: string): boolean {
+  return plain === "" || plain === " ";
+}
+
+export function composerShowsAgentModeChipPlaceholder(
+  segs: RichSegment[],
+  opts: { composing: boolean; attachmentCount: number },
+): boolean {
+  if (opts.composing || opts.attachmentCount > 0) {
+    return false;
+  }
+  if (!currentAgentModeSegment(segs)) {
+    return false;
+  }
+  const plain = segmentsToPlainText(segs);
+  if (!isAgentModeChipPlaceholderBaselinePlain(plain)) {
+    return false;
+  }
+  return isComposerPlainEmpty(plain);
 }
 
 export function buildSegmentsAfterSend(agentMode: DesktopAgentMode): RichSegment[] {

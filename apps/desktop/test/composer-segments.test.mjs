@@ -46,6 +46,7 @@ import {
 } from "../src/lib/composer-agent-mode-segments.ts";
 import {
   applyAgentModeChipPolicy,
+  composerShowsAgentModeChipPlaceholder,
   composerShowsPlaceholder,
   domParsedMissingRequiredAgentChip,
   shouldPinAgentModeChip,
@@ -742,6 +743,75 @@ test("applyAgentModeChipPolicy removes chip when dismissed", () => {
 test("composerShowsPlaceholder false when ask chip present", () => {
   assert.equal(
     composerShowsPlaceholder([{ kind: "ask" }, { kind: "text", value: " " }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    false,
+  );
+});
+
+test("composerShowsAgentModeChipPlaceholder true for pinned ask chip with empty text", () => {
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "ask" }, { kind: "text", value: " " }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    true,
+  );
+});
+
+test("composerShowsAgentModeChipPlaceholder true for plan and debug chips", () => {
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "plan" }, { kind: "text", value: "" }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    true,
+  );
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "debug" }, { kind: "text", value: " " }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    true,
+  );
+});
+
+test("composerShowsAgentModeChipPlaceholder false when user typed text", () => {
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "plan" }, { kind: "text", value: "hello" }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    false,
+  );
+});
+
+test("composerShowsAgentModeChipPlaceholder false when user typed extra whitespace", () => {
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "debug" }, { kind: "text", value: "  " }], {
+      composing: false,
+      attachmentCount: 0,
+    }),
+    false,
+  );
+});
+
+test("composerShowsAgentModeChipPlaceholder false while composing or with attachments", () => {
+  const segs = [{ kind: "ask" }, { kind: "text", value: " " }];
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder(segs, { composing: true, attachmentCount: 0 }),
+    false,
+  );
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder(segs, { composing: false, attachmentCount: 1 }),
+    false,
+  );
+});
+
+test("composerShowsAgentModeChipPlaceholder false without agent mode chip", () => {
+  assert.equal(
+    composerShowsAgentModeChipPlaceholder([{ kind: "loop" }, { kind: "text", value: " " }], {
       composing: false,
       attachmentCount: 0,
     }),
