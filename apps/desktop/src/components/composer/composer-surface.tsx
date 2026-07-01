@@ -59,6 +59,7 @@ export type ComposerSurfaceProps = {
   agentMode: DesktopAgentMode;
   loopEnabled: boolean;
   canSend: boolean;
+  hasComposerPayload?: boolean;
   canAbort?: boolean;
   busy: boolean;
   readOnly?: boolean;
@@ -102,6 +103,7 @@ export function ComposerSurface({
   agentMode,
   loopEnabled = false,
   canSend,
+  hasComposerPayload,
   canAbort = false,
   busy,
   readOnly = false,
@@ -265,10 +267,11 @@ export function ComposerSurface({
             />
           </div>
           {(() => {
-            const hasComposerPayload =
-              value.trim().length > 0 || localFileAttachments.length > 0;
-            const showAbortButton = canAbort && Boolean(onAbort) && !hasComposerPayload;
-            const showEnqueueWhileBusy = canAbort && hasComposerPayload;
+            const resolvedHasComposerPayload =
+              hasComposerPayload
+              ?? (value.trim().length > 0 || localFileAttachments.length > 0);
+            const showAbortButton = canAbort && Boolean(onAbort) && !resolvedHasComposerPayload;
+            const showEnqueueWhileBusy = canAbort && resolvedHasComposerPayload;
             const sendDisabled = showAbortButton ? false : !canSend || (busy && !canAbort);
             const actionAriaLabel = showAbortButton
               ? t("app.abort")

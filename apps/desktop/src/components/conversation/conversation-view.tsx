@@ -107,6 +107,7 @@ export type ComposerDockSectionProps = {
   composerCursorCodeUnits: number;
   composerPlaceholder: string;
   composerCanSend: boolean;
+  composerHasPayload: boolean;
   conversationInterruptible: boolean;
   composerBrowserElementAttachments: BrowserElementAttachment[];
   onComposerBrowserElementAttachmentsChange: (attachments: BrowserElementAttachment[]) => void;
@@ -379,6 +380,7 @@ export function ConversationView({
             composerCursorCodeUnits={composerDock.composerCursorCodeUnits}
             composerPlaceholder={composerDock.composerPlaceholder}
             composerCanSend={composerDock.composerCanSend}
+            composerHasPayload={composerDock.composerHasPayload}
             conversationInterruptible={composerDock.conversationInterruptible}
             continueBusy={list.continueBusy}
             composerBrowserElementAttachments={composerDock.composerBrowserElementAttachments}

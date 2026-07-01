@@ -104,3 +104,29 @@ test("slash and file-reference queries target different caret tokens", () => {
 test("buildSkillSlashSuggestions returns empty for undefined query", () => {
   assert.deepEqual(buildSkillSlashSuggestions(undefined, []), []);
 });
+
+test("isCompactSlashComposerSegments matches chip-only compact composer", async () => {
+  const {
+    COMPACT_SLASH_ALIAS,
+    isCompactSlashComposerRequest,
+    isCompactSlashComposerSegments,
+  } = await import("../src/lib/skill-slash.ts");
+  const { skillContextText } = await import("../src/lib/skill-wire-text.ts");
+
+  assert.equal(
+    isCompactSlashComposerSegments([{ kind: "skill", alias: COMPACT_SLASH_ALIAS }]),
+    true,
+  );
+  assert.equal(
+    isCompactSlashComposerSegments([
+      { kind: "skill", alias: COMPACT_SLASH_ALIAS },
+      { kind: "text", value: " extra" },
+    ]),
+    false,
+  );
+  assert.equal(isCompactSlashComposerRequest(COMPACT_SLASH_ALIAS, []), true);
+  assert.equal(
+    isCompactSlashComposerRequest(skillContextText(COMPACT_SLASH_ALIAS), [COMPACT_SLASH_ALIAS]),
+    true,
+  );
+});
