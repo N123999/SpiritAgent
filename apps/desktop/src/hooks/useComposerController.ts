@@ -41,8 +41,10 @@ import {
 } from "@/lib/action-palette";
 import {
   buildSkillSlashSuggestions,
+  COMPACT_SLASH_ALIAS,
   currentSkillSlashQueryAtCursor,
   FORK_SLASH_ALIAS,
+  isCompactSlashComposerSegments,
   skillSlashAlias,
   skillSlashQueryKey,
   type SkillSlashSuggestion,
@@ -148,8 +150,19 @@ export function useComposerController({
     runtime.busyAction !== "rewind" &&
     runtime.busyAction !== "session";
 
-  const composerHasPayload =
-    Boolean(runtime.composer.trim()) || runtime.composerLocalFileAttachments.length > 0;
+  const composerHasPayload = useMemo(() => {
+    void composerSegmentsRevision;
+    const segments = composerRichInputRef.current?.getSegments() ?? [];
+    return (
+      Boolean(runtime.composer.trim())
+      || runtime.composerLocalFileAttachments.length > 0
+      || isCompactSlashComposerSegments(segments)
+    );
+  }, [
+    composerSegmentsRevision,
+    runtime.composer,
+    runtime.composerLocalFileAttachments.length,
+  ]);
 
   const composerCanSend =
     !compactionDemoActive &&
@@ -415,14 +428,16 @@ export function useComposerController({
         applyForkSlash();
         return;
       }
-      if (suggestion.kind === "skill") {
+      if (suggestion.kind === "skill" || suggestion.kind === "compact") {
         setSlashSelectedIndex(-1);
         setDismissedSlashQueryKey(null);
         if (slashQuery) {
           composerRichInputRef.current?.removeSkillSlashQuery(slashQuery);
         }
         queueMicrotask(() => {
-          composerRichInputRef.current?.insertSkillChip(suggestion.alias);
+          composerRichInputRef.current?.insertSkillChip(
+            suggestion.kind === "compact" ? COMPACT_SLASH_ALIAS : suggestion.alias,
+          );
         });
         return;
       }
@@ -1032,6 +1047,7 @@ export function useComposerController({
     workspaceFileIndex,
     composerPlaceholder,
     composerCanSend,
+    composerHasPayload,
     messageRewindComposerEnabled,
     commitBusy,
     gitChipBusy,

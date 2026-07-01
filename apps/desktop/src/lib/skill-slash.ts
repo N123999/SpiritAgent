@@ -3,7 +3,12 @@ import {
   codeUnitIndexToCharCount,
 } from '@spirit-agent/host-internal/workspace-file-reference-query'
 
+import type { RichSegment } from '@/lib/composer-segment-model'
+import { isComposerPlainEmpty } from '@/lib/composer-segment-model'
+import { skillContextText } from '@/lib/skill-wire-text'
 import type { DesktopSkillListItem } from '@/types'
+
+const COMPACT_COMPOSER_STRUCTURAL_KINDS = new Set(['loop', 'plan', 'ask', 'debug'])
 
 export type SkillSlashSuggestionKind =
   | 'log-session'
@@ -221,6 +226,49 @@ export function isLogSessionSlashInput(input: string): boolean {
 
 export function isCompactSlashInput(input: string): boolean {
   return input.trim() === COMPACT_SLASH_ALIAS
+}
+
+/** Composer holds only a `/compact` skill chip (no extra text or attachments). */
+export function isCompactSlashComposerSegments(segs: readonly RichSegment[]): boolean {
+  let compactSkill = false
+  let hasOtherContent = false
+
+  for (const seg of segs) {
+    if (COMPACT_COMPOSER_STRUCTURAL_KINDS.has(seg.kind)) {
+      continue
+    }
+    if (seg.kind === 'skill') {
+      if (seg.alias === COMPACT_SLASH_ALIAS) {
+        compactSkill = true
+      } else {
+        hasOtherContent = true
+      }
+      continue
+    }
+    if (seg.kind === 'text') {
+      if (!isComposerPlainEmpty(seg.value)) {
+        hasOtherContent = true
+      }
+      continue
+    }
+    hasOtherContent = true
+  }
+
+  return compactSkill && !hasOtherContent
+}
+
+export function isCompactSlashComposerRequest(
+  text: string,
+  skillChipAliases: readonly string[] = [],
+): boolean {
+  if (isCompactSlashInput(text)) {
+    return true
+  }
+  return (
+    skillChipAliases.length === 1
+    && skillChipAliases[0] === COMPACT_SLASH_ALIAS
+    && text.trim() === skillContextText(COMPACT_SLASH_ALIAS).trim()
+  )
 }
 
 export function isLoopSlashInput(input: string): boolean {

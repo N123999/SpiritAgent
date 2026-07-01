@@ -15,7 +15,7 @@ import {
   type ComposerLocalFileAttachmentView,
 } from "@/lib/local-file-attachments";
 import {
-  isCompactSlashInput,
+  isCompactSlashComposerRequest,
   isLogSessionSlashInput,
 } from "@/lib/skill-slash";
 import type { DesktopAgentMode } from "@/lib/agent-mode";
@@ -1980,7 +1980,7 @@ export function useDesktopRuntime() {
         setBusyAction("");
       }
     }
-    if (isCompactSlashInput(text)) {
+    if (isCompactSlashComposerRequest(text, skillChipAliases)) {
       if (hasLocalFiles) {
         setRuntimeError(i18n.t('error.attachmentsNotSupportedWithSlash'));
         return false;

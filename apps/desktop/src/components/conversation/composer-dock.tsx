@@ -72,6 +72,7 @@ export type ComposerDockProps = {
   composerCursorCodeUnits: number;
   composerPlaceholder: string;
   composerCanSend: boolean;
+  composerHasPayload: boolean;
   conversationInterruptible: boolean;
   continueBusy: boolean;
   composerBrowserElementAttachments: BrowserElementAttachment[];
@@ -122,6 +123,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     composerCursorCodeUnits,
     composerPlaceholder,
     composerCanSend,
+    composerHasPayload,
     conversationInterruptible,
     continueBusy,
     composerBrowserElementAttachments,
@@ -362,6 +364,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                   }
                 }}
                 canSend={composerCanSend}
+                hasComposerPayload={composerHasPayload}
                 canAbort={conversationInterruptible}
                 busy={runtime.busyAction === "send"}
                 conversationBusy={continueBusy}

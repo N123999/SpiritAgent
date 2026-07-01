@@ -590,6 +590,7 @@ export default function App() {
               composerCursorCodeUnits: composer.composerCursorCodeUnits,
               composerPlaceholder: composer.composerPlaceholder,
               composerCanSend: composer.composerCanSend,
+              composerHasPayload: composer.composerHasPayload,
               conversationInterruptible: conversation.conversationInterruptible,
               composerBrowserElementAttachments: composer.composerBrowserElementAttachments,
               onComposerBrowserElementAttachmentsChange: composer.setComposerBrowserElementAttachments,
