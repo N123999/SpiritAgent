@@ -89,6 +89,7 @@ type Props = {
   /** One-shot hydrate (e.g. message rewind); ignored after first apply per mount. */
   initialSegments?: readonly RichSegment[] | null;
   placeholder?: string;
+  agentModeChipPlaceholder?: string;
   readOnly?: boolean;
   className?: string;
   loopEnabled?: boolean;
@@ -169,6 +170,7 @@ export const ComposerRichInput = forwardRef<ComposerRichInputHandle, Props>(
       elementAttachments,
       initialSegments,
       placeholder,
+      agentModeChipPlaceholder,
       readOnly,
       className,
       loopEnabled = false,

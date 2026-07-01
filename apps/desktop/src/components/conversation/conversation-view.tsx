@@ -106,6 +106,7 @@ export type ComposerDockSectionProps = {
   onDismissSlashSuggestions: () => void;
   composerCursorCodeUnits: number;
   composerPlaceholder: string;
+  composerAgentModeChipPlaceholder?: string;
   composerCanSend: boolean;
   composerHasPayload: boolean;
   conversationInterruptible: boolean;
@@ -379,6 +380,7 @@ export function ConversationView({
             onDismissSlashSuggestions={composerDock.onDismissSlashSuggestions}
             composerCursorCodeUnits={composerDock.composerCursorCodeUnits}
             composerPlaceholder={composerDock.composerPlaceholder}
+            composerAgentModeChipPlaceholder={composerDock.composerAgentModeChipPlaceholder}
             composerCanSend={composerDock.composerCanSend}
             composerHasPayload={composerDock.composerHasPayload}
             conversationInterruptible={composerDock.conversationInterruptible}

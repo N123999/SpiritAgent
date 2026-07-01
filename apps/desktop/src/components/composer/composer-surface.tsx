@@ -53,6 +53,7 @@ export type ComposerSurfaceProps = {
   value: string;
   localFileAttachments: readonly ComposerLocalFileAttachmentView[];
   placeholder: string;
+  agentModeChipPlaceholder?: string;
   models: DesktopSnapshot["config"]["models"];
   catalogHints?: DesktopSnapshot["config"]["modelCatalogHints"];
   activeModel: string;
@@ -97,6 +98,7 @@ export function ComposerSurface({
   value,
   localFileAttachments,
   placeholder,
+  agentModeChipPlaceholder,
   models,
   catalogHints,
   activeModel,
@@ -204,6 +206,7 @@ export function ComposerSurface({
         elementAttachments={browserElementAttachments}
         initialSegments={initialSegments}
         placeholder={placeholder}
+        agentModeChipPlaceholder={agentModeChipPlaceholder}
         readOnly={readOnly}
         loopEnabled={loopEnabled}
         loopChipLabel={t('composer.loopChipLabel')}
