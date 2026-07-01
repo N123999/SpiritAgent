@@ -2417,7 +2417,7 @@ export class AgentRuntime<
 
     this.emitEvent({
       kind: 'replace-pending-assistant',
-      text: `LLM 调用失败: ${result.error}`,
+      text: result.error,
     });
     this.emitEvent({ kind: 'assistant-response-completed' });
   }

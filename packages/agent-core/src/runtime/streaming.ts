@@ -622,10 +622,10 @@ export async function handlePendingStreamEvent<
   if (!runtime.pendingAssistantTextStore.trim()) {
     runtime.emitEvent({
       kind: 'replace-pending-assistant',
-      text: `LLM 调用失败: ${event.error}`,
+      text: event.error,
     });
   } else {
-    const suffix = `\n\n[Error] ${event.error}`;
+    const suffix = `\n\n${event.error}`;
     runtime.pendingAssistantTextStore += suffix;
     runtime.emitEvent({
       kind: 'assistant-chunk',
@@ -689,7 +689,7 @@ export async function handlePendingStreamingCompletion<
     if (!runtime.pendingAssistantTextStore.trim()) {
       runtime.emitEvent({
         kind: 'replace-pending-assistant',
-        text: `LLM 调用失败: ${completion.error}`,
+        text: completion.error,
       });
     }
     runtime.pendingUserTurnStore = undefined;

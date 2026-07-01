@@ -943,6 +943,36 @@ test('Moonshot Formula web_search tool-execution-finished preserves preview supp
   assert.equal(tool?.argsExcerpt, 'DeepSeek 是什么');
 });
 
+test('failed llm turn reuses streamed error text instead of duplicating assistant rows', () => {
+  const harness = createHarness();
+  const error = 'Insufficient Balance';
+  harness.pushUser('hello');
+
+  harness.orchestrator.applyRuntimeHostEvents([
+    { kind: 'begin-assistant-response' },
+    { kind: 'replace-pending-assistant', text: error },
+    { kind: 'assistant-response-completed' },
+  ]);
+  harness.setCompletedTurnResult({
+    kind: 'failed',
+    error,
+    requestTrace: [],
+    toolExecutions: [],
+    compactions: [],
+  });
+  harness.orchestrator.consumeCompletedTurnResult();
+
+  const assistantMessages = harness
+    .messages()
+    .filter((message) => message.role === 'assistant' && !message.tool);
+  assert.equal(assistantMessages.length, 1);
+  assert.equal(assistantMessages[0]?.content, error);
+  assert.deepEqual(
+    visibleRowTokens(harness.timeline.toMessages()).filter((token) => token.startsWith('assistant:')),
+    [`assistant:${error}`],
+  );
+});
+
 function createContextUsageHarness(options = {}) {
   let messages = [];
   let nextMessageId = 1;
