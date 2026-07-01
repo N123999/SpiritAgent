@@ -21,6 +21,10 @@ export function tryHandleDesktopWorkspaceLink(
   handlers: DesktopWorkspaceLinkHandlers,
   options?: TryHandleDesktopWorkspaceLinkOptions,
 ): boolean {
+  if (href.trim().startsWith("#")) {
+    return false;
+  }
+
   if (
     tryHandleGitHubPullRequestMarkdownLink(href, handlers.openPullRequestInPrTab, {
       interceptInApp: options?.interceptPrInApp,

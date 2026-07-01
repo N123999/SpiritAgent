@@ -68,3 +68,18 @@ test('tryHandleDesktopWorkspaceLink ignores http(s) URLs on web host', () => {
   assert.equal(handled, false);
   assert.deepEqual(openedBrowser, []);
 });
+
+test('tryHandleDesktopWorkspaceLink ignores fragment-only hrefs', () => {
+  const openedBrowser = [];
+  const handled = tryHandleDesktopWorkspaceLink(
+    '#desktop',
+    {
+      openPullRequestInPrTab: () => {},
+      openBrowserUrlInNewTab: (url) => openedBrowser.push(url),
+    },
+    { hostKind: 'electron', interceptPrInApp: true },
+  );
+
+  assert.equal(handled, false);
+  assert.deepEqual(openedBrowser, []);
+});

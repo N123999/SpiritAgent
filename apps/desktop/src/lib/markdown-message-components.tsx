@@ -12,6 +12,11 @@ import { MarkdownImage, type ReadManagedImagePreviewDataUrl } from "@/components
 import { MarkdownVideo, type ReadManagedVideoPreviewUrl } from "@/components/markdown-video";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { WorkspaceMarkdownLinkClickHandler } from "@/components/workspace-markdown-link-context";
+import {
+  isMarkdownFragmentHref,
+  scrollMarkdownFragmentIntoView,
+} from "@/lib/markdown-fragment-link";
+import { slugifyMarkdownHeadingChildren } from "@/lib/markdown-heading-slug";
 import { cn } from "@/lib/utils";
 
 export type MarkdownTone = "default" | "muted";
@@ -47,8 +52,9 @@ export function createMarkdownMessageComponents(
       : "text-foreground/95";
 
   return {
-    h1: ({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    h1: ({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
       <h1
+        id={slugifyMarkdownHeadingChildren(children)}
         className={cn(
           compact
             ? "mt-2 mb-1.5 text-sm font-semibold tracking-tight first:mt-0"
@@ -59,10 +65,13 @@ export function createMarkdownMessageComponents(
           className,
         )}
         {...props}
-      />
+      >
+        {children}
+      </h1>
     ),
-    h2: ({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    h2: ({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
       <h2
+        id={slugifyMarkdownHeadingChildren(children)}
         className={cn(
           compact
             ? "mt-2 mb-1 text-xs font-semibold tracking-tight first:mt-0"
@@ -73,19 +82,27 @@ export function createMarkdownMessageComponents(
           className,
         )}
         {...props}
-      />
+      >
+        {children}
+      </h2>
     ),
-    h3: ({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    h3: ({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
       <h3
+        id={slugifyMarkdownHeadingChildren(children)}
         className={cn("mt-2 mb-1 text-sm font-semibold first:mt-0", headingText, className)}
         {...props}
-      />
+      >
+        {children}
+      </h3>
     ),
-    h4: ({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
+    h4: ({ className, children, ...props }: HTMLAttributes<HTMLHeadingElement>) => (
       <h4
+        id={slugifyMarkdownHeadingChildren(children)}
         className={cn("mt-2 mb-1 text-sm font-medium first:mt-0", headingText, className)}
         {...props}
-      />
+      >
+        {children}
+      </h4>
     ),
     p: ({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) => (
       <p className={cn("mb-2 last:mb-0", bodyText, className)} {...props} />
@@ -114,7 +131,10 @@ export function createMarkdownMessageComponents(
     hr: ({ className, ...props }: HTMLAttributes<HTMLHRElement>) => (
       <hr className={cn("my-4 border-border/60", className)} {...props} />
     ),
-    a: ({ className, href, children, onClick, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    a: ({ className, href, children, onClick, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+      const hrefValue = href?.trim() ?? "";
+      const isFragmentLink = isMarkdownFragmentHref(hrefValue);
+      return (
       <a
         className={cn(
           muted
@@ -123,11 +143,15 @@ export function createMarkdownMessageComponents(
           className,
         )}
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        target={isFragmentLink ? undefined : "_blank"}
+        rel={isFragmentLink ? undefined : "noopener noreferrer"}
         onClick={(event: MouseEvent<HTMLAnchorElement>) => {
           onClick?.(event);
-          const hrefValue = href?.trim();
+          if (isFragmentLink) {
+            event.preventDefault();
+            scrollMarkdownFragmentIntoView(hrefValue, event.currentTarget);
+            return;
+          }
           if (hrefValue && onLinkClick?.(hrefValue, event)) {
             event.preventDefault();
           }
@@ -136,7 +160,8 @@ export function createMarkdownMessageComponents(
       >
         {children}
       </a>
-    ),
+      );
+    },
     strong: ({ className, ...props }: HTMLAttributes<HTMLElement>) => (
       <strong
         className={cn("font-semibold", muted ? "text-muted-foreground" : "text-foreground", className)}

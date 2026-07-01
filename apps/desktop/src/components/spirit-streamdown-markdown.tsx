@@ -107,6 +107,7 @@ export function SpiritStreamdownMarkdown({
 
   return (
     <Streamdown
+      data-spirit-markdown-root
       className={markdownMessageRootClassName(tone, className, size)}
       mode={streaming ? "streaming" : "static"}
       plugins={streamdownPlugins}
