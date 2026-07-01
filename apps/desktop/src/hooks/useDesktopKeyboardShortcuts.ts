@@ -251,6 +251,15 @@ export function useDesktopKeyboardShortcuts({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        document
+          .querySelector('[data-spirit-surface="workspace-image-preview"]')
+          ?.contains(target)
+      ) {
+        return;
+      }
       const action = resolveUiLayoutZoomShortcutAction({
         defaultPrevented: event.defaultPrevented,
         modPressed: isModShortcutPressed(event),

@@ -416,6 +416,7 @@ export function ConversationView({
           readHostTextFile={list.runtime.readHostTextFile}
           writeHostTextFile={list.runtime.writeHostTextFile}
           readManagedImagePreviewDataUrl={list.runtime.readManagedImagePreviewDataUrl}
+          readLocalImagePreviewDataUrl={list.runtime.readLocalImagePreviewDataUrl}
           plan={snapshot?.plan ?? { path: "", exists: false }}
           onStartImplementing={() => {
             composerDock.onComposerAgentModeChange("agent");

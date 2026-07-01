@@ -10,6 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+import {
+  WorkspaceImagePreviewPane,
+  type WorkspaceImagePreviewState,
+} from "@/components/workspace-image-preview-pane";
 import { WorkspaceFilesPanel } from "@/components/workspace-files-panel";
 import { WorkspaceFilesSearchPanel } from "@/components/workspace-files-search-panel";
 import {
@@ -33,8 +37,10 @@ import {
 import { useWorkspaceToolsShellHorizontalDivider } from "@/lib/use-workspace-tools-shell-horizontal-divider";
 import { useHostApi } from "@/hooks/useHostApi";
 import { FILES_EXPLORER_TOOLBAR_SHELL_DIVIDER_ATTR } from "@/lib/workspace-tools-panel-edge";
+import type { ReadLocalImagePreview } from "@/components/tool-call/tool-call-types";
 import {
   isUnderWorkspaceEntryPath,
+  joinWorkspaceAbsolutePath,
   remapWorkspaceEntryPath,
   normalizeWorkspaceEntryRel,
 } from "@/lib/workspace-entry-path-sync";
@@ -67,6 +73,14 @@ type LoadedDoc =
   | { status: "loading"; readOnly: boolean; title: string; subtitle: string }
   | { status: "ready"; text: string; readOnly: boolean; title: string; subtitle: string }
   | { status: "binary"; readOnly: boolean; title: string; subtitle: string }
+  | {
+      status: "image";
+      readOnly: boolean;
+      title: string;
+      subtitle: string;
+      absolutePath: string;
+      mimeType: string;
+    }
   | { status: "error"; message: string; readOnly: boolean; title: string; subtitle: string }
   | { status: "empty"; message: string; readOnly: boolean; title: string; subtitle: string };
 
@@ -265,6 +279,7 @@ export type WorkspaceFilesTabProps = {
   readHostTextFile: (absolutePath: string) => Promise<WorkspaceReadTextFileResult>;
   writeHostTextFile: (request: WriteHostTextFileRequest) => Promise<void>;
   readManagedImagePreviewDataUrl?: (reference: string) => Promise<string | null>;
+  readLocalImagePreviewDataUrl?: ReadLocalImagePreview;
   onStartImplementing?: () => void;
   startImplementingDisabled?: boolean;
   autoRevealPlanNonce?: number;
@@ -315,6 +330,7 @@ export function WorkspaceFilesTab({
   readHostTextFile,
   writeHostTextFile,
   readManagedImagePreviewDataUrl,
+  readLocalImagePreviewDataUrl,
   onStartImplementing,
   startImplementingDisabled = false,
   autoRevealPlanNonce = 0,
@@ -345,6 +361,8 @@ export function WorkspaceFilesTab({
   type MonacoEditor = Monaco.editor.IStandaloneCodeEditor;
   const [selectedEntry, setSelectedEntry] = useState<SelectedEntry>(null);
   const [doc, setDoc] = useState<LoadedDoc | null>(null);
+  const [imagePreviewDataUrl, setImagePreviewDataUrl] = useState<string | null>(null);
+  const [imagePreviewState, setImagePreviewState] = useState<WorkspaceImagePreviewState>("loading");
   const [saveError, setSaveError] = useState("");
   const [draftText, setDraftText] = useState("");
   const [savedText, setSavedText] = useState("");
@@ -629,6 +647,23 @@ export function WorkspaceFilesTab({
     void readFile(filePath)
       .then((r) => {
         if (!cancelled) {
+          if (r.image) {
+            const absolutePath =
+              selectedEntry.kind === "external"
+                ? selectedEntry.absolutePath
+                : joinWorkspaceAbsolutePath(workspaceRoot, selectedEntry.relativePath);
+            setDraftText("");
+            setSavedText("");
+            setDoc({
+              status: "image",
+              readOnly: true,
+              title: pathBasename(filePath),
+              subtitle: filePath,
+              absolutePath,
+              mimeType: r.image.mimeType,
+            });
+            return;
+          }
           if (r.binary) {
             setDraftText("");
             setSavedText("");
@@ -675,7 +710,42 @@ export function WorkspaceFilesTab({
     readWorkspaceTextFile,
     selectedEntry,
     selectedPath,
+    workspaceRoot,
   ]);
+
+  useEffect(() => {
+    if (doc?.status !== "image") {
+      setImagePreviewDataUrl(null);
+      setImagePreviewState("loading");
+      return;
+    }
+    if (!readLocalImagePreviewDataUrl) {
+      setImagePreviewDataUrl(null);
+      setImagePreviewState("unavailable");
+      return;
+    }
+
+    let cancelled = false;
+    setImagePreviewDataUrl(null);
+    setImagePreviewState("loading");
+    void readLocalImagePreviewDataUrl(doc.absolutePath)
+      .then((dataUrl) => {
+        if (cancelled) {
+          return;
+        }
+        setImagePreviewDataUrl(dataUrl);
+        setImagePreviewState(dataUrl ? "ready" : "unavailable");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setImagePreviewDataUrl(null);
+          setImagePreviewState("unavailable");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, readLocalImagePreviewDataUrl]);
 
   const persistEditorText = useCallback(
     async (text: string) => {
@@ -1034,6 +1104,13 @@ export function WorkspaceFilesTab({
               <div className="flex h-full items-center justify-center p-4 text-center text-xs leading-relaxed text-muted-foreground">
                 {t("workspace.binaryFileNotSupported")}
               </div>
+            ) : doc?.status === "image" ? (
+              <WorkspaceImagePreviewPane
+                className={desktopMicaFileDetailSurfaceClass(useMicaBackdrop)}
+                previewState={imagePreviewState}
+                previewDataUrl={imagePreviewDataUrl}
+                fileLabel={doc.title}
+              />
             ) : doc?.status === "ready" ? (
               isPreviewVisible ? (
                 <>

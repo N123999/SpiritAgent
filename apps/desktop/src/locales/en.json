@@ -712,6 +712,7 @@
     "startImplementing": "Start Implementing",
     "emptyMarkdownDoc": "Current Markdown document is empty.",
     "binaryFileNotSupported": "Binary file not supported",
+    "imagePreviewUnavailable": "Unable to preview this image",
     "connectToShowFiles": "Connect to a workspace to show the file tree",
     "fileList": "File List",
     "fileExplorerToolbar": "File explorer toolbar",
