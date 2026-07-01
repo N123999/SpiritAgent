@@ -23,6 +23,7 @@ const WEBP_HEADER = Uint8Array.from([
 test('hasSupportedImageExtension recognizes read_file image extensions', () => {
   assert.equal(hasSupportedImageExtension('assets/icon.png'), true);
   assert.equal(hasSupportedImageExtension('photo.JPG'), true);
+  assert.equal(hasSupportedImageExtension('public/favicon.ico'), true);
   assert.equal(hasSupportedImageExtension('notes.txt'), false);
   assert.equal(hasSupportedImageExtension('vector.svg'), false);
 });
@@ -42,6 +43,14 @@ test('detectSupportedImageFile validates gif and webp signatures', () => {
   assert.deepEqual(detectSupportedImageFile('photo.webp', WEBP_HEADER), {
     extension: '.webp',
     mimeType: 'image/webp',
+  });
+});
+
+test('detectSupportedImageFile validates ico signature', () => {
+  const icoHeader = Uint8Array.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]);
+  assert.deepEqual(detectSupportedImageFile('favicon.ico', icoHeader), {
+    extension: '.ico',
+    mimeType: 'image/x-icon',
   });
 });
 

@@ -77,6 +77,22 @@ test('readHostTextFile returns binary for image extension with invalid signature
   }
 });
 
+test('readHostTextFile returns image metadata for validated ico files', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'spirit-host-binary-'));
+  const filePath = path.join(dir, 'favicon.ico');
+  const icoHeader = Buffer.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]);
+  await writeFile(filePath, icoHeader);
+
+  try {
+    const read = await readHostTextFile(filePath);
+    assert.equal(read.image?.mimeType, 'image/x-icon');
+    assert.equal(read.binary, undefined);
+    assert.equal(read.text, '');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('statHostTextFile returns false for missing paths', async () => {
   const stat = await statHostTextFile(path.join(os.tmpdir(), 'spirit-missing-file.txt'));
   assert.equal(stat.exists, false);

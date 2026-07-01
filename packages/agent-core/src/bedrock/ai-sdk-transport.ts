@@ -1239,6 +1239,8 @@ function guessImageMimeFromPath(path: string): string {
       return 'image/webp';
     case '.gif':
       return 'image/gif';
+    case '.ico':
+      return 'image/x-icon';
     case '.bmp':
       return 'image/bmp';
     default:

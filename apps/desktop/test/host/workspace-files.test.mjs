@@ -43,6 +43,15 @@ test('workspaceTextFileResultFromBuffer does not treat svg as image', () => {
   assert.equal(result.text.includes('<svg'), true);
 });
 
+const ICO_HEADER = Buffer.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]);
+
+test('workspaceTextFileResultFromBuffer returns image for validated ico', () => {
+  const result = workspaceTextFileResultFromBuffer(ICO_HEADER, 'favicon.ico');
+  assert.equal(result.image?.mimeType, 'image/x-icon');
+  assert.equal(result.binary, undefined);
+  assert.equal(result.text, '');
+});
+
 test('workspaceTextFileResultFromBuffer returns image for validated png', () => {
   const result = workspaceTextFileResultFromBuffer(PNG_HEADER, 'icon.png');
   assert.equal(result.image?.mimeType, 'image/png');

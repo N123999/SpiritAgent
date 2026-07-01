@@ -2401,6 +2401,9 @@ function inferSupportedImageExtensionFromWebResponse(
       return '.bmp';
     case 'image/gif':
       return '.gif';
+    case 'image/x-icon':
+    case 'image/vnd.microsoft.icon':
+      return '.ico';
     case 'image/jpeg':
       return '.jpg';
     case 'image/png':
@@ -2566,7 +2569,7 @@ function detectGeneratedImageType(mediaType: string, bytes: Uint8Array): { exten
     };
   }
 
-  for (const extension of ['.png', '.jpg', '.webp', '.gif', '.bmp'] as const) {
+  for (const extension of ['.png', '.jpg', '.webp', '.gif', '.bmp', '.ico'] as const) {
     const detected = detectSupportedImageFile(`generated${extension}`, bytes);
     if (detected) {
       return {
@@ -2589,6 +2592,9 @@ function imageExtensionForMediaType(mediaType: string): string | undefined {
       return '.bmp';
     case 'image/gif':
       return '.gif';
+    case 'image/x-icon':
+    case 'image/vnd.microsoft.icon':
+      return '.ico';
     case 'image/jpeg':
       return '.jpg';
     case 'image/png':
@@ -2606,12 +2612,16 @@ function mimeTypeForImageExtension(extension: string): string | undefined {
       return 'image/bmp';
     case '.gif':
       return 'image/gif';
+    case '.ico':
+      return 'image/x-icon';
     case '.jpg':
       return 'image/jpeg';
     case '.png':
       return 'image/png';
     case '.webp':
       return 'image/webp';
+    case '.ico':
+      return 'image/x-icon';
     default:
       return undefined;
   }

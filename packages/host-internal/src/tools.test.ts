@@ -161,6 +161,40 @@ test('read_file still returns image part when model explicitly supports image in
   }
 });
 
+const ICO_HEADER = Buffer.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]);
+
+test('read_file returns image part for validated ico files', async () => {
+  const workspaceRoot = await mkdtemp(join(tmpdir(), 'spirit-host-tools-image-ico-'));
+  const spiritDataDir = join(workspaceRoot, '.spirit-data');
+  const imagePath = join(workspaceRoot, 'favicon.ico');
+
+  try {
+    await mkdir(spiritDataDir, { recursive: true });
+    await writeFile(imagePath, ICO_HEADER);
+
+    const service = new NodeHostToolService(
+      { workspaceRoot, spiritDataDir },
+      {
+        getModelCompatibilityProfile: () => ({
+          hasExplicitCapabilities: true,
+          capabilities: { imageInput: true },
+        }),
+      },
+    );
+
+    const output = await service.execute({
+      name: 'read_file',
+      path: imagePath,
+    });
+    assertHostToolExecutionOutput(output);
+    assert.match(output.summaryText, /^\[read image\]/u);
+    assert.match(output.summaryText, /mime_type: image\/x-icon/u);
+    assert.equal(output.content.some((part) => part.type === 'image'), true);
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('web_fetch executes in background like shell', () => {
   const service = new NodeHostToolService(
     { workspaceRoot: '/tmp', spiritDataDir: '/tmp/.spirit-data' },
