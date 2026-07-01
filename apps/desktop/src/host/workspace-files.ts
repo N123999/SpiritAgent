@@ -3,6 +3,10 @@ import { lstat, readFile, readdir, realpath, stat, writeFile } from 'node:fs/pro
 import path from 'node:path';
 
 import { resolveWorkspaceExplorerIgnoreFlags } from '@spirit-agent/host-internal';
+import {
+  detectSupportedImageFile,
+  hasSupportedImageExtension,
+} from '@spirit-agent/host-internal/image-file-support';
 
 import i18n from '../lib/i18n-host.js';
 import type {
@@ -25,7 +29,16 @@ function isENOENT(error: unknown): boolean {
 /** 单文件上限，避免大文件拖垮渲染进程。 */
 export const WORKSPACE_TEXT_FILE_MAX_BYTES = 2 * 1024 * 1024;
 
+/** 侧栏图片预览上限，与 electron read-local-image-preview 一致。 */
+export const WORKSPACE_IMAGE_FILE_MAX_BYTES = 8 * 1024 * 1024;
+
 const BINARY_SCAN_BYTES = 8192;
+
+function maxReadableFileBytes(filePath: string): number {
+  return hasSupportedImageExtension(filePath)
+    ? WORKSPACE_IMAGE_FILE_MAX_BYTES
+    : WORKSPACE_TEXT_FILE_MAX_BYTES;
+}
 
 /** 扫描缓冲区前缀：NUL 或非法 UTF-8 视为二进制。 */
 export function isBinaryTextFileBuffer(buffer: Buffer): boolean {
@@ -44,7 +57,17 @@ export function isBinaryTextFileBuffer(buffer: Buffer): boolean {
   }
 }
 
-export function workspaceTextFileResultFromBuffer(buffer: Buffer): WorkspaceReadTextFileResult {
+export function workspaceTextFileResultFromBuffer(
+  buffer: Buffer,
+  filePath: string,
+): WorkspaceReadTextFileResult {
+  const image = detectSupportedImageFile(filePath, buffer);
+  if (image) {
+    return { text: '', image: { mimeType: image.mimeType } };
+  }
+  if (hasSupportedImageExtension(filePath)) {
+    return { text: '', binary: true };
+  }
   if (isBinaryTextFileBuffer(buffer)) {
     return { text: '', binary: true };
   }
@@ -177,11 +200,11 @@ export async function readWorkspaceTextFile(
   if (!fileStat.isFile()) {
     throw new Error(i18n.t('error.notAFile'));
   }
-  if (fileStat.size > WORKSPACE_TEXT_FILE_MAX_BYTES) {
+  if (fileStat.size > maxReadableFileBytes(filePath)) {
     throw new Error(i18n.t('error.fileTooLarge'));
   }
   const buffer = await readFile(filePath);
-  return workspaceTextFileResultFromBuffer(buffer);
+  return workspaceTextFileResultFromBuffer(buffer, filePath);
 }
 
 export async function writeWorkspaceTextFile(

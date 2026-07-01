@@ -5,7 +5,12 @@ import path from 'node:path';
 import i18n from '../lib/i18n-host.js';
 import type { HostTextFileStatResult, WorkspaceReadTextFileResult } from '../types.js';
 
-import { WORKSPACE_TEXT_FILE_MAX_BYTES, workspaceTextFileResultFromBuffer } from './workspace-files.js';
+import {
+  WORKSPACE_IMAGE_FILE_MAX_BYTES,
+  WORKSPACE_TEXT_FILE_MAX_BYTES,
+  workspaceTextFileResultFromBuffer,
+} from './workspace-files.js';
+import { hasSupportedImageExtension } from '@spirit-agent/host-internal/image-file-support';
 
 export async function resolveHostTextFilePath(absolutePath: string): Promise<string> {
   const cleaned = absolutePath.replace(/\0/g, '').trim();
@@ -47,11 +52,11 @@ export async function readHostTextFile(absolutePath: string): Promise<WorkspaceR
   if (!fileStat.isFile()) {
     throw new Error(i18n.t('error.notAFile'));
   }
-  if (fileStat.size > WORKSPACE_TEXT_FILE_MAX_BYTES) {
+  if (fileStat.size > (hasSupportedImageExtension(filePath) ? WORKSPACE_IMAGE_FILE_MAX_BYTES : WORKSPACE_TEXT_FILE_MAX_BYTES)) {
     throw new Error(i18n.t('error.fileTooLarge'));
   }
   const buffer = await readFile(filePath);
-  return workspaceTextFileResultFromBuffer(buffer);
+  return workspaceTextFileResultFromBuffer(buffer, filePath);
 }
 
 export async function writeHostTextFile(absolutePath: string, text: string): Promise<void> {

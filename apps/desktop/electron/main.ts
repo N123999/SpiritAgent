@@ -20,6 +20,8 @@ import {
   type WebContents,
 } from 'electron';
 
+import { detectSupportedImageFile } from '@spirit-agent/host-internal/image-file-support';
+
 import {
   registerDesktopNotifications,
   registerWindowsToastActivationHandler,
@@ -1310,6 +1312,8 @@ function imagePreviewMimeType(extension: string): string | undefined {
       return 'image/png';
     case '.webp':
       return 'image/webp';
+    case '.ico':
+      return 'image/x-icon';
     default:
       return undefined;
   }
@@ -1373,12 +1377,6 @@ function managedGeneratedVideoRefFromPath(filePath: string): string | null {
 }
 
 async function readImagePreviewDataUrlFromPath(filePath: string): Promise<string | null> {
-  const extension = path.extname(filePath).toLowerCase();
-  const mimeType = imagePreviewMimeType(extension);
-  if (!mimeType) {
-    return null;
-  }
-
   try {
     const metadata = await stat(filePath);
     if (!metadata.isFile() || metadata.size > LOCAL_IMAGE_PREVIEW_MAX_BYTES) {
@@ -1386,7 +1384,11 @@ async function readImagePreviewDataUrlFromPath(filePath: string): Promise<string
     }
 
     const bytes = await readFile(filePath);
-    return `data:${mimeType};base64,${bytes.toString('base64')}`;
+    const detected = detectSupportedImageFile(filePath, bytes);
+    if (!detected) {
+      return null;
+    }
+    return `data:${detected.mimeType};base64,${bytes.toString('base64')}`;
   } catch {
     return null;
   }

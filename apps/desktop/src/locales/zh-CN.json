@@ -709,6 +709,7 @@
     "startImplementing": "开始实现",
     "emptyMarkdownDoc": "当前 Markdown 文档为空。",
     "binaryFileNotSupported": "二进制文件不受支持",
+    "imagePreviewUnavailable": "无法预览此图片",
     "connectToShowFiles": "连接工作区后显示文件树",
     "fileList": "文件列表",
     "fileExplorerToolbar": "文件浏览工具栏",

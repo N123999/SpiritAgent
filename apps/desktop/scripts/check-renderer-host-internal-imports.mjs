@@ -23,6 +23,7 @@ const RENDERER_SAFE_HOST_INTERNAL_SUBPATHS = new Set([
   'github-pull-request-url',
   'github-pull-request-checks-pages',
   'github-pull-request-conversation-pages',
+  'image-file-support',
 ]);
 
 const RENDERER_SCAN_ROOTS = ['components', 'hooks', 'lib', 'App.tsx'];

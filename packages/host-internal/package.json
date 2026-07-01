@@ -83,6 +83,10 @@
       "types": "./dist/tool-output-archive-path.d.ts",
       "default": "./dist/tool-output-archive-path.js"
     },
+    "./image-file-support": {
+      "types": "./dist/image-file-support.d.ts",
+      "default": "./dist/image-file-support.js"
+    },
     "./tools": {
       "types": "./dist/tools.d.ts",
       "default": "./dist/tools.js"

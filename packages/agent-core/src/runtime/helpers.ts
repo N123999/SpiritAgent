@@ -616,7 +616,8 @@ function hasPendingWorkspaceImageExtension(filePath: string): boolean {
     extension.endsWith('.jpg') ||
     extension.endsWith('.jpeg') ||
     extension.endsWith('.gif') ||
-    extension.endsWith('.webp')
+    extension.endsWith('.webp') ||
+    extension.endsWith('.ico')
   );
 }
 
@@ -684,6 +685,9 @@ function detectPendingWorkspaceImageFile(filePath: string, bytes: Uint8Array): b
   }
   if (lower.endsWith('.webp')) {
     return hasAsciiBytePrefix(bytes, 'RIFF') && hasAsciiBytePrefix(bytes.slice(8), 'WEBP');
+  }
+  if (lower.endsWith('.ico')) {
+    return hasBytePrefix(bytes, [0x00, 0x00, 0x01, 0x00]);
   }
 
   return false;

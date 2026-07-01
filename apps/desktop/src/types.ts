@@ -710,6 +710,8 @@ export interface WorkspaceReadTextFileResult {
   text: string;
   /** 二进制文件：不返回可编辑文本，由 UI 展示占位提示。 */
   binary?: true;
+  /** 经 magic bytes 校验的图片：由 UI 展示预览，不进入 Monaco。 */
+  image?: { mimeType: string };
 }
 
 /** readWorkspaceTextFile 选项；optional 时文件不存在返回空文本而不抛错。 */
