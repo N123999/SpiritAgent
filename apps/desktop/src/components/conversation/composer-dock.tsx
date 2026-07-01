@@ -71,6 +71,7 @@ export type ComposerDockProps = {
   onDismissSlashSuggestions: () => void;
   composerCursorCodeUnits: number;
   composerPlaceholder: string;
+  composerAgentModeChipPlaceholder?: string;
   composerCanSend: boolean;
   composerHasPayload: boolean;
   conversationInterruptible: boolean;
@@ -122,6 +123,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
     onDismissSlashSuggestions,
     composerCursorCodeUnits,
     composerPlaceholder,
+    composerAgentModeChipPlaceholder,
     composerCanSend,
     composerHasPayload,
     conversationInterruptible,
@@ -343,6 +345,7 @@ export const ComposerDock = forwardRef<HTMLDivElement, ComposerDockProps>(functi
                 onElementAttachmentsChange={onComposerBrowserElementAttachmentsChange}
                 onAbort={() => void runtime.abortConversation()}
                 placeholder={composerPlaceholder}
+                agentModeChipPlaceholder={composerAgentModeChipPlaceholder}
                 localFileAttachments={runtime.composerLocalFileAttachments}
                 models={models}
                 catalogHints={snapshot?.config.modelCatalogHints}

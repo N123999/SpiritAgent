@@ -589,6 +589,7 @@ export default function App() {
               onDismissSlashSuggestions: composer.dismissSlashSuggestions,
               composerCursorCodeUnits: composer.composerCursorCodeUnits,
               composerPlaceholder: composer.composerPlaceholder,
+              composerAgentModeChipPlaceholder: composer.composerAgentModeChipPlaceholder,
               composerCanSend: composer.composerCanSend,
               composerHasPayload: composer.composerHasPayload,
               conversationInterruptible: conversation.conversationInterruptible,

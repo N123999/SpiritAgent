@@ -17,6 +17,7 @@ import {
 import type { ComposerRichInputHandle } from "@/components/composer-rich-input";
 import { segmentsToMessageText } from "@/components/composer-rich-input";
 import { extractComposerChipMetadata } from "@/lib/composer-segment-model";
+import { currentAgentModeSegment } from "@/lib/composer-agent-mode-segments";
 import { cycleAgentMode, type DesktopAgentMode } from "@/lib/agent-mode";
 import { currentWorkspaceFileReferenceQueryFromSegments } from "@/lib/composer-file-reference-query";
 import {
@@ -140,6 +141,22 @@ export function useComposerController({
         : isEmptySession
           ? t("composer.placeholderEmptySession")
           : t("composer.placeholderContinueSession");
+
+  const composerAgentModeChipPlaceholder = useMemo(() => {
+    void composerSegmentsRevision;
+    const segments = composerRichInputRef.current?.getSegments() ?? [];
+    const mode = currentAgentModeSegment(segments);
+    if (!mode) {
+      return undefined;
+    }
+    if (mode === "plan") {
+      return t("composer.placeholderWithPlanChip");
+    }
+    if (mode === "ask") {
+      return t("composer.placeholderWithAskChip");
+    }
+    return t("composer.placeholderWithDebugChip");
+  }, [composerSegmentsRevision, t]);
 
   const messageRewindComposerEnabled =
     !compactionDemoActive &&
@@ -1046,6 +1063,7 @@ export function useComposerController({
     handleComposerKeyDown,
     workspaceFileIndex,
     composerPlaceholder,
+    composerAgentModeChipPlaceholder,
     composerCanSend,
     composerHasPayload,
     messageRewindComposerEnabled,

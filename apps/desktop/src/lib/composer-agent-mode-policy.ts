@@ -4,6 +4,7 @@ import { emptySegments, hasSkillSegment, isComposerPlainEmpty, mergeAdjacentText
 import { hasInlineAttachmentChipSegments } from "@/lib/composer-inline-chip-dom";
 import { hasLoopSegment } from "@/lib/composer-loop-segments";
 import {
+  currentAgentModeSegment,
   hasAgentModeSegment,
   insertAgentModeSegment,
   isAgentModeChipKind,
@@ -48,6 +49,19 @@ export function composerShowsPlaceholder(
     || hasSkillSegment(segs)
     || hasInlineAttachmentChipSegments(segs)
   ) {
+    return false;
+  }
+  return isComposerPlainEmpty(segmentsToPlainText(segs));
+}
+
+export function composerShowsAgentModeChipPlaceholder(
+  segs: RichSegment[],
+  opts: { composing: boolean; attachmentCount: number },
+): boolean {
+  if (opts.composing || opts.attachmentCount > 0) {
+    return false;
+  }
+  if (!currentAgentModeSegment(segs)) {
     return false;
   }
   return isComposerPlainEmpty(segmentsToPlainText(segs));
